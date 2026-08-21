@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card auth-card">
+  <div class="auth-head">
+    <span class="brand-mark large">⚡</span>
+    <h1>Set up SPARK</h1>
+    <p class="muted">
+      One administrator account, created now and stored on this machine only.
+      SPARK will hold a map of your whole network, so it isn't left open.
+    </p>
+  </div>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/setup" class="form">
+    <label>
+      <span>Username</span>
+      <input type="text" name="username" value="{{ username or 'admin' }}" required autocomplete="username">
+    </label>
+
+    <label>
+      <span>Password</span>
+      <input type="password" name="password" required minlength="12" autocomplete="new-password" autofocus>
+      <small class="hint">At least 12 characters. A short phrase you'll remember beats a short jumble you won't.</small>
+    </label>
+
+    <label>
+      <span>Confirm password</span>
+      <input type="password" name="password_confirm" required minlength="12" autocomplete="new-password">
+    </label>
+
+    <label>
+      <span>Discord webhook URL <em class="optional">optional</em></span>
+      <input type="url" name="discord_webhook_url" placeholder="https://discord.com/api/webhooks/…">
+      <small class="hint">Where outage alerts go. You can add this later in Settings.</small>
+    </label>
+
+    <button type="submit" class="btn-primary">Create account</button>
+  </form>
+</div>
+{% endblock %}

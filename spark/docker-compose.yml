@@ -1,0 +1,29 @@
+services:
+  spark:
+    build: .
+    image: spark-monitor:latest
+    container_name: spark
+    restart: unless-stopped
+
+    # Host networking is required, not a preference. ARP and ICMP sweeps only
+    # see the LAN from the host's network namespace; on a bridge network SPARK
+    # sits behind NAT and discovery finds nothing at all.
+    network_mode: host
+
+    # Real ICMP needs raw sockets. Without this, ping degrades to TCP probes
+    # and the latency numbers stop meaning what you think they mean.
+    cap_add:
+      - NET_RAW
+
+    volumes:
+      - ./data:/data          # spark.db and the session secret key
+      - ./config:/config      # spark.yaml
+      # Uncomment once Docker-host inventory arrives (increment 4). Read-only,
+      # and only the key SPARK uses to reach the remote daemons.
+      # - ./secrets:/secrets:ro
+
+    environment:
+      - SPARK_CONFIG=/config/spark.yaml
+      # Overrides for anything in spark.yaml, nested with double underscores:
+      # - SPARK__APP__PORT=9700
+      # - SPARK__APP__LOG_LEVEL=DEBUG

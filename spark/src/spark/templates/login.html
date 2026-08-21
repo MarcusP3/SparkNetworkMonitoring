@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card auth-card">
+  <div class="auth-head">
+    <span class="brand-mark large">⚡</span>
+    <h1>{{ config.app.instance_name }}</h1>
+  </div>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+
+  {% if not proxy_mode %}
+  <form method="post" action="/login" class="form">
+    <input type="hidden" name="next" value="{{ next or '/' }}">
+    <label>
+      <span>Username</span>
+      <input type="text" name="username" required autocomplete="username" autofocus>
+    </label>
+    <label>
+      <span>Password</span>
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button type="submit" class="btn-primary">Sign in</button>
+  </form>
+  {% else %}
+  <p class="muted">
+    Authentication is delegated to your reverse proxy. Check that it is
+    forwarding the <code>{{ config.auth.proxy.header }}</code> header and that
+    its address appears in <code>auth.proxy.trusted_proxies</code>.
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · {{ config.app.instance_name }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand-mark">⚡</span>
+    <span>{{ config.app.instance_name }}</span>
+  </a>
+  <nav class="nav">
+    <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+    <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
+    <a href="/incidents" class="disabled" title="Arrives with the check engine">Incidents</a>
+    <a href="/settings" class="disabled" title="Arrives with the check engine">Settings</a>
+  </nav>
+  <form method="post" action="/logout" class="logout">
+    <span class="who">{{ user.username }}</span>
+    <button type="submit" class="btn-quiet">Sign out</button>
+  </form>
+</header>
+{% endif %}
+
+<main class="{% if not user %}centered{% endif %}">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  SPARK {{ config.app.instance_name if config.app.instance_name != 'SPARK' else '' }}
+  · <span class="muted">network monitoring for homelabs</span>
+</footer>
+</body>
+</html>

@@ -1,0 +1,199 @@
+"""First-run setup, login, and logout."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Form, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..auth import (
+    SESSION_COOKIE,
+    AuthError,
+    RateLimited,
+    authenticate,
+    client_ip,
+    create_admin,
+    create_session,
+    revoke_session,
+    setup_required,
+)
+from ..config import Config
+from ..db import get_setting, save_setting
+from .deps import current_user, get_config, get_session, redirect, templates
+
+router = APIRouter()
+
+
+def _set_session_cookie(response, token: str, config: Config) -> None:  # type: ignore[no-untyped-def]
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=config.auth.session_days * 86400,
+        httponly=True,
+        samesite="lax",
+        # Not forcing Secure: SPARK is commonly reached over plain HTTP on a
+        # LAN, and a Secure cookie there would silently never be sent. Put it
+        # behind TLS via a reverse proxy and this becomes worth revisiting.
+        secure=False,
+        path="/",
+    )
+
+
+# --------------------------------------------------------------------------
+# First-run setup
+# --------------------------------------------------------------------------
+
+
+@router.get("/setup")
+async def setup_form(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+):
+    if not await setup_required(session):
+        return redirect("/login")
+    return templates.TemplateResponse(
+        request,
+        "setup.html",
+        {"config": config, "title": "Set up SPARK"},
+    )
+
+
+@router.post("/setup")
+async def setup_submit(
+    request: Request,
+    username: str = Form("admin"),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    discord_webhook_url: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+):
+    if not await setup_required(session):
+        return redirect("/login")
+
+    error: str | None = None
+    if password != password_confirm:
+        error = "The two passwords do not match."
+    else:
+        try:
+            user = await create_admin(session, username, password)
+        except AuthError as exc:
+            error = str(exc)
+
+    if error:
+        return templates.TemplateResponse(
+            request,
+            "setup.html",
+            {"config": config, "title": "Set up SPARK", "error": error, "username": username},
+            status_code=400,
+        )
+
+    if discord_webhook_url.strip():
+        alerting = await get_setting(session, "alerting")
+        alerting["discord_webhook_url"] = discord_webhook_url.strip()
+        await save_setting(session, "alerting", alerting)
+
+    token = await create_session(
+        session,
+        user,
+        config.auth,
+        user_agent=request.headers.get("user-agent"),
+        ip=client_ip(request, config.auth),
+    )
+    response = redirect("/")
+    _set_session_cookie(response, token, config)
+    return response
+
+
+# --------------------------------------------------------------------------
+# Login / logout
+# --------------------------------------------------------------------------
+
+
+@router.get("/login")
+async def login_form(
+    request: Request,
+    next: str = "/",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+):
+    if await setup_required(session):
+        return redirect("/setup")
+    if config.auth.mode == "proxy":
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "config": config,
+                "title": "Sign in",
+                "proxy_mode": True,
+                "error": "This instance authenticates through a reverse proxy, "
+                "but no valid identity header arrived.",
+            },
+            status_code=401,
+        )
+    return templates.TemplateResponse(
+        request, "login.html", {"config": config, "title": "Sign in", "next": next}
+    )
+
+
+@router.post("/login")
+async def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+):
+    ip = client_ip(request, config.auth)
+    try:
+        user = await authenticate(session, username, password, ip, config.auth)
+    except RateLimited as exc:
+        minutes = max(1, exc.retry_after_seconds // 60)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "config": config,
+                "title": "Sign in",
+                "error": f"Too many failed attempts. Try again in {minutes} minutes.",
+                "next": next,
+            },
+            status_code=429,
+        )
+    except AuthError as exc:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"config": config, "title": "Sign in", "error": str(exc), "next": next},
+            status_code=401,
+        )
+
+    token = await create_session(
+        session,
+        user,
+        config.auth,
+        user_agent=request.headers.get("user-agent"),
+        ip=ip,
+    )
+    # Only ever redirect to a path on this host; an open redirect here would be
+    # a free phishing primitive.
+    destination = next if next.startswith("/") and not next.startswith("//") else "/"
+    response = redirect(destination)
+    _set_session_cookie(response, token, config)
+    return response
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _user=Depends(current_user),
+):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        await revoke_session(session, token)
+    response = redirect("/login")
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response

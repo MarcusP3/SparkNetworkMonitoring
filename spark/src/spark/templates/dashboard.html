@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <h1>Dashboard</h1>
+
+  {% for warning in warnings %}
+  <div class="alert warn">{{ warning }}</div>
+  {% endfor %}
+
+  <section class="stat-row">
+    <div class="stat">
+      <span class="stat-value">{{ stats.devices }}</span>
+      <span class="stat-label">Devices</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ stats.services }}</span>
+      <span class="stat-label">Services</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">{{ stats.targets }}</span>
+      <span class="stat-label">Monitored</span>
+    </div>
+    <div class="stat {% if stats.degraded %}is-warn{% endif %}">
+      <span class="stat-value">{{ stats.degraded }}</span>
+      <span class="stat-label">Degraded</span>
+    </div>
+    <div class="stat {% if stats.down %}is-bad{% endif %}">
+      <span class="stat-value">{{ stats.down }}</span>
+      <span class="stat-label">Down</span>
+    </div>
+    <div class="stat {% if stats.open_incidents %}is-bad{% endif %}">
+      <span class="stat-value">{{ stats.open_incidents }}</span>
+      <span class="stat-label">Open incidents</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Configured subnets</h2>
+    {% if subnets %}
+    <table class="table">
+      <thead>
+        <tr><th>Name</th><th>CIDR</th><th>VLAN</th><th>Reachability</th></tr>
+      </thead>
+      <tbody>
+        {% for subnet in subnets %}
+        <tr>
+          <td>{{ subnet.name or '—' }}</td>
+          <td><code>{{ subnet.cidr }}</code></td>
+          <td>{{ subnet.vlan if subnet.vlan is not none else '—' }}</td>
+          <td>
+            {% if subnet.attached %}
+              <span class="pill ok">Directly attached</span>
+            {% else %}
+              <span class="pill warn">Routed · IP identity only</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">
+      None yet. Add them under <code>network.subnets</code> in
+      <code>spark.yaml</code> and restart.
+    </p>
+    {% endif %}
+  </section>
+
+  <section class="card empty-state">
+    <h2>Nothing is being monitored yet</h2>
+    <p class="muted">
+      This is increment 1: configuration, database, authentication, and the web
+      shell. The pieces that put numbers on this page arrive next.
+    </p>
+    <ol class="roadmap">
+      <li><span class="done">✓</span> Foundation — config, schema, auth, dashboard shell</li>
+      <li><span class="next">2</span> Check engine — ping, TCP, HTTP, DNS, state machine with hysteresis</li>
+      <li><span class="next">3</span> Alerting — Discord, dependency suppression, quiet hours</li>
+      <li><span class="next">4</span> Discovery — subnet sweep, Docker inventory, port scan</li>
+      <li><span class="next">5</span> Service map — the tree and list views</li>
+    </ol>
+  </section>
+</div>
+{% endblock %}

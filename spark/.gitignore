@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Runtime state — never commit these
+data/
+secrets/
+*.db
+*.db-wal
+*.db-shm
+secret.key
+
+.DS_Store
+.idea/
+.vscode/

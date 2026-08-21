@@ -1,0 +1,64 @@
+# SPARK configuration.
+#
+# Only things needed before the database exists live here. Everything you'd
+# change routinely — alert webhook, schedules, scan settings — is edited in the
+# web UI instead, so this file stays short.
+#
+# Any value can also be set by environment variable, nesting with double
+# underscores:  SPARK__APP__PORT=9800
+
+app:
+  host: 0.0.0.0
+  port: 9700
+  data_dir: /data
+  # Shown in page titles and alert messages. Useful if you or a friend end up
+  # running more than one instance.
+  instance_name: SPARK
+  log_level: INFO
+
+auth:
+  # password  - single admin account created on first run
+  # proxy     - trust an identity header from a reverse proxy (Authelia,
+  #             Tailscale, Cloudflare Access). Requires trusted_proxies below.
+  mode: password
+  session_days: 30
+  max_attempts: 10
+  lockout_minutes: 15
+
+  proxy:
+    header: Remote-User
+    # SPARK refuses to start in proxy mode with this empty. A header-trust
+    # setup with no source restriction can be forged by anything on the LAN,
+    # which is worse than no authentication because it looks secure.
+    trusted_proxies: []
+    #  - 192.168.1.5
+    #  - 10.0.0.0/24
+
+network:
+  # Every segment you want discovered. Replace these with your own.
+  #
+  # `attached: true`  means the SPARK host has an interface on this segment.
+  #                   ARP works, so devices get MAC-based identity that
+  #                   survives DHCP reassigning their address.
+  #
+  # `attached: false` means the segment is reachable only through a router.
+  #                   ICMP works, ARP does not, so devices are identified by IP
+  #                   until SNMP collection can read MAC-to-IP off the switch.
+  #
+  # If you can give the SPARK VM a NIC in each VLAN, do that — the inventory is
+  # meaningfully better.
+  subnets:
+    - name: LAN
+      cidr: 192.168.1.0/24
+      vlan: 1
+      attached: true
+
+    # - name: IoT
+    #   cidr: 192.168.20.0/24
+    #   vlan: 20
+    #   attached: false
+
+    # - name: Servers
+    #   cidr: 192.168.30.0/24
+    #   vlan: 30
+    #   attached: false
