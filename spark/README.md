@@ -9,9 +9,42 @@ about your network and enterprise NMS platforms built for a full-time operator.
 SPARK aims at the middle: it discovers the network itself and shows you what's
 actually running, rather than making you type it all in.
 
-> **Status: increment 1 of 5.** Configuration, database, authentication and the
-> web shell are working. The check engine, alerting, discovery, and the service
-> map are not built yet. See the roadmap below.
+> **Status: increment 2.** Configuration, database, authentication, the web
+> shell, and the SNMP collection engine are working. Storage, scheduling, and
+> the UI for SNMP data come next. See the roadmap below.
+
+---
+
+## Find out what your gear actually supports
+
+Vendor SNMP documentation is unreliable, and prosumer switches frequently omit
+standard MIBs — temperature especially. So don't guess:
+
+```bash
+spark-probe 192.168.1.2 -c your-community
+```
+
+It reports the device's identity, live CPU/memory/temperature, a capability
+matrix of what it does and doesn't answer, and the interface table. Add
+`--json` for machine-readable output, `-v v3` with `--username/--auth-key/
+--priv-key` for SNMPv3.
+
+Inside Docker:
+
+```bash
+docker compose run --rm spark spark-probe 192.168.1.2 -c your-community
+```
+
+### UniFi specifics
+
+- SNMP is a **global** setting in UniFi Network (Settings → System), not per-device.
+- **UniFi consoles (UDM/UDM-Pro/UDM-SE) do not expose SNMP through the UI.** Your
+  switches will answer; the console itself won't. Its health comes from the
+  UniFi Network Integration API instead, which is a separate collector.
+- **USW Flex and USW Ultra switches don't support SNMP at all.**
+- APs have no native SNMP agent.
+- Ubiquiti's own docs note their MIBs "are not comprehensive" — expect CPU and
+  temperature to be sparse or missing. Run `spark-probe` and see.
 
 ---
 
@@ -110,13 +143,30 @@ worse than no auth, because it looks like security.
 | # | Increment | Status |
 |---|---|---|
 | 1 | Foundation — config, schema, auth, dashboard shell | ✅ done |
-| 2 | Check engine — ping, TCP, HTTP, DNS, state machine with hysteresis | planned |
-| 3 | Alerting — Discord, dependency suppression, quiet hours | planned |
-| 4 | Discovery — subnet sweep, remote Docker inventory, curated port scan | planned |
-| 5 | Service map — tree and filterable list views | planned |
+| 2 | SNMP collection engine + capability probe | ✅ done |
+| 3 | Metric storage, polling scheduler, device pages | next |
+| 4 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
+| 5 | Check engine — ping, TCP, HTTP, DNS, hysteresis | planned |
+| 6 | Discovery — subnet sweep, Docker inventory, port scan | planned |
+| 7 | Service map — tree and filterable list views | planned |
+| 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
 
-After v1: change tracking and new-device alerts, SNMP with automatic topology,
-then traffic analysis.
+Topology collection (LLDP, MAC tables, ARP) is already in the OID catalogue and
+gets surfaced when the map is built.
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+./tests/local_agent.sh start   # a local net-snmp agent to test against
+pytest -q
+./tests/local_agent.sh stop
+
+python smoke_test.py           # end-to-end check of the web app and auth
+```
+
+`pytest` is the developer suite; `smoke_test.py` is a standalone "did my
+install work" script that needs no test framework.
 
 ---
 

@@ -16,10 +16,12 @@ dependencies = [
     "itsdangerous>=2.2",
     "httpx>=0.27",
     "apscheduler>=3.10",
+    "pysnmp>=7.1",
 ]
 
 [project.scripts]
 spark = "spark.main:run"
+spark-probe = "spark.cli:probe_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -27,3 +29,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spark"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
