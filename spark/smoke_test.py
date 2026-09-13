@@ -128,6 +128,33 @@ def main() -> int:
             check("refuses to redirect off-site after login",
                   r.headers["location"] == "/", f"got {r.headers.get('location')}")
 
+            # Every one of these navigates off-site if passed through. The
+            # assertion is same-site-ness, not a literal "/": "/\\/evil.com"
+            # correctly collapses to the same-site path "/evil.com", which is
+            # not an open redirect and need not be rewritten to the root.
+            hostile = ["//evil.example.com", "/\\evil.example.com",
+                       "https://evil.example.com", "/\\/evil.example.com",
+                       "////evil.example.com", "/\\\\//evil.example.com",
+                       "\\\\evil.example.com"]
+            for target in hostile:
+                client.post("/logout")
+                rr = client.post("/login", data={
+                    "username": "admin",
+                    "password": "correct horse battery",
+                    "next": target})
+                location = rr.headers.get("location", "")
+                same_site = location.startswith("/") and not location.startswith("//")
+                check(f"next={target!r} cannot leave the site",
+                      same_site, f"got {location}")
+
+            client.post("/logout")
+            rr = client.post("/login", data={
+                "username": "admin", "password": "correct horse battery",
+                "next": "/incidents?open=1"})
+            check("keeps a legitimate same-site next",
+                  rr.headers["location"] == "/incidents?open=1",
+                  f"got {rr.headers.get('location')}")
+
             print("\nRate limiting")
             client.post("/logout")
             statuses = []
