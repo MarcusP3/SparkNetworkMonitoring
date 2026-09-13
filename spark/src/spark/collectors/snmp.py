@@ -378,14 +378,29 @@ class SnmpCollector:
         except Exception:  # noqa: BLE001
             pass
 
+        # No second source for an instantaneous percentage: net-snmp stopped
+        # serving ssCpuIdle, and the raw counters that replaced it need two
+        # samples to become one. Report the load average instead, honestly
+        # labelled, and leave cpu_percent as None rather than inventing a
+        # number. The delta calculation lands with the scheduler, which is the
+        # first thing that has anywhere to keep a previous sample.
         try:
-            idle = await self.get(O.UCD_CPU_IDLE)
-            raw = idle.get(O.UCD_CPU_IDLE)
-            if isinstance(raw, (int, float)):
-                health.cpu_percent = round(100.0 - float(raw), 1)
-                health.sources["cpu"] = "UCD-SNMP-MIB (100 - ssCpuIdle)"
+            loads = await self.get(O.UCD_LOAD_1MIN, O.UCD_LOAD_5MIN, O.UCD_LOAD_15MIN)
         except Exception:  # noqa: BLE001
-            pass
+            return
+
+        def _as_float(oid: str) -> float | None:
+            value = loads.get(oid)
+            try:
+                return float(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return None
+
+        health.load_1min = _as_float(O.UCD_LOAD_1MIN)
+        health.load_5min = _as_float(O.UCD_LOAD_5MIN)
+        health.load_15min = _as_float(O.UCD_LOAD_15MIN)
+        if health.load_1min is not None:
+            health.sources["load"] = "UCD-SNMP-MIB (laLoad)"
 
     async def _collect_memory(self, health: DeviceHealth) -> None:
         try:

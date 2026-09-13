@@ -104,10 +104,31 @@ HR_STORAGE_SIZE = "1.3.6.1.2.1.25.2.3.1.5"
 HR_STORAGE_USED = "1.3.6.1.2.1.25.2.3.1.6"
 
 # UCD-SNMP-MIB - net-snmp on Linux, which covers a lot of appliances
-UCD_CPU_IDLE = "1.3.6.1.4.1.2021.11.11.0"
-UCD_CPU_USER = "1.3.6.1.4.1.2021.11.9.0"
-UCD_CPU_SYSTEM = "1.3.6.1.4.1.2021.11.10.0"
+#
+# ssCpuIdle/ssCpuUser/ssCpuSystem are the one-minute *average* scalars, and
+# modern net-snmp does not serve them - verified against net-snmp: both
+# 2021.11.11.0 and 2021.11.9.0 return nothing while the raw counters answer.
+# Anything derived from them on pfSense, OPNsense or a Linux appliance is
+# silently always null, so they are listed only to document the dead end.
+UCD_CPU_IDLE_DEPRECATED = "1.3.6.1.4.1.2021.11.11.0"
+UCD_CPU_USER_DEPRECATED = "1.3.6.1.4.1.2021.11.9.0"
+
+# The raw counters that replaced them. These are cumulative ticks, so a
+# percentage needs two samples and a delta of idle against the total - which
+# needs somewhere to keep the previous sample. That belongs with the scheduler,
+# so it is deliberately not done here yet.
+UCD_CPU_RAW_USER = "1.3.6.1.4.1.2021.11.50.0"
+UCD_CPU_RAW_NICE = "1.3.6.1.4.1.2021.11.51.0"
+UCD_CPU_RAW_SYSTEM = "1.3.6.1.4.1.2021.11.52.0"
+UCD_CPU_RAW_IDLE = "1.3.6.1.4.1.2021.11.53.0"
+
+# laLoad - load average, as a DisplayString like "0.18". Not a CPU percentage
+# and not presented as one, but it is stateless, it answers on every net-snmp
+# device, and it is what a human actually reads.
 UCD_LOAD_1MIN = "1.3.6.1.4.1.2021.10.1.3.1"
+UCD_LOAD_5MIN = "1.3.6.1.4.1.2021.10.1.3.2"
+UCD_LOAD_15MIN = "1.3.6.1.4.1.2021.10.1.3.3"
+
 UCD_MEM_TOTAL_REAL = "1.3.6.1.4.1.2021.4.5.0"
 UCD_MEM_AVAIL_REAL = "1.3.6.1.4.1.2021.4.6.0"
 
@@ -230,8 +251,11 @@ CAPABILITY_PROBES: list[CapabilityProbe] = [
                     (IF_NAME, IF_ALIAS)),
     CapabilityProbe("cpu_hr", "CPU load (HOST-RESOURCES-MIB)",
                     (HR_PROCESSOR_LOAD,)),
-    CapabilityProbe("cpu_ucd", "CPU load (UCD-SNMP-MIB)",
-                    (UCD_CPU_IDLE,), walk=False),
+    CapabilityProbe("cpu_ucd_raw", "CPU counters (UCD-SNMP-MIB, raw ticks)",
+                    (UCD_CPU_RAW_IDLE,), walk=False,
+                    notes="Needs two samples to become a percentage"),
+    CapabilityProbe("load_average", "Load average (UCD-SNMP-MIB)",
+                    (UCD_LOAD_1MIN,), walk=False),
     CapabilityProbe("memory_hr", "Memory (HOST-RESOURCES-MIB)",
                     (HR_STORAGE_DESCR,)),
     CapabilityProbe("memory_ucd", "Memory (UCD-SNMP-MIB)",
