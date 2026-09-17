@@ -16,7 +16,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import scheduler as scheduler_module
 from ..config import Config
-from ..models import CheckType, HealthStatus, Incident, Target, User
+from ..models import (
+    DEFAULT_FAILURE_THRESHOLD,
+    DEFAULT_INTERVAL_SECONDS,
+    DEFAULT_RECOVERY_THRESHOLD,
+    DEFAULT_TIMEOUT_SECONDS,
+    CheckType,
+    HealthStatus,
+    Incident,
+    Target,
+    User,
+)
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -44,6 +54,26 @@ def _parse_params(raw: str) -> tuple[dict, str | None]:
     return value, None
 
 
+def _is_tuned(target: Target | None) -> bool:
+    """Does this target differ from the defaults.
+
+    Decides whether the tuning section starts open when editing. It has to:
+    the fields are disabled while the box is unticked, disabled fields are not
+    submitted, and the server then falls back to the defaults -- so a target
+    with a 300s interval edited with the box closed would silently be reset to
+    15s. Opening it for anything non-default keeps the values visible and
+    intentional.
+    """
+    if target is None:
+        return False
+    return (
+        target.interval_seconds != DEFAULT_INTERVAL_SECONDS
+        or float(target.timeout_seconds) != DEFAULT_TIMEOUT_SECONDS
+        or target.failure_threshold != DEFAULT_FAILURE_THRESHOLD
+        or target.recovery_threshold != DEFAULT_RECOVERY_THRESHOLD
+    )
+
+
 async def _form_context(
     session: AsyncSession, config: Config, user: User, target: Target | None, **extra
 ) -> dict:
@@ -64,6 +94,13 @@ async def _form_context(
         "check_types": [t.value for t in CheckType if t is not CheckType.DOCKER],
         "param_hints": PARAM_HINTS,
         "candidates": others,
+        "tuned": _is_tuned(target),
+        "defaults": {
+            "interval_seconds": DEFAULT_INTERVAL_SECONDS,
+            "timeout_seconds": DEFAULT_TIMEOUT_SECONDS,
+            "failure_threshold": DEFAULT_FAILURE_THRESHOLD,
+            "recovery_threshold": DEFAULT_RECOVERY_THRESHOLD,
+        },
         **extra,
     }
 
@@ -117,10 +154,10 @@ async def create_target(
     name: str = Form(...),
     check_type: str = Form(...),
     address: str = Form(...),
-    interval_seconds: int = Form(60),
-    timeout_seconds: float = Form(5.0),
-    failure_threshold: int = Form(3),
-    recovery_threshold: int = Form(2),
+    interval_seconds: int = Form(DEFAULT_INTERVAL_SECONDS),
+    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS),
+    failure_threshold: int = Form(DEFAULT_FAILURE_THRESHOLD),
+    recovery_threshold: int = Form(DEFAULT_RECOVERY_THRESHOLD),
     depends_on_target_id: str = Form(""),
     params: str = Form(""),
     session: AsyncSession = Depends(get_session),
@@ -179,10 +216,10 @@ async def update_target(
     name: str = Form(...),
     check_type: str = Form(...),
     address: str = Form(...),
-    interval_seconds: int = Form(60),
-    timeout_seconds: float = Form(5.0),
-    failure_threshold: int = Form(3),
-    recovery_threshold: int = Form(2),
+    interval_seconds: int = Form(DEFAULT_INTERVAL_SECONDS),
+    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS),
+    failure_threshold: int = Form(DEFAULT_FAILURE_THRESHOLD),
+    recovery_threshold: int = Form(DEFAULT_RECOVERY_THRESHOLD),
     depends_on_target_id: str = Form(""),
     params: str = Form(""),
     session: AsyncSession = Depends(get_session),

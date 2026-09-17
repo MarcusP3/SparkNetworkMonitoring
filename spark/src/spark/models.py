@@ -286,6 +286,17 @@ class Service(Base, TimestampMixin):
 # --------------------------------------------------------------------------
 
 
+# Defaults for a new target, in one place: the column defaults, the form
+# defaults and the text shown next to the "tune" checkbox all read from here.
+# They have to agree, because the tuning fields are disabled unless that box is
+# ticked, and a disabled input is not submitted at all -- so whatever the form
+# falls back to IS the default a user gets.
+DEFAULT_INTERVAL_SECONDS = 15
+DEFAULT_TIMEOUT_SECONDS = 3.0
+DEFAULT_FAILURE_THRESHOLD = 4
+DEFAULT_RECOVERY_THRESHOLD = 4
+
+
 class Target(Base, TimestampMixin):
     """A decision to watch something on a schedule."""
 
@@ -300,13 +311,13 @@ class Target(Base, TimestampMixin):
     device_id: Mapped[int | None] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"))
     service_id: Mapped[int | None] = mapped_column(ForeignKey("service.id", ondelete="CASCADE"))
 
-    interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
-    timeout_seconds: Mapped[float] = mapped_column(Float, default=5.0)
+    interval_seconds: Mapped[int] = mapped_column(Integer, default=DEFAULT_INTERVAL_SECONDS)
+    timeout_seconds: Mapped[float] = mapped_column(Float, default=DEFAULT_TIMEOUT_SECONDS)
 
     # Hysteresis: how many consecutive results before we believe a state change.
     # The difference between a tool you trust and one you mute in a week.
-    failure_threshold: Mapped[int] = mapped_column(Integer, default=3)
-    recovery_threshold: Mapped[int] = mapped_column(Integer, default=2)
+    failure_threshold: Mapped[int] = mapped_column(Integer, default=DEFAULT_FAILURE_THRESHOLD)
+    recovery_threshold: Mapped[int] = mapped_column(Integer, default=DEFAULT_RECOVERY_THRESHOLD)
 
     # Dependency suppression: if the parent target is down, this one's failure
     # is a symptom, not news. One alert for the switch, not thirty.

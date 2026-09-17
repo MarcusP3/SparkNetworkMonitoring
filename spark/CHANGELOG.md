@@ -39,6 +39,24 @@ real.
 - Dashboard now shows live status per target, latest latency and detail, and
   the ten most recent incidents.
 
+### Changed
+
+- **New-target defaults are now 15s interval, 3s timeout, 4 failures before
+  DOWN, 4 successes before UP** (previously 60s / 5s / 3 / 2), and the four
+  tuning fields are hidden behind a checkbox and greyed out until ticked. A new
+  target needs only a name, a check type and an address.
+
+  The defaults are defined once as `DEFAULT_*` in `models.py` and read by the
+  column defaults, the form defaults and the page text. That is not tidiness: a
+  disabled input is not submitted, so an unticked box means the *form's*
+  fallback is what the user gets, and a drift between the three would be
+  invisible until someone wondered why a target polls on a schedule nobody
+  chose.
+
+  Editing a target with non-default values opens the section already ticked,
+  because saving it shut would submit no tuning fields and reset the target.
+  There is a smoke test for exactly that.
+
 ### Dependencies
 
 - `icmplib` and `dnspython`, both previously named in DESIGN.md's stack table

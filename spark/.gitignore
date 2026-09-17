@@ -19,3 +19,4 @@ secret.key
 .vscode/
 
 .pytest_cache/
+*.zip

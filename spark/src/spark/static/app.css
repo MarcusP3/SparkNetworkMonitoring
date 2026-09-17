@@ -357,3 +357,29 @@ select, textarea {
 }
 
 textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+
+/* ---- optional tuning block ------------------------------------------- */
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  cursor: pointer;
+}
+
+label.checkbox input { width: auto; margin: 0; }
+label.checkbox span { margin: 0; }
+
+fieldset.tuning {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;          /* fieldsets default to min-content; this lets it shrink */
+}
+
+/* Greyed, not hidden: the values stay readable so you can see what you are
+   about to accept before deciding to override them. */
+fieldset.tuning[disabled] {
+  opacity: .45;
+  pointer-events: none;
+}
