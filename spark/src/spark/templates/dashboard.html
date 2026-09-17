@@ -66,19 +66,65 @@
     {% endif %}
   </section>
 
+  {% if watched %}
+  <section class="card">
+    <h2>Watched</h2>
+    <table class="table">
+      <thead>
+        <tr><th>Status</th><th>Name</th><th>Address</th><th>Latency</th><th>Last result</th></tr>
+      </thead>
+      <tbody>
+        {% for row in watched %}
+        <tr>
+          <td><span class="pill status-{{ row.status }}">{{ row.status }}</span></td>
+          <td><strong>{{ row.name }}</strong></td>
+          <td><code>{{ row.address }}</code></td>
+          <td class="muted">{{ '%.0f ms' % row.latency_ms if row.latency_ms is not none else '—' }}</td>
+          <td class="muted small">{{ row.detail or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% else %}
   <section class="card empty-state">
     <h2>Nothing is being monitored yet</h2>
     <p class="muted">
-      This is increment 1: configuration, database, authentication, and the web
-      shell. The pieces that put numbers on this page arrive next.
+      The check engine is running, but no targets are defined. There is no
+      discovery yet, so the first ones go in by hand.
     </p>
-    <ol class="roadmap">
-      <li><span class="done">✓</span> Foundation — config, schema, auth, dashboard shell</li>
-      <li><span class="next">2</span> Check engine — ping, TCP, HTTP, DNS, state machine with hysteresis</li>
-      <li><span class="next">3</span> Alerting — Discord, dependency suppression, quiet hours</li>
-      <li><span class="next">4</span> Discovery — subnet sweep, Docker inventory, port scan</li>
-      <li><span class="next">5</span> Service map — the tree and list views</li>
-    </ol>
+    <a class="btn-primary" href="/targets/new">Add a target</a>
   </section>
+  {% endif %}
+
+  {% if incidents %}
+  <section class="card">
+    <h2>Recent incidents</h2>
+    <table class="table">
+      <thead>
+        <tr><th>Target</th><th>Opened</th><th>Duration</th><th>Cause</th></tr>
+      </thead>
+      <tbody>
+        {% for incident in incidents %}
+        <tr>
+          <td>{{ incident.target_name }}</td>
+          <td class="muted small">{{ incident.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="muted">
+            {% if incident.closed_at %}{{ incident.duration }}{% else %}
+              <span class="pill bad">ongoing</span>
+            {% endif %}
+          </td>
+          <td class="muted small">
+            {{ incident.cause or '—' }}
+            {% if incident.suppressed_by_dependency %}
+              <span class="pill warn" title="A dependency was already down">symptom</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
 </div>
 {% endblock %}

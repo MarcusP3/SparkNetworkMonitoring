@@ -11,11 +11,13 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from . import scheduler as scheduler_module
 from .config import Config, load_config
 from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
+from .web.routes_targets import router as targets_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -50,15 +52,20 @@ def create_app(config: Config | None = None) -> FastAPI:
         async with session_scope() as session:
             await purge_expired(session)
 
+        scheduler_module.start()
+        scheduled = await scheduler_module.sync_jobs()
+
         log.info(
-            "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d)",
+            "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, polling %d target(s))",
             __version__,
             config.app.host,
             config.app.port,
             config.auth.mode,
             len(config.network.subnets),
+            scheduled,
         )
         yield
+        await scheduler_module.shutdown()
         await close_engine()
 
     app = FastAPI(
@@ -79,6 +86,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(dashboard_router)
+    app.include_router(targets_router)
     return app
 
 

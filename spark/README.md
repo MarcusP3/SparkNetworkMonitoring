@@ -13,9 +13,12 @@ actually running, rather than making you type it all in.
 > shell, and the SNMP collection engine are working. Storage, scheduling, and
 > the UI for SNMP data come next. See the roadmap below.
 >
-> The SNMP engine is reachable today only through `spark-probe`. Nothing polls
-> on a schedule yet, nothing is persisted, and the dashboard still shows an
-> empty state — the collector is a library plus a CLI, not a running service.
+> As of increment 3 the check engine runs: ping/TCP/HTTP/DNS on a schedule,
+> with hysteresis and incident tracking, managed at `/targets`. There is no
+> alerting yet, so you still have to look at the page.
+>
+> The SNMP engine is separate and is still reachable only through
+> `spark-probe` — nothing polls it on a schedule and nothing is persisted.
 
 ---
 
@@ -181,12 +184,16 @@ worse than no auth, because it looks like security.
 |---|---|---|
 | 1 | Foundation — config, schema, auth, dashboard shell | ✅ done |
 | 2 | SNMP collection engine + capability probe | ✅ done |
-| 3 | Metric storage, polling scheduler, device pages | next |
-| 4 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
-| 5 | Check engine — ping, TCP, HTTP, DNS, hysteresis | planned |
-| 6 | Discovery — subnet sweep, Docker inventory, port scan | planned |
-| 7 | Service map — tree and filterable list views | planned |
-| 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
+| 3 | Check engine — ping, TCP, HTTP, DNS, hysteresis, incidents, targets UI | ✅ done |
+| 4 | Alerting — Discord, dependency suppression, quiet hours | next |
+| 5 | Discovery — subnet sweep, Docker inventory, port scan | planned |
+| 6 | Service map — tree and filterable list views | planned |
+| 7 | SNMP metric storage + device pages | planned |
+| 8 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
+
+Reordered after increment 2: the check engine moved ahead of SNMP storage
+because a monitor that cannot tell you anything is down is not yet a monitor,
+and DESIGN.md's own rule is not to build phase N+1 before N.
 
 Topology collection (LLDP, MAC tables, ARP) is already in the OID catalogue and
 gets surfaced when the map is built.
@@ -204,6 +211,35 @@ python smoke_test.py           # end-to-end check of the web app and auth
 
 `pytest` is the developer suite; `smoke_test.py` is a standalone "did my
 install work" script that needs no test framework.
+
+---
+
+## Watching something
+
+There is no discovery yet, so targets are added by hand at `/targets`.
+
+| Check | Address | Useful params |
+|---|---|---|
+| `ping` | `10.1.10.1` | `{"count": 3, "loss_warn_percent": 1}` |
+| `tcp` | `10.1.10.1:443` or address + `{"port": 443}` | — |
+| `http` | `https://host/path` | `{"expect_status": 200, "expect_body": "ok", "cert_warn_days": 14}` |
+| `dns` | `example.com` | `{"rdtype": "A", "server": "10.1.10.1", "expect": "10.1.10."}` |
+
+Two settings do the real work:
+
+**Hysteresis.** `failure_threshold` consecutive failures before a target is
+called DOWN, `recovery_threshold` successes before it is called UP again. The
+defaults are 3 and 2. Setting failures to 1 means a single dropped packet is an
+outage, which is how you end up muting your own tool.
+
+**Depends on.** Point each host at the switch it sits behind, and the switch at
+the gateway. When the switch fails, the hosts' incidents are still recorded but
+flagged as symptoms, so the alerting increment can send one message instead of
+thirty.
+
+Three states, not two: `degraded` means reachable but impaired — partial packet
+loss, a certificate about to expire — and moves in and out immediately without
+opening an incident, because delaying an early warning defeats the point of it.
 
 ---
 
@@ -240,6 +276,13 @@ src/spark/
   auth.py       Argon2 passwords, sessions, proxy mode
   cli.py        spark-probe
   main.py       app factory and entry point
+  scheduler.py  APScheduler jobs, reconciled against the database
+  checks/
+    base.py     CheckSpec and CheckOutcome; no database access
+    net.py      ping, tcp, http, dns
+  engine/
+    state.py    hysteresis and the incident lifecycle
+    runner.py   joins a check to the database, owns its session
   collectors/
     base.py     collector Protocol and the normalised result shapes
     oids.py     numeric OID catalogue and capability probes
@@ -249,6 +292,7 @@ src/spark/
   static/       hand-written CSS, no build step
 
 tests/
+  test_engine.py  hysteresis, incidents, dependency suppression, the checks
   test_snmp.py    pure-function tests, plus live tests that skip without an agent
   local_agent.sh  starts a throwaway net-snmp agent on 127.0.0.1:11161
 smoke_test.py     end-to-end walk through setup, login, and the auth gate

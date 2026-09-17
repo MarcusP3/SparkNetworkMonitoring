@@ -16,9 +16,9 @@
   </a>
   <nav class="nav">
     <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+    <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
     <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
-    <a href="/incidents" class="disabled" title="Arrives with the check engine">Incidents</a>
-    <a href="/settings" class="disabled" title="Arrives with the check engine">Settings</a>
+    <a href="/settings" class="disabled" title="Arrives with the alerting increment">Settings</a>
   </nav>
   <form method="post" action="/logout" class="logout">
     <span class="who">{{ user.username }}</span>

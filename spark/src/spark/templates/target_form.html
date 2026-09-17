@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page narrow">
+  <h1>{{ title }}</h1>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+
+  <form method="post"
+        action="{% if target %}/targets/{{ target.id }}/edit{% else %}/targets/new{% endif %}"
+        class="form card">
+
+    <label>
+      <span>Name</span>
+      <input type="text" name="name" required autofocus
+             value="{{ target.name if target else '' }}"
+             placeholder="sw-core">
+    </label>
+
+    <label>
+      <span>Check type</span>
+      <select name="check_type" id="check_type">
+        {% set current = (target.check_type.value if target and target.check_type.value is defined else (target.check_type if target else 'ping')) %}
+        {% for value in check_types %}
+          <option value="{{ value }}" {% if value == current %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      <span>Address</span>
+      <input type="text" name="address" required
+             value="{{ target.address if target else '' }}"
+             placeholder="10.1.10.1  ·  10.1.10.1:443  ·  https://host/path  ·  example.com">
+      <small class="muted">
+        An IP or hostname for ping, host:port for tcp, a URL for http, a name to
+        resolve for dns.
+      </small>
+    </label>
+
+    <div class="grid-2">
+      <label>
+        <span>Interval (seconds)</span>
+        <input type="number" name="interval_seconds" min="5" step="1"
+               value="{{ target.interval_seconds if target else 60 }}">
+      </label>
+      <label>
+        <span>Timeout (seconds)</span>
+        <input type="number" name="timeout_seconds" min="0.5" step="0.5"
+               value="{{ target.timeout_seconds if target else 5 }}">
+      </label>
+    </div>
+
+    <div class="grid-2">
+      <label>
+        <span>Failures before DOWN</span>
+        <input type="number" name="failure_threshold" min="1" step="1"
+               value="{{ target.failure_threshold if target else 3 }}">
+        <small class="muted">Hysteresis. 1 means every blip pages you.</small>
+      </label>
+      <label>
+        <span>Successes before UP</span>
+        <input type="number" name="recovery_threshold" min="1" step="1"
+               value="{{ target.recovery_threshold if target else 2 }}">
+        <small class="muted">Stops a flapping target closing its own incident.</small>
+      </label>
+    </div>
+
+    <label>
+      <span>Depends on</span>
+      <select name="depends_on_target_id">
+        <option value="">— nothing —</option>
+        {% for candidate in candidates %}
+          <option value="{{ candidate.id }}"
+            {% if target and target.depends_on_target_id == candidate.id %}selected{% endif %}>
+            {{ candidate.name }}
+          </option>
+        {% endfor %}
+      </select>
+      <small class="muted">
+        If the parent is down, this target's failure is recorded but flagged as
+        a symptom rather than news.
+      </small>
+    </label>
+
+    <label>
+      <span>Params (JSON)</span>
+      <textarea name="params" rows="3" id="params"
+                placeholder="{{ param_hints.get(current, '{}') }}">{{ target.params | tojson if target and target.params else '' }}</textarea>
+      <small class="muted" id="param_hint">
+        Optional. Leave blank for defaults.
+        <span data-hint="ping">ping: <code>{{ param_hints['ping'] }}</code></span>
+        <span data-hint="tcp">tcp: <code>{{ param_hints['tcp'] }}</code></span>
+        <span data-hint="http">http: <code>{{ param_hints['http'] }}</code></span>
+        <span data-hint="dns">dns: <code>{{ param_hints['dns'] }}</code></span>
+      </small>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">
+        {{ 'Save changes' if target else 'Add target' }}
+      </button>
+      <a class="btn-quiet" href="/targets">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Show only the params hint for the selected check type. Progressive
+  // enhancement: with JS off every hint stays visible, which is still correct.
+  (function () {
+    var select = document.getElementById('check_type');
+    var hints = document.querySelectorAll('#param_hint [data-hint]');
+    function sync() {
+      hints.forEach(function (el) {
+        el.hidden = el.getAttribute('data-hint') !== select.value;
+      });
+    }
+    select.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}
