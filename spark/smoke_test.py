@@ -7,6 +7,7 @@ Run with:  .venv/bin/python smoke_test.py
 
 from __future__ import annotations
 
+import re
 import shutil
 import socket
 import sys
@@ -167,6 +168,56 @@ def main() -> int:
                       "Recent incidents" in r.text and "ongoing" in r.text)
                 check("down count reflects reality", ">1<" in r.text)
 
+                print("\nDefaults when the tuning box is left unticked")
+                # A disabled fieldset submits none of its inputs, so this posts
+                # exactly what the browser would post with the box unticked.
+                r = client.post("/targets/new", data={
+                    "name": "defaults-probe", "check_type": "tcp",
+                    "address": "127.0.0.1", "params": '{"port": %d}' % open_port,
+                    "depends_on_target_id": ""})
+                check("target created with no tuning fields at all",
+                      r.status_code == 303 and r.headers.get("location") == "/targets",
+                      f"got {r.status_code} -> {r.headers.get('location')}")
+
+                r = client.get("/targets")
+                check("unticked target polls on the 15s default",
+                      ">15s<" in r.text.replace(" ", "").replace("\n", ""),
+                      "interval is not 15s")
+
+                # Pin the id to this target's own row. The list is ordered by
+                # name, so "the last edit link" is whatever sorts last, which
+                # is not necessarily the one just created.
+                r = client.get("/targets")
+                match = re.search(r"defaults-probe.*?/targets/(\d+)/edit", r.text, re.S)
+                check("found the probe's own row", match is not None)
+                probe_id = int(match.group(1))
+                r = client.get(f"/targets/{probe_id}/edit")
+                check("a default target opens with tuning collapsed",
+                      'id="tuning"' in r.text and "disabled" in r.text.split('id="tuning"')[1][:40],
+                      "tuning fieldset is not disabled")
+                check("the collapsed summary states the real defaults",
+                      "every 15s" in r.text and "4 failures" in r.text
+                      and "4 successes" in r.text)
+
+                r = client.post(f"/targets/{probe_id}/edit", data={
+                    "name": "defaults-probe", "check_type": "tcp",
+                    "address": "127.0.0.1", "params": '{"port": %d}' % open_port,
+                    "depends_on_target_id": "",
+                    "interval_seconds": 300, "timeout_seconds": 9,
+                    "failure_threshold": 2, "recovery_threshold": 7})
+                check("tuned values are saved", r.status_code == 303)
+                r = client.get(f"/targets/{probe_id}/edit")
+                # Editing a tuned target with the box shut would silently reset
+                # it, because disabled fields are not submitted. It must open.
+                opened = 'id="tuning"' in r.text and \
+                         "disabled" not in r.text.split('id="tuning"')[1][:40]
+                check("a tuned target reopens with the box already ticked", opened,
+                      "tuning fieldset stayed disabled - editing would reset it")
+                check("checkbox itself is ticked", 'id="tune"' in r.text
+                      and "checked" in r.text.split('id="tune"')[1][:60])
+
+                client.post(f"/targets/{probe_id}/delete")
+
                 print("\nTarget validation")
                 r = client.post("/targets/new", data={
                     "name": "bad", "check_type": "tcp", "address": "127.0.0.1",
@@ -177,7 +228,6 @@ def main() -> int:
                       r.status_code == 400 and "valid JSON" in r.text)
 
                 print("\nTarget lifecycle")
-                import re
                 ids = sorted(set(int(m) for m in re.findall(r"/targets/(\d+)/edit", r.text)))
                 r = client.get("/targets")
                 ids = sorted(set(int(m) for m in re.findall(r"/targets/(\d+)/edit", r.text)))

@@ -165,11 +165,32 @@ incident, because an early warning that you delay is not an early warning.
 
 `failure_threshold` consecutive failures before a target is called **down**;
 `recovery_threshold` consecutive successes before it is called **up** again.
-Defaults are 3 and 2.
 
 Setting failures to 1 means a single dropped packet is an outage, which is how
 you end up muting your own monitoring. Recovery is hysteretic too, so a flapping
 target that answers once does not close its own incident.
+
+### Defaults
+
+A new target needs only a name, a check type and an address. Timing and
+thresholds are hidden behind a **Tune timing and thresholds** checkbox and are
+greyed out until you tick it:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| Interval | 15s | How often the check runs |
+| Timeout | 3s | How long one probe waits |
+| Failures before DOWN | 4 | ~60s to call an outage |
+| Successes before UP | 4 | ~60s to call a recovery |
+
+These live in one place, `DEFAULT_*` in `models.py`, because a disabled input is
+not submitted at all — so whatever the form falls back to *is* the default a
+user gets, and the column default, the form default and the text on the page
+have to agree.
+
+Editing a target whose values differ from the defaults opens the section
+already ticked. It has to: saving with the box shut would submit nothing and
+silently reset that target to the defaults.
 
 ### Dependencies
 

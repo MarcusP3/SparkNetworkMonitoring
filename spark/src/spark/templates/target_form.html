@@ -37,33 +37,45 @@
       </small>
     </label>
 
-    <div class="grid-2">
-      <label>
-        <span>Interval (seconds)</span>
-        <input type="number" name="interval_seconds" min="5" step="1"
-               value="{{ target.interval_seconds if target else 60 }}">
-      </label>
-      <label>
-        <span>Timeout (seconds)</span>
-        <input type="number" name="timeout_seconds" min="0.5" step="0.5"
-               value="{{ target.timeout_seconds if target else 5 }}">
-      </label>
-    </div>
+    <label class="checkbox">
+      <input type="checkbox" id="tune" name="tune" value="1" {% if tuned %}checked{% endif %}>
+      <span>Tune timing and thresholds</span>
+    </label>
+    <small class="muted" id="tune_summary">
+      Defaults: check every {{ defaults.interval_seconds }}s, {{ defaults.timeout_seconds }}s
+      timeout, {{ defaults.failure_threshold }} failures before DOWN,
+      {{ defaults.recovery_threshold }} successes before UP.
+    </small>
 
-    <div class="grid-2">
-      <label>
-        <span>Failures before DOWN</span>
-        <input type="number" name="failure_threshold" min="1" step="1"
-               value="{{ target.failure_threshold if target else 3 }}">
-        <small class="muted">Hysteresis. 1 means every blip pages you.</small>
-      </label>
-      <label>
-        <span>Successes before UP</span>
-        <input type="number" name="recovery_threshold" min="1" step="1"
-               value="{{ target.recovery_threshold if target else 2 }}">
-        <small class="muted">Stops a flapping target closing its own incident.</small>
-      </label>
-    </div>
+    <fieldset class="tuning" id="tuning" {% if not tuned %}disabled{% endif %}>
+      <div class="grid-2">
+        <label>
+          <span>Interval (seconds)</span>
+          <input type="number" name="interval_seconds" min="5" step="1"
+                 value="{{ target.interval_seconds if target else defaults.interval_seconds }}">
+        </label>
+        <label>
+          <span>Timeout (seconds)</span>
+          <input type="number" name="timeout_seconds" min="0.5" step="0.5"
+                 value="{{ target.timeout_seconds if target else defaults.timeout_seconds }}">
+        </label>
+      </div>
+
+      <div class="grid-2">
+        <label>
+          <span>Failures before DOWN</span>
+          <input type="number" name="failure_threshold" min="1" step="1"
+                 value="{{ target.failure_threshold if target else defaults.failure_threshold }}">
+          <small class="muted">Hysteresis. 1 means every blip pages you.</small>
+        </label>
+        <label>
+          <span>Successes before UP</span>
+          <input type="number" name="recovery_threshold" min="1" step="1"
+                 value="{{ target.recovery_threshold if target else defaults.recovery_threshold }}">
+          <small class="muted">Stops a flapping target closing its own incident.</small>
+        </label>
+      </div>
+    </fieldset>
 
     <label>
       <span>Depends on</span>
@@ -116,6 +128,22 @@
       });
     }
     select.addEventListener('change', sync);
+    sync();
+  })();
+
+  // Grey out the tuning fields until the box is ticked. A disabled fieldset
+  // submits none of its inputs, so an unticked box means the server applies
+  // its own defaults - which is exactly the intent, and is why those defaults
+  // live in one place in models.py.
+  (function () {
+    var box = document.getElementById('tune');
+    var fields = document.getElementById('tuning');
+    var summary = document.getElementById('tune_summary');
+    function sync() {
+      fields.disabled = !box.checked;
+      summary.hidden = box.checked;
+    }
+    box.addEventListener('change', sync);
     sync();
   })();
 </script>
