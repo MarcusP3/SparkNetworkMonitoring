@@ -53,8 +53,12 @@ In practice: SPARK can tell you something is down, but it cannot yet tell *you*
 Requires Docker with the Compose plugin, on a Linux host with a NIC on the
 network you want to watch.
 
+The application lives in the `spark/` subdirectory, not the repository root.
+Every `docker compose` and `pytest` command runs from there.
+
 ```bash
-git clone <your-repo> spark && cd spark
+git clone https://github.com/MarcusP3/SparkNetworkMonitoring.git
+cd SparkNetworkMonitoring/spark
 cp config/spark.yaml config/spark.yaml.orig   # keep a pristine copy
 $EDITOR config/spark.yaml                     # set your subnets
 docker compose up -d --build
@@ -317,34 +321,42 @@ limiting, target CRUD and the check engine over real HTTP.
 
 ### Project layout
 
-```
-src/spark/
-  config.py     YAML + env config loading
-  models.py     full Phase 1 schema, UTC datetime and enum column types
-  db.py         engine, sessions, migration runner
-  auth.py       Argon2 passwords, sessions, proxy mode
-  cli.py        spark-probe
-  main.py       app factory and entry point
-  scheduler.py  APScheduler jobs, reconciled against the database
-  checks/
-    base.py     CheckSpec and CheckOutcome; no database access
-    net.py      ping, tcp, http, dns
-  engine/
-    state.py    hysteresis and the incident lifecycle
-    runner.py   joins a check to the database, owns its session
-  collectors/
-    base.py     collector Protocol and the normalised result shapes
-    oids.py     numeric OID catalogue and capability probes
-    snmp.py     the SNMP collector
-  web/          routes and dependencies
-  templates/    Jinja templates
-  static/       hand-written CSS, no build step
+Everything below is relative to the repository root. The application is in
+`spark/`; only `README.md`, `CLAUDE.md` and `DESIGN.md` live at the top.
 
-tests/
-  test_engine.py  hysteresis, incidents, dependency suppression, the checks
-  test_snmp.py    pure-function tests, plus live tests that skip without an agent
-  local_agent.sh  starts a throwaway net-snmp agent on 127.0.0.1:11161
-smoke_test.py     end-to-end walk through the running application
+```
+DESIGN.md         the design document
+CLAUDE.md         working agreements for this repo
+spark/
+  docker-compose.yml, Dockerfile
+  config/spark.yaml     the pre-database config
+  CHANGELOG.md
+  smoke_test.py         end-to-end walk through the running application
+  src/spark/
+    config.py           YAML + env config loading
+    models.py           full Phase 1 schema, UTC datetime and enum column types
+    db.py               engine, sessions, migration runner
+    auth.py             Argon2 passwords, sessions, proxy mode
+    cli.py              spark-probe
+    main.py             app factory and entry point
+    scheduler.py        APScheduler jobs, reconciled against the database
+    checks/
+      base.py           CheckSpec and CheckOutcome; no database access
+      net.py            ping, tcp, http, dns
+    engine/
+      state.py          hysteresis and the incident lifecycle
+      runner.py         joins a check to the database, owns its session
+    collectors/
+      base.py           collector Protocol and the normalised result shapes
+      oids.py           numeric OID catalogue and capability probes
+      snmp.py           the SNMP collector
+    web/                routes and dependencies
+    templates/          Jinja templates
+    static/             hand-written CSS, no build step
+  tests/
+    test_engine.py      hysteresis, incidents, dependency suppression, the checks
+    test_snmp.py        pure-function tests, live tests that skip without an agent
+    local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
 
 No npm, no bundler, no Alembic. Clone it and read it top to bottom.
@@ -406,8 +418,8 @@ the inventory of what you chose to ignore.
 changes state. This single detail is the difference between a tool you trust and
 one you mute within a week.
 
-See `DESIGN.md` for the full design document and `CHANGELOG.md` for what changed
-when.
+See `DESIGN.md` for the full design document and `spark/CHANGELOG.md` for what
+changed when.
 
 ---
 

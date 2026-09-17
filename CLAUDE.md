@@ -3,8 +3,8 @@
 Homelab network monitoring. The application lives in `spark/`, not the repo
 root — every `docker compose` and `pytest` command runs from `spark/`.
 
-Design document: `DESIGN.md`. Current state and conventions: `spark/README.md`.
-History: `spark/CHANGELOG.md`.
+Design document: `DESIGN.md`. Current state and conventions: `README.md` (repo
+root — GitHub only renders a README from there). History: `spark/CHANGELOG.md`.
 
 ---
 
