@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +38,29 @@ def _set_session_cookie(response, token: str, config: Config) -> None:  # type: 
         secure=False,
         path="/",
     )
+
+
+def _safe_next(target: str) -> str:
+    """A same-site path, or "/". An open redirect here is a phishing primitive.
+
+    A startswith("/") and not startswith("//") test is not enough: browsers
+    normalise a backslash to a forward slash while parsing, so "/\\evil.com"
+    passes that check and then navigates to //evil.com. Parse it instead and
+    require that no scheme and no host survived.
+    """
+    if not target:
+        return "/"
+    parsed = urlparse(target.replace("\\", "/"))
+    if parsed.scheme or parsed.netloc:
+        return "/"
+    # An empty authority parses to netloc="" while leaving the slashes in the
+    # path, so "////evil.com" arrives here as path="//evil.com" with nothing in
+    # netloc. Emitting that verbatim is a protocol-relative redirect, i.e. the
+    # hole this function exists to close, one level further down.
+    path = parsed.path
+    if not path.startswith("/") or path.startswith("//"):
+        return "/"
+    return path + (f"?{parsed.query}" if parsed.query else "")
 
 
 # --------------------------------------------------------------------------
@@ -177,9 +202,7 @@ async def login_submit(
         user_agent=request.headers.get("user-agent"),
         ip=ip,
     )
-    # Only ever redirect to a path on this host; an open redirect here would be
-    # a free phishing primitive.
-    destination = next if next.startswith("/") and not next.startswith("//") else "/"
+    destination = _safe_next(next)
     response = redirect(destination)
     _set_session_cookie(response, token, config)
     return response

@@ -105,6 +105,9 @@ async def _run_probe(args: argparse.Namespace) -> int:
         cpu = f"{health.cpu_percent}%" if health.cpu_percent is not None else "—"
         mem = f"{health.memory_percent}%" if health.memory_percent is not None else "—"
         print(f"  CPU         {cpu}  {dim}{health.sources.get('cpu', 'not reported')}{reset}")
+        if health.load_1min is not None:
+            print(f"  Load        {health.load_1min:.2f} / {health.load_5min:.2f} / "
+                  f"{health.load_15min:.2f}  {dim}1m / 5m / 15m average{reset}")
         print(f"  Memory      {mem}  {dim}{health.sources.get('memory', 'not reported')}"
               f"{reset}")
         if health.memory_total_bytes:

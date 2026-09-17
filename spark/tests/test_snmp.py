@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import socket
 
 import pytest
 
@@ -30,15 +29,32 @@ AGENT_COMMUNITY = os.environ.get("SPARK_TEST_SNMP_COMMUNITY", "sparktest")
 
 
 def _agent_running() -> bool:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0.3)
+    """Whether a live agent answers at AGENT_HOST:AGENT_PORT.
+
+    This has to be a real SNMP exchange. A UDP sendto() to a port with nothing
+    behind it succeeds — the ICMP port-unreachable comes back afterwards, on a
+    later call — so a send-only probe reports every host as running an agent
+    and these tests run against nothing instead of skipping.
+    """
+
+    async def ask() -> bool:
+        collector = SnmpCollector(
+            AGENT_HOST,
+            SnmpCredential(
+                community=AGENT_COMMUNITY, port=AGENT_PORT, timeout=1.0, retries=0
+            ),
+        )
+        try:
+            return bool(await collector.get(O.SYS_DESCR))
+        except Exception:  # noqa: BLE001 - any failure means "not running"
+            return False
+        finally:
+            await collector.close()
+
     try:
-        sock.sendto(b"\x30\x00", (AGENT_HOST, AGENT_PORT))
-        return True
-    except OSError:
+        return asyncio.run(ask())
+    except Exception:  # noqa: BLE001
         return False
-    finally:
-        sock.close()
 
 
 needs_agent = pytest.mark.skipif(
@@ -220,11 +236,22 @@ class TestAgainstLocalAgent:
         assert health.reachable
         assert health.error is None
         assert health.uptime_seconds is not None and health.uptime_seconds > 0
-        assert health.cpu_percent is not None
-        assert 0 <= health.cpu_percent <= 100
         assert health.memory_percent is not None
         assert 0 <= health.memory_percent <= 100
-        assert "cpu" in health.sources
+
+        # Not every device reports an instantaneous CPU percentage. net-snmp on
+        # a plain Linux host serves neither hrProcessorLoad nor ssCpuIdle, so
+        # asserting a number here is asserting something the protocol does not
+        # promise. Assert the contract instead: whatever is reported is in
+        # range and says where it came from, and a device that cannot give a
+        # percentage still gives a load average rather than a fabricated 0.
+        if health.cpu_percent is not None:
+            assert 0 <= health.cpu_percent <= 100
+            assert "cpu" in health.sources
+        else:
+            assert health.load_1min is not None
+            assert health.load_1min >= 0
+            assert "load" in health.sources
 
     def test_interfaces_are_parsed(self):
         async def go():

@@ -24,12 +24,14 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Enum,
     Float,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -43,10 +45,61 @@ class Base(DeclarativeBase):
     pass
 
 
+class UTCDateTime(TypeDecorator):
+    """A datetime column that is always tz-aware UTC in Python.
+
+    SQLite has no datetime type and no concept of an offset, so
+    `UTCDateTime` silently stores naive text and hands back naive
+    datetimes. Mixing those with `utcnow()` raises "can't subtract offset-naive
+    and offset-aware datetimes" at the first duration calculation — which is
+    the "back up after 4m 12s" line in a recovery alert, i.e. in production, at
+    3 a.m., inside the notifier.
+
+    Storage format is unchanged (naive UTC), so existing databases still read.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def process_result_value(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+
+def enum_column(enum_cls, **kwargs):  # type: ignore[no-untyped-def]
+    """Store an enum by its *value*, and read it back as an enum member.
+
+    Plain `String` columns accepted these members on write (they subclass str)
+    but returned bare strings on read, so `f"{status}"` on an unsaved default
+    rendered "HealthStatus.DOWN" instead of "down". `values_callable` is what
+    keeps the stored text as the lowercase value rather than the member name,
+    so existing rows keep working.
+    """
+    return mapped_column(
+        Enum(
+            enum_cls,
+            native_enum=False,
+            length=16,
+            values_callable=lambda e: [member.value for member in e],
+        ),
+        **kwargs,
+    )
+
+
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        UTCDateTime, default=utcnow, onupdate=utcnow
     )
 
 
@@ -55,7 +108,11 @@ class TimestampMixin:
 # --------------------------------------------------------------------------
 
 
-class DeviceRole(str, enum.Enum):
+# StrEnum, not (str, Enum): both compare equal to their plain-string value, but
+# only StrEnum formats as one. Under (str, Enum) on 3.12, f"{HealthStatus.DOWN}"
+# renders "HealthStatus.DOWN" — which is the text that would have gone into a
+# Discord alert.
+class DeviceRole(enum.StrEnum):
     GATEWAY = "gateway"
     SWITCH = "switch"
     HOST = "host"
@@ -63,7 +120,7 @@ class DeviceRole(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
-class HealthStatus(str, enum.Enum):
+class HealthStatus(enum.StrEnum):
     UP = "up"
     DEGRADED = "degraded"
     DOWN = "down"
@@ -71,7 +128,7 @@ class HealthStatus(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
-class CheckType(str, enum.Enum):
+class CheckType(enum.StrEnum):
     PING = "ping"
     TCP = "tcp"
     HTTP = "http"
@@ -79,19 +136,19 @@ class CheckType(str, enum.Enum):
     DOCKER = "docker"
 
 
-class ServiceSource(str, enum.Enum):
+class ServiceSource(enum.StrEnum):
     DOCKER = "docker"
     SCAN = "scan"
     MANUAL = "manual"
 
 
-class DockerTransport(str, enum.Enum):
+class DockerTransport(enum.StrEnum):
     SSH = "ssh"
     PROXY = "proxy"
     TLS = "tls"
 
 
-class Severity(str, enum.Enum):
+class Severity(enum.StrEnum):
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -116,7 +173,7 @@ class Device(Base, TimestampMixin):
     friendly_name: Mapped[str | None] = mapped_column(String(128))
     hostname: Mapped[str | None] = mapped_column(String(255))
     vendor: Mapped[str | None] = mapped_column(String(128))
-    role: Mapped[DeviceRole] = mapped_column(String(16), default=DeviceRole.UNKNOWN)
+    role: Mapped[DeviceRole] = enum_column(DeviceRole, default=DeviceRole.UNKNOWN)
 
     # Declared hierarchy in v1; replaced by SNMP-derived parenting in Phase 3.
     parent_device_id: Mapped[int | None] = mapped_column(
@@ -124,9 +181,9 @@ class Device(Base, TimestampMixin):
     )
     subnet: Mapped[str | None] = mapped_column(String(64))
 
-    status: Mapped[HealthStatus] = mapped_column(String(16), default=HealthStatus.UNKNOWN)
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[HealthStatus] = enum_column(HealthStatus, default=HealthStatus.UNKNOWN)
+    first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     # Set true once a human has looked at it, so "new device" alerts stay quiet
     # for things you already know about.
@@ -176,7 +233,7 @@ class DockerHost(Base, TimestampMixin):
     device_id: Mapped[int | None] = mapped_column(
         ForeignKey("device.id", ondelete="SET NULL")
     )
-    transport: Mapped[DockerTransport] = mapped_column(String(16), default=DockerTransport.SSH)
+    transport: Mapped[DockerTransport] = enum_column(DockerTransport, default=DockerTransport.SSH)
     uri: Mapped[str] = mapped_column(String(512))
 
     # Path to an SSH key or client-cert bundle on disk. Secret *material* never
@@ -184,7 +241,7 @@ class DockerHost(Base, TimestampMixin):
     secret_ref: Mapped[str | None] = mapped_column(String(512))
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -202,7 +259,7 @@ class Service(Base, TimestampMixin):
     protocol: Mapped[str] = mapped_column(String(8), default="tcp")
 
     name: Mapped[str | None] = mapped_column(String(128))
-    source: Mapped[ServiceSource] = mapped_column(String(16), default=ServiceSource.SCAN)
+    source: Mapped[ServiceSource] = enum_column(ServiceSource, default=ServiceSource.SCAN)
 
     # Populated when source is DOCKER.
     docker_host_id: Mapped[int | None] = mapped_column(
@@ -216,8 +273,8 @@ class Service(Base, TimestampMixin):
     banner: Mapped[str | None] = mapped_column(Text)
 
     state: Mapped[str | None] = mapped_column(String(32))
-    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
     ignored: Mapped[bool] = mapped_column(Boolean, default=False)
 
     device = relationship("Device", back_populates="services")
@@ -236,7 +293,7 @@ class Target(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
-    check_type: Mapped[CheckType] = mapped_column(String(16))
+    check_type: Mapped[CheckType] = enum_column(CheckType)
     address: Mapped[str] = mapped_column(String(512))
     params: Mapped[dict] = mapped_column(JSON, default=dict)
 
@@ -258,13 +315,13 @@ class Target(Base, TimestampMixin):
     )
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    muted_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    muted_until: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
-    status: Mapped[HealthStatus] = mapped_column(String(16), default=HealthStatus.UNKNOWN)
+    status: Mapped[HealthStatus] = enum_column(HealthStatus, default=HealthStatus.UNKNOWN)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     consecutive_successes: Mapped[int] = mapped_column(Integer, default=0)
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_status_change: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_status_change: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     service = relationship("Service", back_populates="targets")
     depends_on = relationship("Target", remote_side=[id], backref="dependents")
@@ -278,8 +335,8 @@ class CheckResult(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     target_id: Mapped[int] = mapped_column(ForeignKey("target.id", ondelete="CASCADE"))
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    status: Mapped[HealthStatus] = mapped_column(String(16))
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    status: Mapped[HealthStatus] = enum_column(HealthStatus)
     latency_ms: Mapped[float | None] = mapped_column(Float)
     detail: Mapped[str | None] = mapped_column(Text)
 
@@ -295,11 +352,11 @@ class Incident(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     target_id: Mapped[int] = mapped_column(ForeignKey("target.id", ondelete="CASCADE"))
-    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    severity: Mapped[Severity] = mapped_column(String(16), default=Severity.CRITICAL)
+    opened_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    severity: Mapped[Severity] = enum_column(Severity, default=Severity.CRITICAL)
     cause: Mapped[str | None] = mapped_column(Text)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     # True when this incident was a downstream symptom of another failure and
     # therefore never alerted on.
@@ -316,7 +373,7 @@ class SpeedtestResult(Base):
     __tablename__ = "speedtest_result"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
     down_mbps: Mapped[float | None] = mapped_column(Float)
     up_mbps: Mapped[float | None] = mapped_column(Float)
     latency_ms: Mapped[float | None] = mapped_column(Float)
@@ -334,7 +391,7 @@ class Notification(Base):
     __tablename__ = "notification"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
     channel: Mapped[str] = mapped_column(String(32), default="discord")
     incident_id: Mapped[int | None] = mapped_column(
         ForeignKey("incident.id", ondelete="SET NULL")
@@ -357,7 +414,7 @@ class User(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
 class UserSession(Base):
@@ -367,9 +424,9 @@ class UserSession(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
     # Only the hash is stored, so a database leak doesn't hand over live sessions.
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     user_agent: Mapped[str | None] = mapped_column(String(255))
     ip: Mapped[str | None] = mapped_column(String(45))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -381,7 +438,7 @@ class LoginAttempt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ip: Mapped[str] = mapped_column(String(45))
-    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

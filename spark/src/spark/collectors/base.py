@@ -42,7 +42,14 @@ class DeviceHealth:
     serial: str | None = None
 
     uptime_seconds: float | None = None
+
+    # None means "this device does not report an instantaneous CPU percentage",
+    # not "0%". Kept distinct from the load averages below: a load of 1.4 on a
+    # four-core box is not 140% CPU, and showing it as one would be a lie.
     cpu_percent: float | None = None
+    load_1min: float | None = None
+    load_5min: float | None = None
+    load_15min: float | None = None
     memory_percent: float | None = None
     memory_total_bytes: int | None = None
     memory_used_bytes: int | None = None
