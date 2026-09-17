@@ -57,6 +57,21 @@ real.
   because saving it shut would submit no tuning fields and reset the target.
   There is a smoke test for exactly that.
 
+### Fixed
+
+- **Dropdowns were unreadable in dark mode.** The stylesheet already themed
+  `select` from CSS variables, but a later block re-declared it with a
+  hardcoded white background and `color: inherit`, so in dark mode the control
+  and its popup rendered light-on-light. That block now styles only `textarea`,
+  which was the element genuinely missing, and `select option` is set
+  explicitly for browsers that colour the popup from the control.
+- **The tuning checkbox rendered centred.** `.form label` is
+  `flex-direction: column`, so the `align-items: center` meant to centre the
+  box against its label centred the whole row horizontally instead. It is now
+  an explicit row, left-aligned.
+- Removed the sentence restating the defaults next to the checkbox. The greyed
+  fields already show those values, so it said the same thing twice.
+
 ### Dependencies
 
 - `icmplib` and `dnspython`, both previously named in DESIGN.md's stack table

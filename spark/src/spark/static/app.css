@@ -346,23 +346,40 @@ tr.is-paused td { opacity: .55; }
 .pill.status-unknown  { background: #eceff1; color: #5f6368; }
 .pill.bad             { background: #fce8e6; color: #b3261e; }
 
-select, textarea {
+/* `select` is already themed further up this file; re-declaring it here with a
+   hardcoded white background overrode that and made the dropdown unreadable in
+   dark mode. Only textarea was actually missing, so only textarea is set. */
+textarea {
   width: 100%;
-  padding: .5rem .6rem;
-  border: 1px solid var(--border, #d7dbe0);
-  border-radius: 6px;
-  background: #fff;
-  font: inherit;
-  color: inherit;
+  padding: .55rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .875rem;
 }
 
-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+/* The popup list is rendered by the OS, which picks its colours from the
+   control. Firefox on Linux in particular needs these stated explicitly. */
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
 
 /* ---- optional tuning block ------------------------------------------- */
 
 label.checkbox {
   display: flex;
-  align-items: center;
+  flex-direction: row;      /* .form label sets column; without this the... */
+  align-items: center;      /* ...align-items below centres it horizontally */
+  justify-content: flex-start;
   gap: .5rem;
   cursor: pointer;
 }

@@ -41,12 +41,6 @@
       <input type="checkbox" id="tune" name="tune" value="1" {% if tuned %}checked{% endif %}>
       <span>Tune timing and thresholds</span>
     </label>
-    <small class="muted" id="tune_summary">
-      Defaults: check every {{ defaults.interval_seconds }}s, {{ defaults.timeout_seconds }}s
-      timeout, {{ defaults.failure_threshold }} failures before DOWN,
-      {{ defaults.recovery_threshold }} successes before UP.
-    </small>
-
     <fieldset class="tuning" id="tuning" {% if not tuned %}disabled{% endif %}>
       <div class="grid-2">
         <label>
@@ -138,10 +132,8 @@
   (function () {
     var box = document.getElementById('tune');
     var fields = document.getElementById('tuning');
-    var summary = document.getElementById('tune_summary');
     function sync() {
       fields.disabled = !box.checked;
-      summary.hidden = box.checked;
     }
     box.addEventListener('change', sync);
     sync();

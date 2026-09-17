@@ -195,9 +195,12 @@ def main() -> int:
                 check("a default target opens with tuning collapsed",
                       'id="tuning"' in r.text and "disabled" in r.text.split('id="tuning"')[1][:40],
                       "tuning fieldset is not disabled")
-                check("the collapsed summary states the real defaults",
-                      "every 15s" in r.text and "4 failures" in r.text
-                      and "4 successes" in r.text)
+                # The greyed-out fields are themselves the statement of the
+                # defaults, so assert on those rather than on prose.
+                check("collapsed fields show the real defaults",
+                      'value="15"' in r.text and 'value="3.0"' in r.text
+                      and r.text.count('value="4"') >= 2,
+                      "default values are not rendered in the fieldset")
 
                 r = client.post(f"/targets/{probe_id}/edit", data={
                     "name": "defaults-probe", "check_type": "tcp",
