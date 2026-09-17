@@ -8,6 +8,7 @@ Run with:  .venv/bin/python smoke_test.py
 from __future__ import annotations
 
 import shutil
+import socket
 import sys
 import tempfile
 from pathlib import Path
@@ -118,6 +119,83 @@ def main() -> int:
             r = client.post("/login", data={
                 "username": "admin", "password": "correct horse battery", "next": "/"})
             check("correct password signs in", r.status_code == 303)
+
+            print("\nCheck engine")
+            # A real listening socket, so "up" means something actually answered.
+            listener = socket.socket()
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            open_port = listener.getsockname()[1]
+
+            closed = socket.socket()
+            closed.bind(("127.0.0.1", 0))
+            dead_port = closed.getsockname()[1]
+            closed.close()
+
+            try:
+                r = client.post("/targets/new", data={
+                    "name": "loopback-open", "check_type": "tcp",
+                    "address": "127.0.0.1", "params": '{"port": %d}' % open_port,
+                    "interval_seconds": 60, "timeout_seconds": 2,
+                    "failure_threshold": 1, "recovery_threshold": 1,
+                    "depends_on_target_id": ""})
+                check("target created",
+                      r.status_code == 303 and r.headers.get("location") == "/targets",
+                      f"got {r.status_code} -> {r.headers.get('location')}")
+
+                r = client.get("/targets")
+                check("target is listed", "loopback-open" in r.text)
+                check("target was checked on creation and is up",
+                      "status-up" in r.text, "no up pill rendered")
+
+                r = client.post("/targets/new", data={
+                    "name": "loopback-dead", "check_type": "tcp",
+                    "address": "127.0.0.1", "params": '{"port": %d}' % dead_port,
+                    "interval_seconds": 60, "timeout_seconds": 2,
+                    "failure_threshold": 1, "recovery_threshold": 1,
+                    "depends_on_target_id": ""})
+                check("second target created",
+                      r.status_code == 303 and r.headers.get("location") == "/targets",
+                      f"got {r.status_code} -> {r.headers.get('location')}")
+
+                r = client.get("/targets")
+                check("failed target shows as down", "status-down" in r.text)
+
+                r = client.get("/")
+                check("dashboard lists watched targets", "loopback-open" in r.text)
+                check("dashboard shows the open incident",
+                      "Recent incidents" in r.text and "ongoing" in r.text)
+                check("down count reflects reality", ">1<" in r.text)
+
+                print("\nTarget validation")
+                r = client.post("/targets/new", data={
+                    "name": "bad", "check_type": "tcp", "address": "127.0.0.1",
+                    "params": "{not json}", "interval_seconds": 60,
+                    "timeout_seconds": 2, "failure_threshold": 1,
+                    "recovery_threshold": 1, "depends_on_target_id": ""})
+                check("malformed params JSON is rejected, not stored",
+                      r.status_code == 400 and "valid JSON" in r.text)
+
+                print("\nTarget lifecycle")
+                import re
+                ids = sorted(set(int(m) for m in re.findall(r"/targets/(\d+)/edit", r.text)))
+                r = client.get("/targets")
+                ids = sorted(set(int(m) for m in re.findall(r"/targets/(\d+)/edit", r.text)))
+                check("both targets have stable ids", len(ids) == 2, f"got {ids}")
+
+                r = client.post(f"/targets/{ids[0]}/toggle")
+                check("pause redirects", r.status_code == 303)
+                r = client.get("/targets")
+                check("paused target is marked paused", "status-paused" in r.text)
+
+                r = client.post(f"/targets/{ids[0]}/delete")
+                r = client.get("/targets")
+                check("deleted target is gone", "loopback-open" not in r.text)
+
+                r = client.get("/targets")
+                check("surviving target is untouched", "loopback-dead" in r.text)
+            finally:
+                listener.close()
 
             print("\nOpen-redirect guard")
             client.post("/logout")

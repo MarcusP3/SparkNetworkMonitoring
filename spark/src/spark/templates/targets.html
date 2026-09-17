@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h1>Targets</h1>
+    <a class="btn-primary" href="/targets/new">Add target</a>
+  </div>
+
+  {% if targets %}
+  <section class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Name</th>
+          <th>Check</th>
+          <th>Address</th>
+          <th>Every</th>
+          <th>Last result</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for target in targets %}
+        <tr class="{% if not target.enabled %}is-paused{% endif %}">
+          <td>
+            {% set status = target.status.value if target.status.value is defined else target.status %}
+            <span class="pill status-{{ status }}">{{ status }}</span>
+            {% if open_counts.get(target.id) %}
+              <span class="pill bad" title="Open incident">!</span>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ target.name }}</strong>
+            {% if target.depends_on %}
+              <div class="muted small">depends on {{ target.depends_on.name }}</div>
+            {% endif %}
+          </td>
+          <td><code>{{ target.check_type.value if target.check_type.value is defined else target.check_type }}</code></td>
+          <td><code>{{ target.address }}</code></td>
+          <td class="muted">{{ target.interval_seconds }}s</td>
+          <td class="muted small">
+            {{ target.last_checked_at.strftime('%H:%M:%S') if target.last_checked_at else '—' }}
+            {% if target.consecutive_failures %}
+              <span class="muted">· {{ target.consecutive_failures }} consecutive failure(s)</span>
+            {% endif %}
+          </td>
+          <td class="actions">
+            <form method="post" action="/targets/{{ target.id }}/check">
+              <button type="submit" class="btn-quiet">Check now</button>
+            </form>
+            <a class="btn-quiet" href="/targets/{{ target.id }}/edit">Edit</a>
+            <form method="post" action="/targets/{{ target.id }}/toggle">
+              <button type="submit" class="btn-quiet">
+                {{ 'Resume' if not target.enabled else 'Pause' }}
+              </button>
+            </form>
+            <form method="post" action="/targets/{{ target.id }}/delete">
+              <button type="submit" class="btn-quiet danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% else %}
+  <section class="card empty-state">
+    <h2>Nothing is being watched yet</h2>
+    <p class="muted">
+      There is no discovery yet, so targets are added by hand. Start with the
+      things whose failure you would actually want to know about — your
+      gateway, your switch, the one service you would notice missing.
+    </p>
+    <p class="muted">
+      Give the switch a <strong>depends on</strong> pointing at the gateway, and
+      the hosts behind it a <strong>depends on</strong> pointing at the switch.
+      When the switch goes down you then get one incident rather than thirty.
+    </p>
+    <a class="btn-primary" href="/targets/new">Add your first target</a>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

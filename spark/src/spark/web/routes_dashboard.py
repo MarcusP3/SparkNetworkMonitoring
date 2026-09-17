@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Config
 from ..db import get_setting
-from ..models import Device, HealthStatus, Incident, Service, Target, User
+from ..engine.state import human_duration
+from ..models import CheckResult, Device, HealthStatus, Incident, Service, Target, User
 from .deps import get_config, get_session, require_user, templates
 
 router = APIRouter()
@@ -47,6 +48,67 @@ async def dashboard(
         "open_incidents": await count(Incident, Incident.closed_at.is_(None)),
     }
 
+    targets = list(
+        (
+            await session.execute(
+                select(Target).where(Target.enabled.is_(True)).order_by(Target.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # One row per target with its most recent result, rather than a query per
+    # target inside the template.
+    latest: dict[int, tuple[float | None, str | None]] = {}
+    if targets:
+        newest = (
+            select(
+                CheckResult.target_id,
+                func.max(CheckResult.ts).label("ts"),
+            )
+            .where(CheckResult.target_id.in_([t.id for t in targets]))
+            .group_by(CheckResult.target_id)
+            .subquery()
+        )
+        rows = await session.execute(
+            select(CheckResult.target_id, CheckResult.latency_ms, CheckResult.detail).join(
+                newest,
+                (CheckResult.target_id == newest.c.target_id) & (CheckResult.ts == newest.c.ts),
+            )
+        )
+        for target_id, latency_ms, detail in rows.all():
+            latest[target_id] = (latency_ms, detail)
+
+    watched = [
+        {
+            "name": t.name,
+            "address": t.address,
+            "status": getattr(t.status, "value", t.status),
+            "latency_ms": latest.get(t.id, (None, None))[0],
+            "detail": latest.get(t.id, (None, None))[1],
+        }
+        for t in targets
+    ]
+
+    incident_rows = await session.execute(
+        select(Incident, Target.name)
+        .join(Target, Target.id == Incident.target_id)
+        .order_by(Incident.opened_at.desc())
+        .limit(10)
+    )
+    incidents = [
+        {
+            "target_name": name,
+            "opened_at": incident.opened_at,
+            "closed_at": incident.closed_at,
+            "duration": human_duration(incident.duration_seconds),
+            "cause": incident.cause,
+            "suppressed_by_dependency": incident.suppressed_by_dependency,
+        }
+        for incident, name in incident_rows.all()
+    ]
+
     alerting = await get_setting(session, "alerting")
     warnings: list[str] = []
     if not alerting.get("discord_webhook_url"):
@@ -77,5 +139,7 @@ async def dashboard(
             "stats": stats,
             "warnings": warnings,
             "subnets": config.network.subnets,
+            "watched": watched,
+            "incidents": incidents,
         },
     )

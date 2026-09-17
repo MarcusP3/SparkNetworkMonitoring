@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — increment 3: the check engine (2026-09-17)
+
+SPARK can now tell you something is down. No alerting yet — that is increment 4
+— so this is still a page you have to look at, but the state underneath it is
+real.
+
+### Added
+
+- **Four check types** in `checks/`: ICMP ping (latency and packet loss over
+  several packets), TCP connect, HTTP(S) (status code, optional body match, and
+  a TLS expiry countdown), and DNS resolution. They are pure functions over a
+  `CheckSpec` with no database access, which is what makes the state machine
+  testable. None of them raise: a poller that throws when the thing it polls is
+  broken has failed at its only job.
+
+- **State machine with hysteresis** in `engine/state.py`. A target goes DOWN
+  only after `failure_threshold` consecutive failures and recovers only after
+  `recovery_threshold` consecutive successes. DEGRADED is deliberately
+  asymmetric — soft, immediate in both directions, and never opens an incident,
+  because an early warning that is delayed is not an early warning.
+
+- **Incidents as rows**, opened on the transition into DOWN and closed on the
+  way out, with `suppressed_by_dependency` set when the target's parent was
+  already down. The incident is still recorded — you want the history — it is
+  just flagged so the notifier can stay quiet about the thirty hosts behind a
+  dead switch.
+
+- **Scheduler** (`scheduler.py`): one in-process APScheduler, one job per
+  enabled target, reconciled against the database rather than built once at
+  startup, so adding a target in the UI starts polling it immediately. Jobs
+  carry jitter, `coalesce`, and `max_instances=1`.
+
+- **Target management UI** at `/targets` — add, edit, pause, delete, and
+  "Check now". Load-bearing rather than a convenience: with no discovery yet,
+  this is the only way targets exist at all.
+
+- Dashboard now shows live status per target, latest latency and detail, and
+  the ten most recent incidents.
+
+### Dependencies
+
+- `icmplib` and `dnspython`, both previously named in DESIGN.md's stack table
+  but never declared.
+
+### Notes
+
+- No schema migration was needed — `models.py` defined the full Phase 1 schema
+  up front, so `target`, `check_result` and `incident` were already there. The
+  migration runner therefore still has not executed a real step.
+- `muted_until` is stored but not yet honoured; it belongs with the notifier.
+
 ## Unreleased — review fix pass (2026-09-13)
 
 A code review of increment 2, and the fixes for what it found. Verified with

@@ -1,3 +1,3 @@
-from . import deps, routes_auth, routes_dashboard  # noqa: F401
+from . import deps, routes_auth, routes_dashboard, routes_targets  # noqa: F401
 
-__all__ = ["deps", "routes_auth", "routes_dashboard"]
+__all__ = ["deps", "routes_auth", "routes_dashboard", "routes_targets"]

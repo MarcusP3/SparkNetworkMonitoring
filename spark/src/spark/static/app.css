@@ -292,3 +292,68 @@ button { font: inherit; cursor: pointer; }
   .topbar { gap: .75rem; }
   .nav { display: none; }
 }
+
+/* ---- targets ---------------------------------------------------------- */
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page.narrow { max-width: 46rem; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+}
+
+@media (max-width: 40rem) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+.actions {
+  display: flex;
+  gap: .25rem;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.actions form { display: inline; margin: 0; }
+
+.form-actions {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  margin-top: .5rem;
+}
+
+.small { font-size: .82em; }
+
+tr.is-paused td { opacity: .55; }
+
+.btn-quiet.danger:hover { color: #b3261e; }
+
+/* Status pills. Colour is a reinforcement, never the only signal - the word
+   itself is always present, so a red/green deficiency loses nothing. */
+.pill.status-up       { background: #e6f4ea; color: #1e6b33; }
+.pill.status-degraded { background: #fef7e0; color: #8a5b00; }
+.pill.status-down     { background: #fce8e6; color: #b3261e; }
+.pill.status-paused   { background: #eceff1; color: #5f6368; }
+.pill.status-unknown  { background: #eceff1; color: #5f6368; }
+.pill.bad             { background: #fce8e6; color: #b3261e; }
+
+select, textarea {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--border, #d7dbe0);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}
+
+textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
