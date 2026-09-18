@@ -1,4 +1,12 @@
-from . import deps, routes_auth, routes_dashboard, routes_devices, routes_events, routes_targets  # noqa: F401
+from . import (  # noqa: F401
+    deps,
+    routes_auth,
+    routes_dashboard,
+    routes_devices,
+    routes_events,
+    routes_settings,
+    routes_targets,
+)
 
 __all__ = [
     "deps",
@@ -6,5 +14,6 @@ __all__ = [
     "routes_dashboard",
     "routes_devices",
     "routes_events",
+    "routes_settings",
     "routes_targets",
 ]

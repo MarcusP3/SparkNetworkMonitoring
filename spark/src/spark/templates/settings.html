@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h1>Settings</h1>
+  </div>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+
+  <section class="card">
+    <h2 class="section-title">Subnets</h2>
+    <p class="muted small">
+      The segments SPARK sweeps for devices. These used to live in
+      <code>spark.yaml</code>; that file seeded this list once and is no longer
+      read, so add and remove them here.
+    </p>
+
+    {% if subnets %}
+    <table class="table subnet-table">
+      <thead>
+        <tr>
+          <th>Network</th>
+          <th>Name</th>
+          <th>VLAN</th>
+          <th>Attached</th>
+          <th>Sweep</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in subnets %}
+        {% set subnet = row.subnet %}
+        <tr>
+          <td>
+            {# The form lives in a cell, not directly under <tr>, which is
+               invalid HTML browsers silently hoist out of the table. Its
+               inputs are tied to it by the form="" attribute instead, so one
+               row's fields submit together from wherever they sit. #}
+            <form method="post" action="/settings/subnets/{{ subnet.id }}"
+                  id="subnet-{{ subnet.id }}"></form>
+            <input type="text" name="cidr" value="{{ subnet.cidr }}"
+                   form="subnet-{{ subnet.id }}" aria-label="Network"
+                   class="mono">
+            {% if row.unparseable %}
+              <div class="pill warn" title="This is not a network SPARK can parse,
+                    so nothing will ever match it">unparseable</div>
+            {% elif row.oversized %}
+              <div class="pill warn" title="Larger than the sweep will accept, so
+                    it is recorded but never scanned">too large to sweep</div>
+            {% endif %}
+          </td>
+          <td>
+            <input type="text" name="name" value="{{ subnet.name or '' }}"
+                   form="subnet-{{ subnet.id }}" placeholder="{{ subnet.cidr }}"
+                   aria-label="Name">
+          </td>
+          <td>
+            <input type="number" name="vlan" value="{{ subnet.vlan if subnet.vlan is not none else '' }}"
+                   min="0" max="{{ max_vlan }}" form="subnet-{{ subnet.id }}"
+                   class="narrow" placeholder="—" aria-label="VLAN tag">
+          </td>
+          <td>
+            <label class="checkbox">
+              <input type="checkbox" name="attached" value="1"
+                     form="subnet-{{ subnet.id }}"
+                     {% if subnet.attached %}checked{% endif %}>
+              <span class="muted small" title="SPARK has an interface on this
+                    segment, so ARP works and devices get a MAC address">L2</span>
+            </label>
+          </td>
+          <td>
+            <label class="checkbox">
+              <input type="checkbox" name="enabled" value="1"
+                     form="subnet-{{ subnet.id }}"
+                     {% if subnet.enabled %}checked{% endif %}>
+              <span class="muted small">on</span>
+            </label>
+          </td>
+          <td class="actions">
+            <button type="submit" form="subnet-{{ subnet.id }}" class="btn-quiet">Save</button>
+            <form method="post" action="/settings/subnets/{{ subnet.id }}/delete">
+              <button type="submit" class="btn-quiet danger"
+                      title="Devices already found here are kept; they just stop
+                             matching this subnet's filter.">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">
+      No subnets configured, so there is nothing to discover. Add the network
+      this machine is on below.
+    </p>
+    {% endif %}
+
+    <form method="post" action="/settings/subnets" class="row-form add-subnet">
+      <label class="inline-field">
+        <span class="muted small">Network</span>
+        <input type="text" name="cidr" required class="mono"
+               value="{{ form.cidr or '' }}" placeholder="10.1.10.0/24">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Name</span>
+        <input type="text" name="name" value="{{ form.name or '' }}" placeholder="LAN">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">VLAN</span>
+        <input type="number" name="vlan" class="narrow" min="0" max="{{ max_vlan }}"
+               value="{{ form.vlan or '' }}" placeholder="—">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="attached" value="1"
+               {% if form.attached is not defined or form.attached %}checked{% endif %}>
+        <span class="muted small">Directly attached</span>
+      </label>
+      <button type="submit" class="btn-primary">Add subnet</button>
+    </form>
+
+    <p class="muted small">
+      <strong>Directly attached</strong> means this machine has an interface on
+      the segment. ARP only works there, and device identity keys on MAC
+      address — across a router SPARK can ping a host but not learn its MAC, so
+      those devices fall back to IP identity and look new when DHCP moves them.
+      <strong>VLAN</strong> is documentation: nothing reads it.
+    </p>
+  </section>
+</div>
+{% endblock %}

@@ -57,6 +57,39 @@
 
   <div id="live">
 
+  {% if subnets %}
+  <section class="card filter-bar">
+    {# A GET form, so the filter lands in the URL and survives a reload, a
+       bookmark and the live refresh -- which refetches location.search for
+       exactly this reason. #}
+    <form method="get" action="/devices" class="row-form">
+      <label class="inline-field">
+        <span class="muted small">Subnet</span>
+        <select name="subnet" id="subnet-filter">
+          <option value="">All subnets</option>
+          {% for subnet in subnets %}
+            <option value="{{ subnet.id }}"
+              {% if subnet_filter.selected is not string and subnet_filter.selected and subnet_filter.selected.id == subnet.id %}selected{% endif %}>
+              {{ subnet.label }}{% if subnet.vlan is not none %} · VLAN {{ subnet.vlan }}{% endif %}
+            </option>
+          {% endfor %}
+          <option value="none" {% if subnet_filter.selected == 'none' %}selected{% endif %}>
+            Not on a configured subnet
+          </option>
+        </select>
+      </label>
+      <noscript><button type="submit" class="btn-quiet">Filter</button></noscript>
+      <span class="muted small filter-count">
+        {% if subnet_filter.selected %}
+          Showing {{ subnet_filter.shown }} of {{ subnet_filter.total }} device(s).
+        {% else %}
+          {{ subnet_filter.total }} device(s).
+        {% endif %}
+      </span>
+    </form>
+  </section>
+  {% endif %}
+
   {% if sweep %}
   <section class="card sweep-status">
     {% if sweep.error %}
@@ -73,8 +106,9 @@
     {% elif sweep.answered == 0 and sweep.probed %}
       <div class="alert warn">
         Swept {{ sweep.probed }} address(es) and nothing answered. ICMP itself is
-        working, so this is the network rather than the container — check that
-        the subnet in <code>spark.yaml</code> matches the one this VM is on.
+        working, so this is the network rather than the container — check in
+        <a href="/settings">Settings</a> that the subnet matches the one this
+        VM is actually on.
       </div>
     {% endif %}
 
@@ -125,6 +159,7 @@
         <tr>
           <th>Name</th>
           <th>Address</th>
+          <th>VLAN</th>
           <th>MAC</th>
           <th>Vendor</th>
           <th>Last seen</th>
@@ -161,7 +196,18 @@
           </td>
           <td>
             <code>{{ device.primary_ip or '—' }}</code>
-            {% if device.subnet %}<div class="muted small">{{ device.subnet }}</div>{% endif %}
+            {# The subnet a device is on now, matched by address, rather than
+               the label recorded whenever it was first seen. #}
+            {% if row.subnet %}
+              <div class="muted small">{{ row.subnet.label }}</div>
+            {% elif device.subnet %}
+              <div class="muted small" title="Recorded at discovery time; this
+                    address is not inside any configured subnet now">{{ device.subnet }}</div>
+            {% endif %}
+          </td>
+          <td class="muted small">
+            {% if row.subnet and row.subnet.vlan is not none %}{{ row.subnet.vlan }}
+            {% else %}—{% endif %}
           </td>
           <td>
             {% if device.mac %}
@@ -209,6 +255,17 @@
     router, so those fall back to IP identity and will look like a new device if
     their lease changes.
   </p>
+  {% elif subnet_filter.selected %}
+  <section class="card empty-state">
+    <h2>Nothing on this subnet</h2>
+    <p class="muted">
+      {{ subnet_filter.total }} device(s) have been discovered, but none of them
+      are on
+      {% if subnet_filter.selected == 'none' %}an unconfigured segment
+      {% else %}{{ subnet_filter.selected.label }}{% endif %}.
+      <a href="/devices">Show all</a>.
+    </p>
+  </section>
   {% else %}
   <section class="card empty-state">
     <h2>Nothing discovered yet</h2>
@@ -226,8 +283,8 @@
     {% endif %}
     {% else %}
     <p class="muted">
-      No subnets are configured, so there is nothing to sweep. Add them under
-      <code>network.subnets</code> in <code>spark.yaml</code> and restart.
+      No subnets are configured, so there is nothing to sweep.
+      <a href="/settings">Add one in Settings</a>.
     </p>
     {% endif %}
   </section>
@@ -240,6 +297,14 @@
 </div>
 
 <script>
+  // The subnet dropdown submits itself. Delegated from document because the
+  // filter bar lives inside #live and is replaced whenever a sweep finishes.
+  document.addEventListener('change', function (event) {
+    if (event.target && event.target.id === 'subnet-filter') {
+      event.target.form.submit();
+    }
+  });
+
   // Show a row's Save button only once its name differs from what is stored.
   //
   // A control that is always visible but usually does nothing reads as broken

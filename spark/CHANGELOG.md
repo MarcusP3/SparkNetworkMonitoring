@@ -1,5 +1,93 @@
 # Changelog
 
+## Unreleased — subnets move into the database, with a Settings page (2026-09-18)
+
+Adding a subnet used to be an SSH session, a file edit and a container restart.
+DESIGN.md's premise is that SPARK can be handed to someone else and configured
+through the browser; subnets were the largest thing still contradicting that.
+
+### Added
+
+- **A Settings page**, replacing the greyed-out nav link. Subnets are added,
+  edited and removed there: CIDR, name, VLAN tag, whether the segment is
+  directly attached, and whether to sweep it. Changes apply to the running
+  scheduler, so adding the first subnet starts the sweep and removing the last
+  one stops it without a restart.
+
+- **Editable VLAN tags.** Per subnet, not per device — a device is on a VLAN
+  because of the segment it sits in, so there is one place to correct a
+  mistake. Nothing reads the tag; it is documentation, and the Devices page
+  shows it in its own column.
+
+- **A subnet filter on the Devices page**, as a GET form, so the choice lands
+  in the URL and survives a reload, a bookmark and the live refresh. It offers
+  "not on a configured subnet", which is how you notice a segment you forgot to
+  configure. The count reads "showing 1 of 3" rather than just the filtered
+  number.
+
+- `Subnet` model, `subnets.py`, `web/routes_settings.py`, `templates/settings.html`.
+
+### Changed
+
+- **`network.subnets` in `spark.yaml` is now seed-only.** Its entries are
+  copied into the database on the first start after upgrading and the section
+  is never read again. Editing it on an existing install does nothing — said
+  plainly in the file itself, because a setting you can change in two places
+  disagrees with itself eventually.
+
+- **Subnet membership is computed from the address, not from the label stored
+  at discovery time.** Renaming a subnet no longer orphans the devices found on
+  it, and adding a subnet retroactively classifies devices discovered before it
+  existed. The most specific match wins, so documenting a `/8` does not swallow
+  the `/24`s inside it.
+
+- The sweep, the scheduler and the Devices page all read subnets from the
+  database. `schedule_discovery()` takes a `subnet_count` for the same reason
+  it already took `settings`: so a request that may hold the write lock is not
+  waiting on a second session to read.
+
+### Fixed
+
+- **The live refresh dropped the query string.** It refetched
+  `location.pathname` alone, which would have reset the subnet filter every
+  time a sweep finished. Introduced by this change; caught before it shipped.
+
+### Schema
+
+- **Migration 3** creates the `subnet` table; `CURRENT_VERSION` moves to 3.
+  Built from the model's metadata rather than hand-written DDL, so it cannot
+  drift from what `create_all` gives a fresh install. The migration creates the
+  table only — copying `spark.yaml` in needs the config object, which
+  migrations deliberately do not get, so the seed runs at startup.
+
+- The seed is guarded by a flag, not by "is the table empty". Those differ in
+  the case that matters: upgrade, delete the subnets you no longer use,
+  restart, and find them back. There is a test for exactly that.
+
+### Notes
+
+- Deleting a subnet keeps the devices found on it. A device is evidence that
+  something was on the network; deleting the segment you were looking through
+  is not a statement about what you saw. They stop matching the filter, which
+  is the honest outcome.
+
+- A subnet too large to sweep (bigger than a `/22`) is flagged on the Settings
+  page rather than refused. A `/16` is a reasonable thing to document and an
+  unreasonable thing to scan, and silently accepting it would leave a subnet
+  that looks configured and never runs.
+
+- CIDRs are canonicalised on the way in, so typing the address of the box you
+  are standing on — `10.1.10.7/24` — is accepted and stored as `10.1.10.0/24`.
+
+### Tests
+
+- `tests/test_subnets.py`, 46 tests: CIDR and VLAN validation, membership
+  including the unparseable and most-specific cases, CRUD, seeding (including
+  the deleted-subnet-comes-back regression), the migration run against a
+  database wound back to version 2, a full upgrade end to end, and the filter
+  against a stale id, junk input and no subnets at all.
+- Suite: 165 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — the Save button appears only when there is something to save (2026-09-18)
 
 The Save button beside each device name was always visible, on every row, and

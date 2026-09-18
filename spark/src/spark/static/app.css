@@ -539,3 +539,46 @@ a.stat:hover { border-color: var(--accent); }
 /* visibility rather than display: the button keeps its space whether or not it
    is shown, so the Name column does not change width as you type and shove the
    rest of the table sideways. */
+
+/* ---- settings: subnets ------------------------------------------------- */
+
+.section-title {
+  margin: 0 0 .25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.subnet-table input[type="text"],
+.subnet-table input[type="number"] {
+  width: 100%;
+  padding: .3rem .45rem;
+  font-size: .875rem;
+}
+
+.subnet-table td { vertical-align: middle; }
+
+input.mono { font-family: var(--mono); }
+input.narrow { max-width: 5.5rem; }
+
+/* A destructive action should not be the same colour as Save sitting next to
+   it, but it is not an alarm either -- removing a subnet loses nothing but the
+   subnet. */
+.btn-quiet.danger { color: var(--bad); }
+.btn-quiet.danger:hover { border-color: var(--bad); }
+
+.add-subnet {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.add-subnet .inline-field { flex-direction: column; align-items: flex-start; gap: .15rem; }
+
+/* ---- devices: subnet filter -------------------------------------------- */
+
+.filter-bar { padding: .75rem 1rem; }
+.filter-count { margin-left: auto; }
+
+@media (max-width: 40rem) {
+  .filter-count { margin-left: 0; flex-basis: 100%; }
+}

@@ -18,6 +18,7 @@ decisions that are expensive to change later:
 from __future__ import annotations
 
 import enum
+import ipaddress
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -157,6 +158,72 @@ class Severity(enum.StrEnum):
 # --------------------------------------------------------------------------
 # Inventory
 # --------------------------------------------------------------------------
+
+
+class Subnet(Base, TimestampMixin):
+    """One network segment SPARK knows about.
+
+    Moved out of `spark.yaml` in increment 4c. The YAML entries seed this table
+    once and are then ignored, because DESIGN.md's whole premise is that SPARK
+    can be handed to someone else and configured through the browser. A setting
+    that requires SSH and a container restart is not configuration, it is a
+    rebuild.
+
+    `attached` is not cosmetic. ARP only works on directly-attached layer 2
+    segments, so on a routed VLAN SPARK can ping a host but cannot learn its
+    MAC — and device identity keys on MAC. `vlan` is the opposite: nothing
+    reads it, it is there so the inventory documents itself.
+    """
+
+    __tablename__ = "subnet"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cidr: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str | None] = mapped_column(String(64))
+    vlan: Mapped[int | None] = mapped_column(Integer)
+    attached: Mapped[bool] = mapped_column(Boolean, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def label(self) -> str:
+        return self.name or self.cidr
+
+    @property
+    def network(self):  # type: ignore[no-untyped-def]
+        """The parsed network, or None if the stored CIDR is unparseable.
+
+        Never raises. A subnet row with a bad CIDR should make one page section
+        look wrong, not take the Devices page down.
+        """
+        try:
+            return ipaddress.ip_network(self.cidr, strict=False)
+        except ValueError:
+            return None
+
+    @property
+    def host_count(self) -> int:
+        network = self.network
+        if network is None:
+            return 0
+        # A /31 or /32 has no usable-host concept worth reporting here.
+        return max(0, network.num_addresses - 2) if network.num_addresses > 2 else network.num_addresses
+
+    def contains(self, address: str | None) -> bool:
+        """Whether an address falls inside this subnet.
+
+        Membership is computed from the address rather than read from a stored
+        label, so renaming a subnet cannot orphan the devices found on it, and
+        adding a subnet retroactively classifies devices discovered before it
+        existed.
+        """
+        network = self.network
+        if network is None or not address:
+            return False
+        try:
+            return ipaddress.ip_address(address) in network
+        except ValueError:
+            return False
 
 
 class Device(Base, TimestampMixin):
@@ -515,6 +582,12 @@ class Setting(Base, TimestampMixin):
 
 
 DEFAULT_SETTINGS: dict[str, dict] = {
+    # Set once, when spark.yaml's subnets have been copied into the subnet
+    # table. Without it, deleting every subnet in the UI would be undone by the
+    # next restart re-seeding them from the file.
+    "network": {
+        "subnets_seeded": False,
+    },
     "discovery": {
         "enabled": True,
         "sweep_interval_seconds": 900,

@@ -130,6 +130,7 @@ async def schedule_discovery(
     config,  # type: ignore[no-untyped-def]
     settings: dict | None = None,
     *,
+    subnet_count: int | None = None,
     first_run_delay: float | None = None,
 ) -> bool:
     """Add or update the periodic subnet sweep.
@@ -137,7 +138,8 @@ async def schedule_discovery(
     Returns whether it is scheduled, which is worth logging at startup: a
     silently absent sweep looks exactly like a network with nothing on it.
 
-    `settings` lets a caller that has just written them pass them straight in.
+    `settings` and `subnet_count` let a caller that has just written them pass
+    them straight in.
     That is not only a saved round trip: the alternative is opening a second
     session for a read from inside a request that may still hold the write
     lock, which is the shape of the bug that made the Devices page hang.
@@ -154,11 +156,16 @@ async def schedule_discovery(
     if scheduler is None:
         return False
 
-    if settings is None:
-        async with session_scope() as session:
-            settings = await get_setting(session, "discovery")
+    if settings is None or subnet_count is None:
+        from .subnets import count_enabled
 
-    if not settings.get("enabled", True) or not config.network.subnets:
+        async with session_scope() as session:
+            if settings is None:
+                settings = await get_setting(session, "discovery")
+            if subnet_count is None:
+                subnet_count = await count_enabled(session)
+
+    if not settings.get("enabled", True) or not subnet_count:
         try:
             scheduler.remove_job(DISCOVERY_JOB_ID)
         except Exception:  # noqa: BLE001 - not scheduled is the desired state

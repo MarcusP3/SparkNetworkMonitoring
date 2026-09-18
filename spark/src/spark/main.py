@@ -19,6 +19,7 @@ from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
 from .web.routes_devices import router as devices_router
 from .web.routes_events import router as events_router
+from .web.routes_settings import router as settings_router
 from .web.routes_targets import router as targets_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -50,14 +51,21 @@ def create_app(config: Config | None = None) -> FastAPI:
         config.secret_key()
 
         from .auth import purge_expired
+        from .subnets import count_enabled, seed_from_config
 
         async with session_scope() as session:
             await purge_expired(session)
+            # One-shot: copies spark.yaml's subnets in on the first start after
+            # upgrading, then never again. See subnets.seed_from_config.
+            await seed_from_config(session, config)
+            subnet_count = await count_enabled(session)
 
         scheduler_module.start()
         scheduled = await scheduler_module.sync_jobs()
         # A few seconds, not a full interval: see schedule_discovery.
-        sweeping = await scheduler_module.schedule_discovery(config, first_run_delay=15)
+        sweeping = await scheduler_module.schedule_discovery(
+            config, subnet_count=subnet_count, first_run_delay=15
+        )
         scheduler_module.schedule_retention()
 
         log.info(
@@ -67,7 +75,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             config.app.host,
             config.app.port,
             config.auth.mode,
-            len(config.network.subnets),
+            subnet_count,
             scheduled,
             "on" if sweeping else "off",
         )
@@ -96,6 +104,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(targets_router)
     app.include_router(events_router)
     app.include_router(devices_router)
+    app.include_router(settings_router)
     return app
 
 

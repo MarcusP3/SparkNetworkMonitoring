@@ -29,7 +29,7 @@ from spark import scheduler as S
 from spark.config import Config
 from spark.discovery.runner import JOB_ID, SWEEP_INTERVAL_CHOICES
 from spark.main import create_app
-from spark.models import Device, utcnow
+from spark.models import Device, Subnet, utcnow
 
 SUBNET = {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1, "attached": True}
 
@@ -47,12 +47,20 @@ def make_config(tmp: Path, *, subnets: bool = True) -> Config:
 
 @pytest.fixture
 def config():
+    """A config plus a matching subnet row.
+
+    Subnets moved from spark.yaml into the database in increment 4c, so a
+    config with subnets in it is no longer enough to get a sweep scheduled --
+    which is the whole reason these fixtures changed.
+    """
     tmp = Path(tempfile.mkdtemp(prefix="spark-schedule-"))
     cfg = make_config(tmp)
 
     async def setup():
         D.init_engine(cfg)
         await D.init_db(cfg)
+        async with D.session_scope() as session:
+            session.add(Subnet(cidr="10.1.10.0/24", name="LAN", vlan=1, attached=True))
 
     asyncio.run(setup())
     yield cfg
@@ -147,13 +155,22 @@ class TestScheduledOrNot:
         tmp = Path(tempfile.mkdtemp(prefix="spark-schedule-empty-"))
         cfg = make_config(tmp, subnets=False)
 
+        async def setup():
+            D.init_engine(cfg)
+            await D.init_db(cfg)
+
+        asyncio.run(setup())
+
         async def body():
             await S.schedule_discovery(cfg, {"enabled": True})
             return S.discovery_next_run()
 
-        # Ticked but impossible. The page has to be able to say so, which it
-        # can only do if these two states are actually distinguishable.
-        assert with_scheduler(body) is None
+        try:
+            # Ticked but impossible. The page has to be able to say so, which
+            # it can only do if these two states are distinguishable.
+            assert with_scheduler(body) is None
+        finally:
+            asyncio.run(D.close_engine())
 
     def test_next_run_is_none_without_a_scheduler(self):
         assert S.get_scheduler() is None
@@ -185,8 +202,16 @@ def client():
 
 
 def stored_interval_minutes(client: TestClient) -> int:
+    """The selected option of the scan-interval dropdown specifically.
+
+    Scoped to that one <select>: the page grew a subnet filter whose options
+    are also numbers, and a page-wide search would start matching whichever
+    came first in the markup.
+    """
     page = client.get("/devices").text
-    match = re.search(r'<option value="(\d+)"\s+selected', page)
+    block = re.search(r'id="scan-interval".*?</select>', page, re.S)
+    assert block, "the scan-interval dropdown is missing from the page"
+    match = re.search(r'<option value="(\d+)"\s+selected', block.group(0))
     assert match, "no interval is selected in the dropdown"
     return int(match.group(1))
 

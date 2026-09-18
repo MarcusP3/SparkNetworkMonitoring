@@ -35,6 +35,12 @@ auth:
     #  - 10.0.0.0/24
 
 network:
+  # SEED ONLY. These are copied into the database the first time SPARK starts
+  # and are never read again — manage subnets under Settings in the browser
+  # after that. Editing this section on an existing install does nothing, which
+  # is deliberate: a setting you can change in two places disagrees with itself
+  # eventually.
+  #
   # Every segment you want discovered. Replace these with your own.
   #
   # `attached: true`  means the SPARK host has an interface on this segment.

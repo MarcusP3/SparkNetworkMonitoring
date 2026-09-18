@@ -19,7 +19,7 @@
     <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
     <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
     <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
-    <a href="/settings" class="disabled" title="Arrives with the alerting increment">Settings</a>
+    <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>
   </nav>
   <form method="post" action="/logout" class="logout">
     <span class="who">{{ user.username }}</span>
@@ -82,7 +82,11 @@
       deferred = false;
       inFlight = true;
       var before = statusesById(live);
-      fetch(window.location.pathname, { headers: { 'X-Requested-With': 'fetch' } })
+      // pathname + search, not pathname alone: the Devices page carries its
+      // subnet filter in the query string, and refetching without it would
+      // quietly reset the filter every time a sweep finished.
+      fetch(window.location.pathname + window.location.search,
+            { headers: { 'X-Requested-With': 'fetch' } })
         .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
         .then(function (html) {
           var doc = new DOMParser().parseFromString(html, 'text/html');

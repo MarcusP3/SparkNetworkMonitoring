@@ -27,6 +27,8 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Device inventory — naming, review state, watch-in-one-click | ✅ working |
 | Scan schedule — on/off and interval, set on the Devices page | ✅ working |
+| Subnet management and VLAN tags (`/settings`) | ✅ working |
+| Subnet filter on the Devices page | ✅ working |
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
@@ -65,7 +67,7 @@ Every `docker compose` and `pytest` command runs from there.
 git clone https://github.com/MarcusP3/SparkNetworkMonitoring.git
 cd SparkNetworkMonitoring/spark
 cp config/spark.yaml config/spark.yaml.orig   # keep a pristine copy
-$EDITOR config/spark.yaml                     # set your subnets
+$EDITOR config/spark.yaml                     # set your first subnet (seed only)
 docker compose up -d --build
 ```
 
@@ -99,8 +101,8 @@ Two layers, deliberately:
 
 | Where | What lives there |
 |---|---|
-| `config/spark.yaml` | Things needed *before the database exists*: bind address, data directory, auth mode, subnets |
-| Web UI | Everything you would change routinely: targets, and later the alert webhook, schedules, scan behaviour, retention |
+| `config/spark.yaml` | Things needed *before the database exists*: bind address, data directory, auth mode. Its `network.subnets` block seeds the database once and is then ignored |
+| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, and later the alert webhook and retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
 underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
@@ -118,19 +120,25 @@ is the single most common way to end up with an empty dashboard.
 
 ### Networks and device identity
 
-Each subnet is declared as either directly attached or routed:
+Subnets live in the database and are managed at `/settings` — add, rename,
+retag and remove them in the browser, no restart. The `network.subnets` block
+in `spark.yaml` is a **seed**: its entries are copied in on the first start and
+the section is never read again, so editing it on a running install does
+nothing.
+
+Each subnet is either directly attached or routed:
 
 ```yaml
 network:
   subnets:
     - name: LAN
       cidr: 10.1.10.0/24
-      attached: true
+      attached: true      # SPARK has an interface on this segment
 
     - name: Servers
       cidr: 10.1.30.0/24
-      vlan: 30
-      attached: false
+      vlan: 30            # documentation only; nothing reads it
+      attached: false     # reachable only through a router
 ```
 
 This matters more than it looks. ARP only works on directly-attached layer 2
@@ -141,7 +149,15 @@ IP-based identity — which breaks the moment DHCP hands out a different address
 Two ways to fix it: give the SPARK VM an interface in each VLAN, or wait for
 SNMP collection, which reads MAC-to-IP off the switch for every VLAN at once.
 
-`vlan:` is a display label; nothing reads it functionally.
+`vlan:` is a display label; nothing reads it functionally. It is editable at
+`/settings` and shows in its own column on the Devices page, which also filters
+by subnet — including a "not on a configured subnet" option, the quickest way
+to notice a segment you never configured.
+
+A device's subnet is worked out from its address every time the page renders,
+not stored when it was discovered. Renaming a subnet keeps its devices, and
+adding one classifies devices found before it existed. The most specific match
+wins, so documenting a `/8` does not swallow the `/24`s inside it.
 
 ---
 
@@ -335,7 +351,7 @@ DESIGN.md         the design document
 CLAUDE.md         working agreements for this repo
 spark/
   docker-compose.yml, Dockerfile
-  config/spark.yaml     the pre-database config
+  config/spark.yaml     the pre-database config (subnets here are a one-time seed)
   CHANGELOG.md
   smoke_test.py         end-to-end walk through the running application
   src/spark/
@@ -348,6 +364,7 @@ spark/
     scheduler.py        APScheduler jobs, reconciled against the database
     events.py           in-process pub/sub for live page updates
     retention.py        nightly downsample and prune; never VACUUMs
+    subnets.py          subnet CRUD, validation, and the one-shot YAML seed
     discovery/
       sweep.py          ICMP sweep, ARP table, reverse DNS
       oui.py            MAC prefix to vendor
@@ -371,6 +388,7 @@ spark/
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
     test_retention.py   downsampling keeps outages; weighted averages; idempotence
     test_schedule.py    when the first sweep is due; the scan schedule form
+    test_subnets.py     CIDR/VLAN validation, membership, seeding, migration 3
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
@@ -402,6 +420,7 @@ Four things that will bite you if you don't know them:
 | 2 | SNMP collection engine + capability probe | ✅ done |
 | 3 | Check engine — ping, TCP, HTTP, DNS, hysteresis, incidents, targets UI | ✅ done |
 | 4 | Device discovery — sweep, MAC identity, devices page | ✅ done |
+| 4c | History retention, scan schedule, subnet management + filter | ✅ done |
 | 4b | Service discovery — port scan, Docker inventory | next |
 | 5 | Service map — tree and filterable list views | planned |
 | 6 | SNMP metric storage + device pages | planned |

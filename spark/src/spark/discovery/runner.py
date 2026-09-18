@@ -12,15 +12,33 @@ three.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from .. import events
 from ..db import get_setting, save_setting, session_scope
+from ..subnets import enabled_subnets
 from .store import record_all
 from .sweep import SweepReport, sweep_all
 
 log = logging.getLogger(__name__)
 
 JOB_ID = "discovery:sweep"
+
+
+@dataclass(frozen=True)
+class _SubnetPlan:
+    """What the sweep needs to know about a subnet, with no session attached.
+
+    A sweep of several /24s takes seconds. Passing live ORM objects into it
+    would keep a database connection open for the whole thing, and SQLite has
+    one writer.
+    """
+
+    cidr: str
+    label: str
+    attached: bool
+    enabled: bool = True
+
 
 # Stored in the settings table rather than a table of its own: it is one small
 # JSON blob, and a diagnostic is a poor reason to make this project run its
@@ -51,7 +69,18 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
                 log.debug("Discovery is disabled in settings; skipping sweep")
                 return
 
-        report = await sweep_all(config.network.subnets)
+        # Subnets come from the database, not from config.network.subnets:
+        # spark.yaml seeds them once and is not read again.
+        async with session_scope() as session:
+            subnets = await enabled_subnets(session)
+            # Detached from the session before the sweep, which takes seconds
+            # and must not hold a database connection open while it runs.
+            plan = [
+                _SubnetPlan(cidr=s.cidr, label=s.label, attached=s.attached)
+                for s in subnets
+            ]
+
+        report = await sweep_all(plan)
 
         async with session_scope() as session:
             seen, new = await record_all(session, report.observations)

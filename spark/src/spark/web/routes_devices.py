@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import events
 from .. import scheduler as scheduler_module
+from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.oui import is_locally_administered
@@ -25,6 +26,32 @@ from .deps import get_config, get_session, redirect, require_user, templates
 router = APIRouter()
 
 DEFAULT_SWEEP_SECONDS = 900
+
+# The filter value for "found on no configured subnet". A sentinel rather than
+# an id because there is no row to point at, and the case is worth being able
+# to select: it is how you notice a segment you forgot to configure.
+UNASSIGNED = "none"
+
+
+def _apply_subnet_filter(rows, known_subnets, choice):  # type: ignore[no-untyped-def]
+    """Narrow the device list to one subnet. Returns (selected, rows).
+
+    An unrecognised value falls back to showing everything rather than showing
+    nothing: a stale bookmark pointing at a deleted subnet should not look like
+    a network that emptied out.
+    """
+    if not choice:
+        return None, rows
+    if choice == UNASSIGNED:
+        return UNASSIGNED, [r for r in rows if r["subnet"] is None]
+    try:
+        wanted = int(choice)
+    except (TypeError, ValueError):
+        return None, rows
+    selected = next((s for s in known_subnets if s.id == wanted), None)
+    if selected is None:
+        return None, rows
+    return selected, [r for r in rows if r["subnet"] is not None and r["subnet"].id == wanted]
 
 
 def _in_words(seconds: float) -> str:
@@ -43,7 +70,7 @@ def _in_words(seconds: float) -> str:
     return f"about {hours} hour{'s' if hours != 1 else ''}"
 
 
-async def _scan_schedule(session: AsyncSession, config: Config) -> dict:
+async def _scan_schedule(session: AsyncSession, subnet_count: int) -> dict:
     """What the Devices page needs to describe and edit automatic scanning.
 
     `next_run` comes from the scheduler rather than from the settings, because
@@ -63,7 +90,7 @@ async def _scan_schedule(session: AsyncSession, config: Config) -> dict:
 
     if not enabled:
         text = "Automatic scanning is off."
-    elif not config.network.subnets:
+    elif not subnet_count:
         text = "No subnets are configured, so there is nothing to scan."
     elif next_in is None:
         text = "Not scheduled — restart SPARK if this persists."
@@ -83,6 +110,7 @@ async def _scan_schedule(session: AsyncSession, config: Config) -> dict:
 @router.get("/devices")
 async def list_devices(
     request: Request,
+    subnet: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -113,6 +141,8 @@ async def list_devices(
         .all()
     }
 
+    known_subnets = await subnet_service.list_subnets(session)
+
     now = utcnow()
     rows = []
     for device in devices:
@@ -123,8 +153,18 @@ async def list_devices(
                 "age_seconds": age,
                 "randomised": is_locally_administered(device.mac),
                 "watched": device.id in watched_ids,
+                # Worked out from the address rather than read from the label
+                # recorded at discovery time, so renaming a subnet does not
+                # orphan its devices and adding one classifies what is already
+                # there.
+                "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
             }
         )
+
+    # Counted before filtering: "3 of 41" is the useful reading, and a filtered
+    # count that shrinks as you narrow tells you nothing.
+    total = len(rows)
+    selected, rows = _apply_subnet_filter(rows, known_subnets, subnet)
 
     unreviewed = sum(1 for row in rows if not row["device"].acknowledged)
 
@@ -146,9 +186,20 @@ async def list_devices(
             "rows": rows,
             "has_ignored": ignored_count is not None,
             "unreviewed": unreviewed,
-            "subnets": config.network.subnets,
+            "subnets": known_subnets,
+            "subnet_filter": {
+                "selected": selected,
+                "value": subnet,
+                "shown": len(rows),
+                "total": total,
+                "unassigned": sum(
+                    1 for r in rows if r["subnet"] is None
+                ) if subnet == UNASSIGNED else None,
+            },
             "sweep": sweep,
-            "scan": await _scan_schedule(session, config),
+            "scan": await _scan_schedule(
+                session, sum(1 for s in known_subnets if s.enabled)
+            ),
         },
     )
 

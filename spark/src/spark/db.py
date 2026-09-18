@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .config import Config
-from .models import DEFAULT_SETTINGS, Base, CheckRollup, Setting
+from .models import DEFAULT_SETTINGS, Base, CheckRollup, Setting, Subnet
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +101,20 @@ async def _add_check_rollup(session: AsyncSession) -> None:
     await connection.run_sync(CheckRollup.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 2
+@migration(3, "add the subnet table so subnets can be managed in the UI")
+async def _add_subnet(session: AsyncSession) -> None:
+    """Create the subnet table on databases that predate it.
+
+    Only the table. Copying spark.yaml's subnets into it needs the config
+    object, which migrations deliberately do not get -- they take a session and
+    nothing else, so they can be tested against a database alone. The seed runs
+    at startup instead; see subnets.seed_from_config.
+    """
+    connection = await session.connection()
+    await connection.run_sync(Subnet.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 3
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:
