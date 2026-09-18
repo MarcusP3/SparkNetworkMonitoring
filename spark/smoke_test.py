@@ -275,6 +275,46 @@ def main() -> int:
                 check("cleanup left the other targets alone",
                       client.get("/targets").text.count("10.1.10.77") == 0)
 
+                print("\nReview state is separate from naming")
+                # Two fresh ones. The device seeded earlier was watched, and
+                # watching is review, so it is no longer flagged.
+                async def _seed2():
+                    async with _db.session_scope() as ses:
+                        await _record(ses, _Obs(ip="10.1.10.78", mac="bc:24:11:00:00:01",
+                                                hostname="second.lan", subnet="LAN"))
+                        await _record(ses, _Obs(ip="10.1.10.79", mac="bc:24:11:00:00:02",
+                                                hostname="third.lan", subnet="LAN"))
+                _asyncio.run(_seed2())
+
+                r = client.get("/devices")
+                check("a freshly discovered device is flagged new", "new ✕" in r.text)
+                check("bulk dismiss is offered", "Mark all" in r.text)
+
+                ids = [int(m) for m in re.findall(r"/devices/(\d+)/acknowledge\b", r.text)]
+                check("both devices are unreviewed", len(ids) == 2, f"got {ids}")
+
+                # Saving an untouched row must not clear the badge: it used to,
+                # which made a no-op button silently dismiss a security signal.
+                r = client.post(f"/devices/{ids[0]}/name", data={"friendly_name": ""})
+                r = client.get("/devices")
+                still = [int(m) for m in re.findall(r"/devices/(\d+)/acknowledge\b", r.text)]
+                check("an empty Save does not dismiss the badge",
+                      len(still) == 2, f"got {still}")
+
+                # Naming it is review, so that does clear it.
+                client.post(f"/devices/{ids[0]}/name", data={"friendly_name": "sw-core"})
+                r = client.get("/devices")
+                check("naming a device reviews it",
+                      len(re.findall(r"/devices/(\d+)/acknowledge\b", r.text)) == 1)
+                check("the name is stored", 'value="sw-core"' in r.text)
+
+                # And the badge can be dismissed on its own.
+                client.post(f"/devices/{ids[1]}/acknowledge")
+                r = client.get("/devices")
+                check("the badge dismisses without naming", "new ✕" not in r.text)
+                check("bulk action disappears when nothing is unreviewed",
+                      "Mark all" not in r.text)
+
                 print("\nLive updates")
                 r = client.get("/targets")
                 check("targets page has a live region", 'id="live"' in r.text)

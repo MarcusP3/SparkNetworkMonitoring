@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import events
@@ -70,6 +70,8 @@ async def list_devices(
             }
         )
 
+    unreviewed = sum(1 for row in rows if not row["device"].acknowledged)
+
     sweep = await last_sweep(session)
     if sweep.get("finished_at"):
         try:
@@ -87,6 +89,7 @@ async def list_devices(
             "title": "Devices",
             "rows": rows,
             "has_ignored": ignored_count is not None,
+            "unreviewed": unreviewed,
             "subnets": config.network.subnets,
             "sweep": sweep,
         },
@@ -111,12 +114,57 @@ async def rename_device(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
+    """Set or clear a device's friendly name.
+
+    Naming a device does acknowledge it -- taking the trouble to label
+    something is review -- but pressing Save on an untouched row does not.
+    Previously it did, which meant the "new" badge could be cleared by a
+    button that appeared to do nothing, and the badge is the security signal
+    on this page: an unfamiliar MAC appearing at 2am is the thing you want to
+    notice.
+    """
     device = await session.get(Device, device_id)
     if device is not None:
-        device.friendly_name = friendly_name.strip() or None
-        device.acknowledged = True
+        name = friendly_name.strip()
+        device.friendly_name = name or None
+        if name:
+            device.acknowledged = True
         await session.commit()
         events.publish({"kind": "device-renamed", "device_id": device_id})
+    return redirect("/devices")
+
+
+@router.post("/devices/acknowledge-all")
+async def acknowledge_all(
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Mark every currently-listed device as reviewed.
+
+    The first sweep of a real network produces a screenful of badges at once.
+    Dismissing them one at a time teaches you to ignore the badge, which is
+    the opposite of what it is for.
+    """
+    await session.execute(
+        update(Device).where(Device.acknowledged.is_(False)).values(acknowledged=True)
+    )
+    await session.commit()
+    events.publish({"kind": "devices-acknowledged"})
+    return redirect("/devices")
+
+
+@router.post("/devices/{device_id}/acknowledge")
+async def acknowledge_device(
+    device_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Dismiss the "new" badge without naming the device."""
+    device = await session.get(Device, device_id)
+    if device is not None:
+        device.acknowledged = True
+        await session.commit()
+        events.publish({"kind": "device-acknowledged", "device_id": device_id})
     return redirect("/devices")
 
 

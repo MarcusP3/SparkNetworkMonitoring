@@ -25,6 +25,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Check engine — ping, TCP, HTTP(S), DNS | ✅ working |
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
+| Device inventory — naming, review state, watch-in-one-click | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |

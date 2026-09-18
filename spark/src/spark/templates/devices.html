@@ -3,9 +3,19 @@
 <div class="page">
   <div class="page-head">
     <h1>Devices</h1>
-    <form method="post" action="/devices/scan">
-      <button type="submit" class="btn-primary">Scan now</button>
-    </form>
+    <div class="head-actions">
+      {% if unreviewed %}
+      <form method="post" action="/devices/acknowledge-all">
+        <button type="submit" class="btn-quiet"
+                title="Dismiss the badge on all {{ unreviewed }} of them">
+          Mark all {{ unreviewed }} reviewed
+        </button>
+      </form>
+      {% endif %}
+      <form method="post" action="/devices/scan">
+        <button type="submit" class="btn-primary">Scan now</button>
+      </form>
+    </div>
   </div>
 
   <div id="live">
@@ -99,7 +109,10 @@
                 <button type="submit" class="btn-quiet">Save</button>
               </form>
               {% if not device.acknowledged %}
-                <span class="pill warn" title="Not yet reviewed">new</span>
+                <form method="post" action="/devices/{{ device.id }}/acknowledge">
+                  <button type="submit" class="pill warn as-button"
+                          title="Seen this device before? Dismiss the badge.">new ✕</button>
+                </form>
               {% endif %}
             </div>
           </td>

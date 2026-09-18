@@ -461,3 +461,18 @@ a.stat:hover { border-color: var(--accent); }
 
 .sweep-status .alert { margin-bottom: .75rem; }
 .table.compact td, .table.compact th { padding-top: .3rem; padding-bottom: .3rem; }
+
+/* A pill that is also a button: same shape, no button chrome. */
+.pill.as-button {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 550;
+  line-height: inherit;
+}
+
+.pill.as-button:hover { filter: brightness(1.1); }
+
+.head-actions { display: flex; gap: .5rem; align-items: center; }
+.head-actions form { margin: 0; }

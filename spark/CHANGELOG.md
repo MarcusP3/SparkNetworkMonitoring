@@ -53,6 +53,18 @@ It now fills itself.
   "new" badge sits beside the name field instead of under it so rows are a
   uniform height.
 
+- **Save no longer doubles as "dismiss the new badge".** One button was doing
+  two unrelated jobs and neither was labelled: pressing Save on an untouched
+  row cleared the badge while storing nothing. The badge is this page's
+  security signal — an unfamiliar MAC appearing overnight is the thing worth
+  noticing — so a no-op button must not quietly clear it. Save now only names
+  a device; the badge is its own dismiss control. Naming a device still
+  acknowledges it, because labelling something is review.
+- **Mark all N reviewed**, shown only while something is unreviewed. The first
+  sweep of a real network produces a screenful of badges at once, and
+  dismissing them one at a time teaches you to ignore the badge — the opposite
+  of what it is for.
+
 ### Added (diagnostics)
 
 - **The Devices page says why it is empty.** The sweep now records what it did
