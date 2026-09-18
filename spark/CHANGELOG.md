@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — retention: the database stops growing forever (2026-09-18)
+
+The retention settings have existed since increment 1 and nothing read them.
+Measured: a check result costs 147 bytes on disk, so ten targets at a 15-second
+interval is 8.4 MB/day — about 250 MB a month and 3 GB a year, unbounded.
+
+### Added
+
+- **`check_rollup` table and a nightly downsample.** Raw results are kept for 7
+  days, then folded into 5-minute buckets for 90 days, then hourly for 2 years
+  — the schedule `DEFAULT_SETTINGS` has specified all along. Measured on 30
+  days of synthetic history: 132,484 raw rows became 6,625 buckets, a 20x
+  reduction, with a deliberate 20-minute outage still visible in the counts.
+
+- Buckets keep per-status counts rather than one availability figure. "95% up"
+  and "up all month except a 90-minute outage" are different months and an
+  average cannot tell you which you had.
+
+- Expired sessions and old login attempts are now cleared nightly. They were
+  only ever purged at startup, so a long-running instance never cleared them —
+  a gap noted in the increment 2 review and left open until now.
+
+### Notes on disk wear
+
+- **It never VACUUMs.** Deleting rows in SQLite frees pages for reuse rather
+  than shrinking the file, so a pruned database plateaus and new inserts refill
+  the same pages. Verified: 47.8 MB before and after 50,000 further inserts
+  plus a prune. A nightly VACUUM would rewrite the whole file — the write
+  amplification worth avoiding on an SSD.
+- The file will not shrink below its high-water mark on its own. If you want
+  space back after the first prune of an already-large database, a one-off
+  manual `VACUUM` does it. Once, by hand, not on a schedule.
+- The job is a handful of set-based statements in one transaction, once a
+  night, not a row-at-a-time loop.
+
+### Schema
+
+- **This is the project's first real migration.** `CURRENT_VERSION` moves to 2
+  and migration 2 creates `check_rollup` from the model's own metadata rather
+  than hand-written DDL, so it cannot drift from what `create_all` gives a
+  fresh install. Verified against a database built to look like a v1 install:
+  migrates cleanly, and a second start is a no-op.
+
 ## Unreleased — increment 4: device discovery (2026-09-18)
 
 The `device` table has existed since increment 1 and been empty ever since.

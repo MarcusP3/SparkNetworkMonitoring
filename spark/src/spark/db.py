@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .config import Config
-from .models import DEFAULT_SETTINGS, Base, Setting
+from .models import DEFAULT_SETTINGS, Base, CheckRollup, Setting
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +88,20 @@ def migration(version: int, description: str):  # type: ignore[no-untyped-def]
     return decorator
 
 
-CURRENT_VERSION = 1
+@migration(2, "add the check_rollup table for downsampled history")
+async def _add_check_rollup(session: AsyncSession) -> None:
+    """Create check_rollup on databases that predate it.
+
+    Built from the model's own metadata rather than hand-written DDL, so this
+    cannot drift from what `create_all` gives a fresh install -- which is the
+    classic way a migration passes on the author's machine and produces a
+    subtly different table on everyone else's.
+    """
+    connection = await session.connection()
+    await connection.run_sync(CheckRollup.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 2
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

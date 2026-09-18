@@ -26,6 +26,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Device inventory — naming, review state, watch-in-one-click | ✅ working |
+| History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |
@@ -344,6 +345,7 @@ spark/
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
     events.py           in-process pub/sub for live page updates
+    retention.py        nightly downsample and prune; never VACUUMs
     discovery/
       sweep.py          ICMP sweep, ARP table, reverse DNS
       oui.py            MAC prefix to vendor
@@ -365,6 +367,7 @@ spark/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
+    test_retention.py   downsampling keeps outages; weighted averages; idempotence
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
@@ -440,6 +443,11 @@ open tab and the check runner publishes on state transitions only. Polling
 costs a request per tab per interval forever and is still late; publishing on
 every check would refetch the page once per check per tab, which turns a
 monitor into load on the thing being monitored.
+
+**History is downsampled, never deleted outright.** Raw results for 7 days,
+5-minute buckets for 90, hourly for 2 years, with per-status counts kept at
+every width. Retention never VACUUMs: freed SQLite pages are reused by new
+inserts, so the file plateaus instead of being rewritten nightly.
 
 **Hysteresis is not optional.** A target needs N consecutive failures before it
 changes state. This single detail is the difference between a tool you trust and

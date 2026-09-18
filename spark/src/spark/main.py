@@ -57,6 +57,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.start()
         scheduled = await scheduler_module.sync_jobs()
         sweeping = await scheduler_module.schedule_discovery(config)
+        scheduler_module.schedule_retention()
 
         log.info(
             "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "

@@ -357,6 +357,54 @@ class CheckResult(Base):
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+# Bucket widths for downsampled history. Raw results are kept briefly, then
+# folded into five-minute buckets, then into hourly ones.
+FIVE_MINUTES = 300
+ONE_HOUR = 3600
+
+
+class CheckRollup(Base):
+    """Downsampled check history.
+
+    Raw results answer "what was the latency at 14:32:15", which matters for
+    about a week. After that the question becomes "what did last month look
+    like", and a five-minute bucket answers it with a sixtieth of the rows.
+
+    Counts per status rather than a single average, because "95% up" and
+    "up the whole time except one ten-minute outage" are different months and
+    an average hides the difference.
+    """
+
+    __tablename__ = "check_rollup"
+    __table_args__ = (
+        UniqueConstraint(
+            "target_id", "bucket_start", "bucket_seconds", name="uq_rollup_bucket"
+        ),
+        Index("ix_rollup_target_bucket", "target_id", "bucket_seconds", "bucket_start"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    target_id: Mapped[int] = mapped_column(ForeignKey("target.id", ondelete="CASCADE"))
+    bucket_start: Mapped[datetime] = mapped_column(UTCDateTime)
+    bucket_seconds: Mapped[int] = mapped_column(Integer)
+
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    up: Mapped[int] = mapped_column(Integer, default=0)
+    degraded: Mapped[int] = mapped_column(Integer, default=0)
+    down: Mapped[int] = mapped_column(Integer, default=0)
+
+    latency_min: Mapped[float | None] = mapped_column(Float)
+    latency_avg: Mapped[float | None] = mapped_column(Float)
+    latency_max: Mapped[float | None] = mapped_column(Float)
+
+    @property
+    def availability(self) -> float | None:
+        """Fraction of samples that were not down."""
+        if not self.samples:
+            return None
+        return (self.samples - self.down) / self.samples
+
+
 class Incident(Base):
     __tablename__ = "incident"
     __table_args__ = (Index("ix_incident_target_opened", "target_id", "opened_at"),)

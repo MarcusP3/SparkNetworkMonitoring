@@ -23,6 +23,8 @@ from .db import get_setting, session_scope
 from .discovery.runner import JOB_ID as DISCOVERY_JOB_ID
 from .discovery.runner import run_sweep
 from .engine.runner import run_target
+from .retention import JOB_ID as RETENTION_JOB_ID
+from .retention import run_retention
 from .models import Target
 
 log = logging.getLogger(__name__)
@@ -186,6 +188,28 @@ def trigger_discovery_now(config) -> bool:  # type: ignore[no-untyped-def]
         replace_existing=True,
         misfire_grace_time=60,
         name="Sweep now",
+    )
+    return True
+
+
+def schedule_retention() -> bool:
+    """Nightly downsample and prune.
+
+    03:30 rather than 03:00 so it does not land on the same minute as the
+    speed test, which deliberately saturates the WAN.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run_retention,
+        "cron",
+        hour=3,
+        minute=30,
+        id=RETENTION_JOB_ID,
+        replace_existing=True,
+        misfire_grace_time=3600,   # a missed night is caught up on, not skipped
+        name="Downsample and prune history",
     )
     return True
 
