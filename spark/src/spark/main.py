@@ -17,6 +17,7 @@ from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
+from .web.routes_devices import router as devices_router
 from .web.routes_events import router as events_router
 from .web.routes_targets import router as targets_router
 
@@ -55,15 +56,18 @@ def create_app(config: Config | None = None) -> FastAPI:
 
         scheduler_module.start()
         scheduled = await scheduler_module.sync_jobs()
+        sweeping = await scheduler_module.schedule_discovery(config)
 
         log.info(
-            "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, polling %d target(s))",
+            "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "
+            "polling %d target(s), discovery %s)",
             __version__,
             config.app.host,
             config.app.port,
             config.auth.mode,
             len(config.network.subnets),
             scheduled,
+            "on" if sweeping else "off",
         )
         yield
         await scheduler_module.shutdown()
@@ -89,6 +93,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(targets_router)
     app.include_router(events_router)
+    app.include_router(devices_router)
     return app
 
 

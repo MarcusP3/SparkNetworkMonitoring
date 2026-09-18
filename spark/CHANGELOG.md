@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — increment 4: device discovery (2026-09-18)
+
+The `device` table has existed since increment 1 and been empty ever since.
+It now fills itself.
+
+### Added
+
+- **Subnet sweep.** ICMP across every configured subnet, then a read of the
+  kernel's ARP table, then reverse DNS on whatever answered. Runs every 15
+  minutes by default, plus a **Scan now** button. The order matters: the pings
+  are what populate ARP, which is where MAC addresses come from.
+
+- **MAC-based device identity.** A device is its MAC if we know it and its IP
+  only if we don't, so a DHCP lease change keeps one device's history intact
+  instead of orphaning it. On routed subnets ARP cannot reach across the
+  router, so those fall back to IP identity — which is what the `attached`
+  flag in `spark.yaml` has always been for. A row discovered without a MAC is
+  adopted rather than duplicated once a MAC becomes visible.
+
+- **Vendor from the MAC prefix**, via a curated OUI table rather than the full
+  IEEE registry — the same reasoning as shipping numeric OIDs instead of a MIB
+  compiler. Unknown prefixes report nothing rather than guessing. Locally
+  administered addresses are flagged, since a phone randomising its MAC per
+  network will never return under the same one.
+
+- **Devices page** with inline renaming, ignore, and a **Watch** button that
+  turns a discovered device into a ping target in one click. That button is
+  the point: an inventory you cannot act on is trivia.
+
+### Notes
+
+- Discovery deliberately does not set `Device.status`. "Answered an ICMP sweep
+  forty seconds ago" is not the same claim as "is up", and the check engine
+  owns that column for anything actually being watched. Discovery's freshness
+  signal is `last_seen`, rendered as an age.
+- Subnets larger than /22 are skipped with a warning rather than silently
+  probing 65k addresses.
+- Still no services: no port scan and no Docker inventory. Those were
+  deliberately left out of this increment so the identity rules could land on
+  their own.
+
 ## Unreleased — increment 3: the check engine (2026-09-17)
 
 SPARK can now tell you something is down. No alerting yet — that is increment 4

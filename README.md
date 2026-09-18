@@ -24,6 +24,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Configuration, database, authentication, web shell | ✅ working |
 | Check engine — ping, TCP, HTTP(S), DNS | ✅ working |
 | Live-updating pages (server-sent events) | ✅ working |
+| Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |
@@ -342,6 +343,10 @@ spark/
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
     events.py           in-process pub/sub for live page updates
+    discovery/
+      sweep.py          ICMP sweep, ARP table, reverse DNS
+      oui.py            MAC prefix to vendor
+      store.py          the device identity rules
     checks/
       base.py           CheckSpec and CheckOutcome; no database access
       net.py            ping, tcp, http, dns
@@ -358,6 +363,7 @@ spark/
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_events.py      what live updates publish, and what they stay quiet about
+    test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
@@ -388,7 +394,8 @@ Four things that will bite you if you don't know them:
 | 1 | Foundation — config, schema, auth, dashboard shell | ✅ done |
 | 2 | SNMP collection engine + capability probe | ✅ done |
 | 3 | Check engine — ping, TCP, HTTP, DNS, hysteresis, incidents, targets UI | ✅ done |
-| 4 | Discovery — subnet sweep, Docker inventory, port scan | next |
+| 4 | Device discovery — sweep, MAC identity, devices page | ✅ done |
+| 4b | Service discovery — port scan, Docker inventory | next |
 | 5 | Service map — tree and filterable list views | planned |
 | 6 | SNMP metric storage + device pages | planned |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
@@ -414,7 +421,9 @@ Four choices that are expensive to change later, written down so they don't get
 "simplified" away.
 
 **Devices are keyed on MAC, not IP.** DHCP reassigns addresses. A tool keyed on
-IP silently loses a device's entire history the first time a lease churns.
+IP silently loses a device's entire history the first time a lease churns. This
+is why `attached` per subnet is not cosmetic: ARP does not cross a router, so a
+routed VLAN yields no MAC and falls back to the weaker identity.
 
 **Incidents are rows, not a query.** Deriving "was it down, and for how long"
 from raw check results at read time gets painful fast, and it is the question

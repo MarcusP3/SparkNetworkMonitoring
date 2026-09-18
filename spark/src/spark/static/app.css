@@ -418,3 +418,23 @@ tr.just-changed td {
 @media (prefers-reduced-motion: reduce) {
   tr.just-changed td { animation: none; background: var(--surface-2); }
 }
+
+/* ---- devices ---------------------------------------------------------- */
+
+.inline-name {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  margin: 0;
+}
+
+.inline-name input {
+  width: auto;
+  min-width: 9rem;
+  padding: .3rem .45rem;
+  font-size: .875rem;
+}
+
+/* The device count tile is a link now; it should not look like one. */
+a.stat { text-decoration: none; color: inherit; }
+a.stat:hover { border-color: var(--accent); }

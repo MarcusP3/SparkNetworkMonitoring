@@ -17,6 +17,7 @@
   <nav class="nav">
     <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
     <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
+    <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
     <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
     <a href="/settings" class="disabled" title="Arrives with the alerting increment">Settings</a>
   </nav>

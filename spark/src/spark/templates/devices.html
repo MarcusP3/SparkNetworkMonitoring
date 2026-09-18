@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <h1>Devices</h1>
+    <form method="post" action="/devices/scan">
+      <button type="submit" class="btn-primary">Scan now</button>
+    </form>
+  </div>
+
+  <div id="live">
+
+  {% if rows %}
+  <section class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Address</th>
+          <th>MAC</th>
+          <th>Vendor</th>
+          <th>Last seen</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set device = row.device %}
+        <tr data-target-id="device-{{ device.id }}"
+            data-status="{{ 'stale' if row.age_seconds and row.age_seconds > 3600 else 'seen' }}">
+          <td>
+            <form method="post" action="/devices/{{ device.id }}/name" class="inline-name">
+              <input type="text" name="friendly_name"
+                     value="{{ device.friendly_name or '' }}"
+                     placeholder="{{ device.hostname or device.primary_ip }}"
+                     aria-label="Friendly name">
+              <button type="submit" class="btn-quiet">Save</button>
+            </form>
+            {% if not device.acknowledged %}
+              <span class="pill warn" title="Not yet reviewed">new</span>
+            {% endif %}
+          </td>
+          <td>
+            <code>{{ device.primary_ip or '—' }}</code>
+            {% if device.subnet %}<div class="muted small">{{ device.subnet }}</div>{% endif %}
+          </td>
+          <td>
+            {% if device.mac %}
+              <code class="small">{{ device.mac }}</code>
+              {% if row.randomised %}
+                <span class="pill warn" title="Locally administered address — most
+                      likely a phone randomising its MAC, so it will not come back
+                      under this address">random</span>
+              {% endif %}
+            {% else %}
+              <span class="muted small" title="No MAC: this subnet is routed, so ARP
+                    cannot reach it. Identity falls back to IP.">IP identity</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ device.vendor or '—' }}</td>
+          <td class="muted small">
+            {% if row.age_seconds is none %}never
+            {% elif row.age_seconds < 120 %}just now
+            {% elif row.age_seconds < 3600 %}{{ (row.age_seconds // 60) | int }}m ago
+            {% elif row.age_seconds < 86400 %}{{ (row.age_seconds // 3600) | int }}h ago
+            {% else %}{{ (row.age_seconds // 86400) | int }}d ago
+            {% endif %}
+          </td>
+          <td class="actions">
+            {% if row.watched %}
+              <span class="pill ok" title="A target is watching this device">watched</span>
+            {% else %}
+              <form method="post" action="/devices/{{ device.id }}/watch">
+                <button type="submit" class="btn-quiet">Watch</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/devices/{{ device.id }}/ignore">
+              <button type="submit" class="btn-quiet">Ignore</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <p class="muted small">
+    Devices are identified by MAC where one is available, so a device keeps its
+    history when DHCP moves it. On routed subnets ARP cannot reach across the
+    router, so those fall back to IP identity and will look like a new device if
+    their lease changes.
+  </p>
+  {% else %}
+  <section class="card empty-state">
+    <h2>Nothing discovered yet</h2>
+    {% if subnets %}
+    <p class="muted">
+      The first sweep runs shortly after startup and then every 15 minutes.
+      Press <strong>Scan now</strong> if you would rather not wait.
+    </p>
+    <p class="muted">
+      If it stays empty: the container needs <code>network_mode: host</code> and
+      <code>cap_add: [NET_RAW]</code>. On a bridge network the sweep is behind
+      NAT and finds nothing at all.
+    </p>
+    {% else %}
+    <p class="muted">
+      No subnets are configured, so there is nothing to sweep. Add them under
+      <code>network.subnets</code> in <code>spark.yaml</code> and restart.
+    </p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if has_ignored %}
+  <p class="muted small">Some devices are ignored and hidden from this list.</p>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}

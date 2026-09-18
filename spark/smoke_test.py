@@ -221,6 +221,56 @@ def main() -> int:
 
                 client.post(f"/targets/{probe_id}/delete")
 
+                print("\nDevices")
+                r = client.get("/devices")
+                check("devices page renders", r.status_code == 200 and "Devices" in r.text)
+                check("honest empty state before any sweep",
+                      "Nothing discovered yet" in r.text)
+                check("it names the usual cause of an empty sweep",
+                      "network_mode: host" in r.text and "NET_RAW" in r.text)
+
+                # A device the sweep would have created, without needing a network.
+                import asyncio as _asyncio
+                from spark import db as _db
+                from spark.discovery.store import record as _record
+                from spark.discovery.sweep import Observation as _Obs
+
+                async def _seed():
+                    async with _db.session_scope() as ses:
+                        await _record(ses, _Obs(ip="10.1.10.77", mac="b8:27:eb:01:02:03",
+                                                hostname="pi.lan", vendor="Raspberry Pi",
+                                                subnet="LAN"))
+                _asyncio.get_event_loop().run_until_complete(_seed()) \
+                    if False else _asyncio.run(_seed())
+
+                r = client.get("/devices")
+                check("a discovered device is listed", "10.1.10.77" in r.text)
+                check("its vendor came from the MAC prefix", "Raspberry Pi" in r.text)
+                check("it is offered for watching", "/watch" in r.text)
+
+                dev_id = int(re.search(r"/devices/(\d+)/watch", r.text).group(1))
+                r = client.post(f"/devices/{dev_id}/watch")
+                check("watching a device creates a target",
+                      r.status_code == 303 and r.headers.get("location") == "/targets",
+                      f"got {r.status_code} -> {r.headers.get('location')}")
+                r = client.get("/targets")
+                check("the new target is watching that address", "10.1.10.77" in r.text)
+                r = client.get("/devices")
+                check("the device now reads as watched", "watched" in r.text)
+
+                r = client.post(f"/devices/{dev_id}/watch")
+                check("watching twice does not make a second target",
+                      client.get("/targets").text.count("10.1.10.77") == 1)
+
+                # Tidy up: later sections count targets, and leaving this one
+                # behind makes their arithmetic wrong rather than their logic.
+                rows = client.get("/targets").text
+                watched_id = int(re.search(
+                    r"10\.1\.10\.77.*?/targets/(\d+)/edit", rows, re.S).group(1))
+                client.post(f"/targets/{watched_id}/delete")
+                check("cleanup left the other targets alone",
+                      client.get("/targets").text.count("10.1.10.77") == 0)
+
                 print("\nLive updates")
                 r = client.get("/targets")
                 check("targets page has a live region", 'id="live"' in r.text)

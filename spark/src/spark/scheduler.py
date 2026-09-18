@@ -18,7 +18,9 @@ from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
-from .db import session_scope
+from .db import get_setting, session_scope
+from .discovery.runner import JOB_ID as DISCOVERY_JOB_ID
+from .discovery.runner import run_sweep
 from .engine.runner import run_target
 from .models import Target
 
@@ -119,6 +121,45 @@ async def sync_jobs() -> int:
     for target in targets:
         schedule_target(target)
     return len(targets)
+
+
+async def schedule_discovery(config) -> bool:  # type: ignore[no-untyped-def]
+    """Add or update the periodic subnet sweep.
+
+    Returns whether it is scheduled, which is worth logging at startup: a
+    silently absent sweep looks exactly like a network with nothing on it.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+
+    async with session_scope() as session:
+        settings = await get_setting(session, "discovery")
+
+    if not settings.get("enabled", True) or not config.network.subnets:
+        try:
+            scheduler.remove_job(DISCOVERY_JOB_ID)
+        except Exception:  # noqa: BLE001 - not scheduled is the desired state
+            pass
+        return False
+
+    interval = max(60, int(settings.get("sweep_interval_seconds", 900) or 900))
+    scheduler.add_job(
+        run_sweep,
+        "interval",
+        seconds=interval,
+        jitter=min(int(interval * 0.1) or 1, 60),
+        args=[config],
+        id=DISCOVERY_JOB_ID,
+        replace_existing=True,
+        name="Subnet sweep",
+    )
+    return True
+
+
+async def run_discovery_now(config) -> None:  # type: ignore[no-untyped-def]
+    """Sweep immediately, for the "Scan now" button."""
+    await run_sweep(config)
 
 
 async def run_now(target_id: int) -> None:
