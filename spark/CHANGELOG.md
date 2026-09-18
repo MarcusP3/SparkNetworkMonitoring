@@ -44,6 +44,15 @@ It now fills itself.
   is ample for an idle-session timestamp, and it removes a write — and a held
   lock — from every authenticated request.
 
+- **Table rows aligned.** `.table td` had no `vertical-align`, so cells lined
+  up on their first text baseline — a row whose name cell was two lines tall
+  left every other cell stranded at the top. Worse, `.actions` set
+  `display: flex` on the `<td>` itself, which stops it generating a table-cell
+  box at all, so it never stretched to the row height and centring within it
+  did nothing. Cells now centre, the action buttons lay out inline, and the
+  "new" badge sits beside the name field instead of under it so rows are a
+  uniform height.
+
 ### Added (diagnostics)
 
 - **The Devices page says why it is empty.** The sweep now records what it did

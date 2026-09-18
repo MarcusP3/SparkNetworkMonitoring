@@ -247,7 +247,14 @@ button { font: inherit; cursor: pointer; }
   padding: .4rem .6rem;
   border-bottom: 1px solid var(--border);
 }
-.table td { padding: .55rem .6rem; border-bottom: 1px solid var(--border); }
+.table td {
+  padding: .55rem .6rem;
+  border-bottom: 1px solid var(--border);
+  /* Without this, cells align on the first text baseline. A row whose
+     name cell is two lines tall then leaves every other cell -- and the
+     action buttons especially -- stranded at the top of it. */
+  vertical-align: middle;
+}
 .table tr:last-child td { border-bottom: none; }
 
 .pill {
@@ -314,15 +321,21 @@ button { font: inherit; cursor: pointer; }
   .grid-2 { grid-template-columns: 1fr; }
 }
 
+/* Laid out inline rather than as a flex container. `display: flex` here was
+   applied to the <td> itself, which makes it stop being a table cell -- it no
+   longer stretches to the row height, so centring within it did nothing. */
 .actions {
-  display: flex;
-  gap: .25rem;
-  align-items: center;
-  justify-content: flex-end;
+  text-align: right;
   white-space: nowrap;
 }
 
-.actions form { display: inline; margin: 0; }
+.actions form,
+.actions > a,
+.actions > span {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0 0 .25rem;
+}
 
 .form-actions {
   display: flex;
@@ -422,6 +435,13 @@ tr.just-changed td {
 /* ---- devices ---------------------------------------------------------- */
 
 .inline-name {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  margin: 0;
+}
+
+.inline-name form {
   display: flex;
   gap: .35rem;
   align-items: center;

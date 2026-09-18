@@ -90,16 +90,18 @@
         <tr data-target-id="device-{{ device.id }}"
             data-status="{{ 'stale' if row.age_seconds and row.age_seconds > 3600 else 'seen' }}">
           <td>
-            <form method="post" action="/devices/{{ device.id }}/name" class="inline-name">
-              <input type="text" name="friendly_name"
-                     value="{{ device.friendly_name or '' }}"
-                     placeholder="{{ device.hostname or device.primary_ip }}"
-                     aria-label="Friendly name">
-              <button type="submit" class="btn-quiet">Save</button>
-            </form>
-            {% if not device.acknowledged %}
-              <span class="pill warn" title="Not yet reviewed">new</span>
-            {% endif %}
+            <div class="inline-name">
+              <form method="post" action="/devices/{{ device.id }}/name">
+                <input type="text" name="friendly_name"
+                       value="{{ device.friendly_name or '' }}"
+                       placeholder="{{ device.hostname or device.primary_ip }}"
+                       aria-label="Friendly name">
+                <button type="submit" class="btn-quiet">Save</button>
+              </form>
+              {% if not device.acknowledged %}
+                <span class="pill warn" title="Not yet reviewed">new</span>
+              {% endif %}
+            </div>
           </td>
           <td>
             <code>{{ device.primary_ip or '—' }}</code>
