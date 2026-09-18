@@ -138,12 +138,18 @@
             data-status="{{ 'stale' if row.age_seconds and row.age_seconds > 3600 else 'seen' }}">
           <td>
             <div class="inline-name">
+              {# The Save button is hidden until the field actually differs from
+                 what is stored -- see the delegated handler at the foot of this
+                 template. data-original is the comparison point; the input's
+                 own defaultValue would do, but this survives the live refresh
+                 replacing the row underneath us. #}
               <form method="post" action="/devices/{{ device.id }}/name">
                 <input type="text" name="friendly_name"
                        value="{{ device.friendly_name or '' }}"
+                       data-original="{{ device.friendly_name or '' }}"
                        placeholder="{{ device.hostname or device.primary_ip }}"
                        aria-label="Friendly name">
-                <button type="submit" class="btn-quiet">Save</button>
+                <button type="submit" class="btn-quiet save-name">Save</button>
               </form>
               {% if not device.acknowledged %}
                 <form method="post" action="/devices/{{ device.id }}/acknowledge">
@@ -234,6 +240,34 @@
 </div>
 
 <script>
+  // Show a row's Save button only once its name differs from what is stored.
+  //
+  // A control that is always visible but usually does nothing reads as broken
+  // -- the first question this button ever got asked was "what does save do on
+  // the page?", which is the answer.
+  //
+  // Three things make this survive the live refresh, which replaces the whole
+  // of #live -- including every row -- whenever a sweep finishes:
+  //
+  //   * the hiding rule hangs off a class on <html>, which is never replaced,
+  //     so a browser with JS off never hides the button at all;
+  //   * the listener is delegated from document rather than bound per input,
+  //     so rows that arrive later are already covered;
+  //   * the comparison point is data-original from the server, not a value
+  //     captured at load.
+  (function () {
+    document.documentElement.classList.add('js-inline-save');
+
+    document.addEventListener('input', function (event) {
+      var input = event.target;
+      if (!input.matches || !input.matches('.inline-name input[name="friendly_name"]')) return;
+      var wrapper = input.closest('.inline-name');
+      if (!wrapper) return;
+      // Typing something and then undoing it is not an edit.
+      wrapper.classList.toggle('dirty', input.value !== (input.dataset.original || ''));
+    });
+  })();
+
   // Two small things, both progressive enhancement: with JS off the form still
   // works and the text still reads correctly, it just stops counting down.
   (function () {

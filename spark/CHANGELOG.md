@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — the Save button appears only when there is something to save (2026-09-18)
+
+The Save button beside each device name was always visible, on every row, and
+did nothing on almost all of them. The first question it ever got asked was
+"what does save do on the page?", which is the answer.
+
+### Changed
+
+- **Save is hidden until a name differs from what is stored.** Typing something
+  and undoing it hides it again — an edit is a difference, not a keystroke.
+
+- It is hidden by CSS hanging off a class JavaScript adds to `<html>`, not
+  rendered conditionally on the server. With JavaScript off the button is
+  simply always there and the form still works, which is the right way for this
+  to degrade. `visibility`, not `display`, so the Name column keeps its width
+  and the table does not shuffle sideways as you type.
+
+- The handler is delegated from `document` and compares against a
+  `data-original` attribute from the server, so rows replaced by a live refresh
+  are already covered rather than needing rebinding.
+
+### Fixed
+
+- **A live refresh no longer discards what you are typing.** Refreshing `#live`
+  replaces every element inside it, including the name field under the cursor,
+  so a sweep finishing mid-word threw the word away. The refresh now waits
+  while a field in that region is focused or holds unsaved changes, and runs
+  when you are done. Pre-existing, but the hidden Save button makes it visible:
+  your text and the button would vanish together.
+
+### Tests
+
+- Four more in `tests/test_schedule.py`, against a seeded device: the button is
+  in the HTML rather than conditionally rendered, the comparison value is the
+  stored name, an unnamed device compares against empty rather than against its
+  hostname placeholder, and saving still works.
+- Suite: 119 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — automatic scanning, on the page and on the clock (2026-09-18)
 
 Reported as "the devices tab does not run automatically". It was scheduled, and

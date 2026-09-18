@@ -520,3 +520,22 @@ a.stat:hover { border-color: var(--accent); }
 @media (max-width: 40rem) {
   .next-scan { margin-left: 0; flex-basis: 100%; }
 }
+
+/* ---- inline device name: Save appears only when there is something to save -- */
+
+/* Scoped to a class JS puts on <html>, so with JS off the button is simply
+   always there and the form still works. */
+.js-inline-save .inline-name .save-name {
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .12s ease-in;
+}
+
+.js-inline-save .inline-name.dirty .save-name {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* visibility rather than display: the button keeps its space whether or not it
+   is shown, so the Name column does not change width as you type and shove the
+   rest of the table sideways. */

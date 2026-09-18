@@ -29,7 +29,7 @@ from spark import scheduler as S
 from spark.config import Config
 from spark.discovery.runner import JOB_ID, SWEEP_INTERVAL_CHOICES
 from spark.main import create_app
-from spark.models import utcnow
+from spark.models import Device, utcnow
 
 SUBNET = {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1, "attached": True}
 
@@ -285,3 +285,66 @@ class TestJobIdentity:
         # Five sweeps of the same network on the same timer would be a
         # self-inflicted denial of service.
         assert len(with_scheduler(body)) == 1
+
+
+@pytest.fixture
+def client_with_device():
+    """A logged-in client whose database already holds one device.
+
+    Seeded before the app starts rather than through the API: discovery needs a
+    real network to find anything, and the device row markup is what these
+    tests are about.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="spark-schedule-dev-"))
+    cfg = make_config(tmp)
+
+    async def seed():
+        D.init_engine(cfg)
+        await D.init_db(cfg)
+        async with D.session_scope() as session:
+            session.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50",
+                               hostname="nas.lan", friendly_name="nas",
+                               subnet="LAN", last_seen=utcnow()))
+        await D.close_engine()
+
+    asyncio.run(seed())
+
+    with TestClient(create_app(cfg), follow_redirects=False) as c:
+        c.post("/setup", data={"username": "admin",
+                               "password": "correct horse battery",
+                               "password_confirm": "correct horse battery"})
+        yield c
+
+
+class TestInlineSaveButton:
+    """The Save button next to each device name.
+
+    It is hidden by CSS that hangs off a class JavaScript puts on <html>, so
+    the server-rendered page must always contain the button and the value the
+    script compares against. A browser with JavaScript off gets the old
+    always-visible button and a form that still works, which is the right way
+    for this to degrade.
+    """
+
+    def test_the_button_is_in_the_html_not_rendered_conditionally(self, client_with_device):
+        page = client_with_device.get("/devices").text
+        assert "nas.lan" in page, "the seeded device is not on the page"
+        # Hidden means hidden in the browser, not absent from the response.
+        # Omitting it server-side would leave a no-JS browser unable to save.
+        assert "save-name" in page
+
+    def test_the_name_field_carries_its_stored_value_to_compare_against(self, client_with_device):
+        page = client_with_device.get("/devices").text
+        assert 'data-original="nas"' in page
+
+    def test_a_device_with_no_name_compares_against_empty(self, client_with_device):
+        client_with_device.post("/devices/1/name", data={"friendly_name": ""})
+        page = client_with_device.get("/devices").text
+        # Not the hostname placeholder: typing the hostname in by hand is a
+        # real edit, and comparing against the placeholder would hide Save.
+        assert 'data-original=""' in page
+
+    def test_saving_a_name_still_works(self, client_with_device):
+        client_with_device.post("/devices/1/name", data={"friendly_name": "storage"})
+        page = client_with_device.get("/devices").text
+        assert 'data-original="storage"' in page

@@ -50,6 +50,20 @@
     if (!live || !window.EventSource) return;
 
     var inFlight = false;
+    var deferred = false;
+
+    // Refreshing #live replaces every element inside it, so a refresh that
+    // lands while someone is typing into one of those elements throws their
+    // input away mid-word. Waiting is always the better answer: the page is a
+    // few seconds stale, which is what it was anyway before the event arrived.
+    function beingEdited() {
+      var el = document.activeElement;
+      if (el && live.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) {
+        return true;
+      }
+      // Typed in, then clicked away without saving. Still theirs, not ours.
+      return live.querySelector('.dirty') !== null;
+    }
 
     function statusesById(root) {
       var map = {};
@@ -61,6 +75,11 @@
 
     function refresh() {
       if (inFlight) return;          // a burst of changes is still one fetch
+      if (beingEdited()) {           // come back when they have finished
+        deferred = true;
+        return;
+      }
+      deferred = false;
       inFlight = true;
       var before = statusesById(live);
       fetch(window.location.pathname, { headers: { 'X-Requested-With': 'fetch' } })
@@ -83,6 +102,10 @@
         .catch(function () { /* a failed refresh is not worth surfacing */ })
         .finally(function () { inFlight = false; });
     }
+
+    // A deferred refresh is not dropped, only postponed -- otherwise a page
+    // left with a half-typed name in it never updates again.
+    setInterval(function () { if (deferred) refresh(); }, 3000);
 
     // EventSource reconnects on its own if the server restarts, so there is no
     // retry logic here on purpose.
