@@ -116,7 +116,18 @@
           <td>{{ incident.target_name }}</td>
           <td class="muted small">{{ incident.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
           <td class="muted">
-            {% if incident.closed_at %}{{ incident.duration }}{% else %}
+            {% if incident.closed_at %}{{ incident.duration }}
+              {# A duration alone cannot say whether the outage ended or whether
+                 we simply stopped watching, and those read identically. #}
+              {% if incident.resolution == 'paused' %}
+                <div class="muted small" title="Monitoring was paused while this
+                      target was down, so the outage may have continued past
+                      this point">paused, not recovered</div>
+              {% elif incident.resolution == 'superseded' %}
+                <div class="muted small" title="Left open by an older bug and
+                      closed when the next incident opened">superseded</div>
+              {% endif %}
+            {% else %}
               <span class="pill bad">ongoing</span>
             {% endif %}
           </td>

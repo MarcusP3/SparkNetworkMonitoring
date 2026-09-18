@@ -106,6 +106,7 @@ async def dashboard(
             "closed_at": incident.closed_at,
             "duration": human_duration(incident.duration_seconds),
             "cause": incident.cause,
+            "resolution": incident.resolution,
             "suppressed_by_dependency": incident.suppressed_by_dependency,
         }
         for incident, name in incident_rows.all()

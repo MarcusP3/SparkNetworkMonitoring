@@ -13,7 +13,7 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from sqlalchemy import event, select, text
+from sqlalchemy import event, inspect, select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -114,7 +114,68 @@ async def _add_subnet(session: AsyncSession) -> None:
     await connection.run_sync(Subnet.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 3
+@migration(4, "record why an incident closed")
+async def _add_incident_resolution(session: AsyncSession) -> None:
+    """Add incident.resolution.
+
+    Hand-written DDL rather than model metadata, because SQLite can add a
+    column but SQLAlchemy has no portable "make this table match the model".
+    `tests/test_incidents.py` compares a migrated database against `create_all`
+    to catch the drift that invites.
+
+    Checks first rather than assuming. A database created by `create_all` at a
+    version this migration then runs against already has the column, and
+    `ALTER TABLE` is not idempotent -- it raises "duplicate column name" and
+    takes startup down with it. Any migration that adds a column has to
+    tolerate the column already being there.
+    """
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("incident")}
+    )
+    if "resolution" in existing:
+        log.info("incident.resolution already present; nothing to do")
+        return
+    await session.execute(text("ALTER TABLE incident ADD COLUMN resolution VARCHAR(32)"))
+
+
+@migration(5, "close incidents left open by pausing a target while it was down")
+async def _close_overlapping_incidents(session: AsyncSession) -> None:
+    """Repair overlapping open incidents.
+
+    Pausing a target while it was down never closed its incident, and resuming
+    reset the status to UNKNOWN -- so the next failure looked like a fresh
+    transition and opened another. Repeat, and one target has several incidents
+    all claiming to be ongoing at the same time.
+
+    Each superseded incident is closed at the moment the next one opened, which
+    is the last instant it can honestly be said to have still been running. The
+    newest is left open: if the target is still down, it genuinely is.
+    """
+    await session.execute(
+        text(
+            """
+            UPDATE incident
+               SET closed_at = (
+                       SELECT MIN(later.opened_at)
+                         FROM incident AS later
+                        WHERE later.target_id = incident.target_id
+                          AND later.opened_at > incident.opened_at
+                   ),
+                   resolution = 'superseded'
+             WHERE closed_at IS NULL
+               AND EXISTS (
+                       SELECT 1
+                         FROM incident AS later
+                        WHERE later.target_id = incident.target_id
+                          AND later.opened_at > incident.opened_at
+                   )
+            """
+        )
+    )
+
+
+CURRENT_VERSION = 5
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

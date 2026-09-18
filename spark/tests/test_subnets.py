@@ -388,7 +388,9 @@ class TestMigration:
 
         asyncio.run(build_old())
         version, has_table = asyncio.run(upgrade())
-        assert version == D.CURRENT_VERSION == 3
+        # Not pinned to a literal: this test is about migration 3 having run,
+        # not about what number the project has reached since.
+        assert version == D.CURRENT_VERSION >= 3
         assert has_table
 
 

@@ -17,6 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
+# Aliased: the module-level PAUSED here is an incident resolution, and
+# HealthStatus.PAUSED is a target state. Two different things, one word.
+from ..engine.state import PAUSED as PAUSED_RESOLUTION
+from ..engine.state import close_open_incidents
 from ..models import (
     DEFAULT_FAILURE_THRESHOLD,
     DEFAULT_INTERVAL_SECONDS,
@@ -272,6 +276,11 @@ async def toggle_target(
         # PAUSED rather than UNKNOWN: "nobody is looking" is a different fact
         # from "nobody has looked yet", and the dashboard counts them apart.
         target.status = HealthStatus.PAUSED
+        # An open incident has no knowable end once nobody is checking. Left
+        # open it reports an outage that grows for the length of the pause,
+        # and resuming sets the status to UNKNOWN so recovery never closes it
+        # either -- which is how one target ends up with several open at once.
+        await close_open_incidents(session, target.id, resolution=PAUSED_RESOLUTION)
     await session.commit()
 
     events.publish({"kind": "toggled", "target_id": target.id})

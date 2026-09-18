@@ -1,5 +1,72 @@
 # Changelog
 
+## Unreleased — one open incident per target (2026-09-18)
+
+Reported as three ongoing incidents for one target, with the right diagnosis:
+pausing and resuming while it was down. A target can only be down once at a
+time, so three simultaneous open incidents is corruption, not a display quirk.
+
+### Fixed
+
+Three faults in one path, none of which raised — an incident with no
+`closed_at` is a perfectly valid row, so the only symptom was a dashboard
+reporting outages that had ended hours earlier.
+
+- **Pausing a target left its incident open.** Nobody is checking a paused
+  target, so its incident has no knowable end; left open it reported an outage
+  growing for the length of the pause. Pausing now closes it at the moment
+  monitoring stopped, which is the only honest answer available.
+
+- **Resuming made the next failure look like a new outage.** Resume sets the
+  status to UNKNOWN, so the transition into DOWN read as fresh and opened
+  another incident on top of the one still open. Going down now continues an
+  incident that is already open instead of opening a second.
+
+- **Recovery could never close them.** Recovery requires the previous status to
+  be DOWN, and after a resume it was UNKNOWN — so a target that came back left
+  its incident open forever. Recovery now also closes *every* open incident for
+  the target rather than only the newest, which is what made older duplicates
+  immortal.
+
+### Added
+
+- **`incident.resolution`** — why it closed: recovered, paused, or superseded.
+  A duration cannot distinguish "it came back" from "we stopped watching", and
+  those two read identically on the dashboard. A paused incident now says
+  "paused, not recovered" under its duration.
+
+### Schema
+
+- **Migration 4** adds the column; **migration 5** repairs databases that
+  already have overlapping incidents, closing each superseded one at the moment
+  the next opened — the last instant it can honestly be said to have still been
+  running. The newest is left open: if the target is still down, it is.
+
+- Migration 4 checks whether the column exists before adding it. `ALTER TABLE`
+  is not idempotent, and a database created by `create_all` at a version this
+  migration then runs against already has it — which took startup down with
+  "duplicate column name" until the check was added. Any migration adding a
+  column needs this.
+
+### Notes
+
+- After the repair you will still see several incident rows. That is correct:
+  each pause genuinely ended an observation and each resume began a new one, so
+  separate outages is what was actually seen. Merging them would claim
+  knowledge of the gaps. What was broken is that all of them were open at once.
+
+### Tests
+
+- `tests/test_incidents.py`, 9 tests: the reported bug reproduced as three
+  pause/resume cycles, pausing closing the incident, going down again
+  continuing rather than duplicating, recovery closing all of them, the
+  ordinary outage path still working, the migration against a database
+  carrying the real corruption, and a comparison of the migrated schema against
+  `create_all` to catch hand-written DDL drifting from the model.
+- Two migration tests no longer pin the project's version number to a literal,
+  which made every new migration break an unrelated test.
+- Suite: 195 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — a Targets table that holds still (2026-09-18)
 
 ### Fixed

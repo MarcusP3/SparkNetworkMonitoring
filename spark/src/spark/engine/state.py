@@ -34,6 +34,12 @@ from ..models import CheckResult, HealthStatus, Incident, Severity, Target, utcn
 
 log = logging.getLogger(__name__)
 
+# Why an incident closed. Stored on the row because a duration cannot tell
+# "it came back" apart from "we stopped watching".
+RECOVERED = "recovered"
+PAUSED = "paused"
+SUPERSEDED = "superseded"
+
 
 @dataclass
 class Transition:
@@ -122,6 +128,21 @@ async def apply_outcome(
     if transition.went_down:
         suppressed = await _dependency_is_down(session, target)
         transition.suppressed_by_dependency = suppressed
+
+        # An incident already open means this target never stopped being down
+        # as far as the record is concerned -- most likely it was paused while
+        # down and then resumed, which resets its status to UNKNOWN and makes
+        # the next failure look like a fresh transition. Opening a second row
+        # would claim it was down twice at once. Reuse the one that is open.
+        existing = await _open_incident(session, target.id)
+        if existing is not None:
+            log.info(
+                "%s is DOWN again, continuing the incident opened at %s",
+                target.name, existing.opened_at,
+            )
+            transition.incident_opened = None
+            return transition
+
         incident = Incident(
             target_id=target.id,
             opened_at=now,
@@ -139,19 +160,56 @@ async def apply_outcome(
             " [suppressed: dependency is down]" if suppressed else "",
         )
     elif transition.recovered:
-        incident = await _open_incident(session, target.id)
-        if incident is not None:
-            incident.closed_at = now
-            transition.incident_closed = incident
+        # All of them, not just the newest: a database that already contains
+        # overlapping open incidents would otherwise keep the older ones open
+        # forever, and they would read as ongoing outages years from now.
+        closed = await close_open_incidents(session, target.id, when=now,
+                                            resolution=RECOVERED)
+        if closed:
+            transition.incident_closed = closed[0]
             log.info(
                 "%s recovered after %s",
                 target.name,
-                human_duration(incident.duration_seconds),
+                human_duration(closed[0].duration_seconds),
             )
         else:
             log.info("%s recovered", target.name)
 
     return transition
+
+
+async def close_open_incidents(
+    session: AsyncSession,
+    target_id: int,
+    *,
+    resolution: str,
+    when=None,  # type: ignore[no-untyped-def]
+) -> list[Incident]:
+    """Close every open incident for a target, newest first.
+
+    Pausing a target calls this. An incident whose target nobody is checking
+    has no knowable end, so leaving it open makes the dashboard report an
+    outage that grows for as long as the pause lasts -- and the resumed target
+    starts from UNKNOWN, so recovery never closes it either. Closing it at the
+    moment monitoring stopped is the only honest answer available.
+    """
+    when = when or utcnow()
+    incidents = list(
+        (
+            await session.execute(
+                select(Incident)
+                .where(Incident.target_id == target_id, Incident.closed_at.is_(None))
+                .order_by(Incident.opened_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for index, incident in enumerate(incidents):
+        incident.closed_at = when
+        # Only the newest ended now; anything older was already a duplicate.
+        incident.resolution = resolution if index == 0 else SUPERSEDED
+    return incidents
 
 
 async def _dependency_is_down(session: AsyncSession, target: Target) -> bool:

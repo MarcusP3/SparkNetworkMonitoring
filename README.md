@@ -420,6 +420,7 @@ spark/
     test_subnets.py     CIDR/VLAN validation, membership, seeding, migration 3
     test_targets_page.py  what the targets list says about failures, and when
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
+    test_incidents.py   one open incident per target, across pause/resume
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```

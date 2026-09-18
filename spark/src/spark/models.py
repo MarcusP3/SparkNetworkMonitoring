@@ -482,6 +482,11 @@ class Incident(Base):
     closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     severity: Mapped[Severity] = enum_column(Severity, default=Severity.CRITICAL)
     cause: Mapped[str | None] = mapped_column(Text)
+
+    # Why it closed. "Recovered" and "we stopped looking" are different facts
+    # and a duration alone cannot tell them apart: an incident closed because
+    # monitoring was paused may well have continued afterwards.
+    resolution: Mapped[str | None] = mapped_column(String(32))
     acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     # True when this incident was a downstream symptom of another failure and
