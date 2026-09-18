@@ -26,6 +26,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Device inventory — naming, review state, watch-in-one-click | ✅ working |
+| Scan schedule — on/off and interval, set on the Devices page | ✅ working |
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
@@ -146,7 +147,8 @@ SNMP collection, which reads MAC-to-IP off the switch for every VLAN at once.
 
 ## Monitoring
 
-There is no discovery yet, so targets are added by hand at `/targets`.
+Targets come from two places: added by hand at `/targets`, or promoted from a
+discovered device with the **Watch** button at `/devices`.
 
 ### Check types
 
@@ -368,6 +370,7 @@ spark/
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
     test_retention.py   downsampling keeps outages; weighted averages; idempotence
+    test_schedule.py    when the first sweep is due; the scan schedule form
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```

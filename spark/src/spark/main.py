@@ -56,7 +56,8 @@ def create_app(config: Config | None = None) -> FastAPI:
 
         scheduler_module.start()
         scheduled = await scheduler_module.sync_jobs()
-        sweeping = await scheduler_module.schedule_discovery(config)
+        # A few seconds, not a full interval: see schedule_discovery.
+        sweeping = await scheduler_module.schedule_discovery(config, first_run_delay=15)
         scheduler_module.schedule_retention()
 
         log.info(

@@ -16,12 +16,68 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
+from ..db import get_setting, save_setting
 from ..discovery.oui import is_locally_administered
-from ..discovery.runner import last_sweep
+from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_sweep
 from ..models import CheckType, Device, HealthStatus, Target, User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
+
+DEFAULT_SWEEP_SECONDS = 900
+
+
+def _in_words(seconds: float) -> str:
+    """A rough duration, because a precise one would be a lie.
+
+    The sweep job carries up to 10% jitter, so "in 14m" claims an accuracy the
+    schedule does not have.
+    """
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return "under a minute"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"about {minutes} minute{'s' if minutes != 1 else ''}"
+    hours = round(minutes / 60)
+    return f"about {hours} hour{'s' if hours != 1 else ''}"
+
+
+async def _scan_schedule(session: AsyncSession, config: Config) -> dict:
+    """What the Devices page needs to describe and edit automatic scanning.
+
+    `next_run` comes from the scheduler rather than from the settings, because
+    the settings say what was asked for and the scheduler says what is actually
+    going to happen. Those disagree in exactly the case worth surfacing: the
+    box is ticked but no subnets are configured, so nothing is scheduled.
+    """
+    settings = await get_setting(session, "discovery")
+    enabled = bool(settings.get("enabled", True))
+    seconds = int(settings.get("sweep_interval_seconds", DEFAULT_SWEEP_SECONDS)
+                  or DEFAULT_SWEEP_SECONDS)
+
+    next_run = scheduler_module.discovery_next_run()
+    next_in = None
+    if next_run is not None:
+        next_in = max(0.0, (next_run - datetime.now(next_run.tzinfo)).total_seconds())
+
+    if not enabled:
+        text = "Automatic scanning is off."
+    elif not config.network.subnets:
+        text = "No subnets are configured, so there is nothing to scan."
+    elif next_in is None:
+        text = "Not scheduled — restart SPARK if this persists."
+    else:
+        text = f"Next scan in {_in_words(next_in)}."
+
+    return {
+        "enabled": enabled,
+        "interval_minutes": max(1, seconds // 60),
+        "choices": SWEEP_INTERVAL_CHOICES,
+        "next_in": None if next_in is None else int(next_in),
+        "interval_seconds": seconds,
+        "text": text,
+    }
 
 
 @router.get("/devices")
@@ -92,8 +148,45 @@ async def list_devices(
             "unreviewed": unreviewed,
             "subnets": config.network.subnets,
             "sweep": sweep,
+            "scan": await _scan_schedule(session, config),
         },
     )
+
+
+@router.post("/devices/schedule")
+async def set_scan_schedule(
+    auto: str = Form(""),
+    interval_minutes: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Turn automatic scanning on or off and set how often it runs.
+
+    Applied to the running scheduler rather than only written to the database,
+    so it takes effect now. A setting that needs a restart to mean anything is
+    a setting people stop believing.
+
+    The interval is validated against the offered list instead of being coerced
+    into a range: a value that is not one of the choices did not come from the
+    page, and the safe reading of that is to keep what is already there.
+    """
+    settings = await get_setting(session, "discovery")
+    settings["enabled"] = auto == "1"
+    try:
+        minutes = int(interval_minutes)
+    except (TypeError, ValueError):
+        minutes = 0
+    if minutes in SWEEP_INTERVAL_CHOICES:
+        settings["sweep_interval_seconds"] = minutes * 60
+
+    await save_setting(session, "discovery", settings)
+    await session.commit()
+
+    # Settings passed in rather than re-read: this request may still hold the
+    # write lock, and a second session reading it is how the page hung before.
+    await scheduler_module.schedule_discovery(config, settings)
+    return redirect("/devices")
 
 
 @router.post("/devices/scan")

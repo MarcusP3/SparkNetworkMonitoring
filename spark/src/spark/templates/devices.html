@@ -18,6 +18,43 @@
     </div>
   </div>
 
+  {# Deliberately outside #live: a live refresh replaces that region wholesale,
+     which would discard a dropdown you had changed but not yet applied. #}
+  <section class="card scan-schedule">
+    <form method="post" action="/devices/schedule" class="row-form">
+      <label class="checkbox">
+        <input type="checkbox" name="auto" value="1" id="auto-scan"
+               {% if scan.enabled %}checked{% endif %}>
+        <span>Scan automatically</span>
+      </label>
+
+      <label class="inline-field" id="interval-field">
+        <span class="muted">every</span>
+        {# Not disabled when the box is unticked, on purpose: a disabled select
+           submits nothing, which would silently reset the interval every time
+           automatic scanning was switched off. CSS greys it instead. #}
+        <select name="interval_minutes" id="scan-interval">
+          {% if scan.interval_minutes not in scan.choices %}
+            <option value="{{ scan.interval_minutes }}" selected>{{ scan.interval_minutes }} minutes</option>
+          {% endif %}
+          {% for minutes in scan.choices %}
+            <option value="{{ minutes }}" {% if minutes == scan.interval_minutes %}selected{% endif %}>
+              {% if minutes < 60 %}{{ minutes }} minutes
+              {% elif minutes == 60 %}1 hour
+              {% else %}{{ minutes // 60 }} hours{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <button type="submit" class="btn-quiet">Apply</button>
+
+      <span class="muted small next-scan" id="next-scan"
+            data-in="{{ scan.next_in if scan.next_in is not none else '' }}"
+            data-interval="{{ scan.interval_seconds }}">{{ scan.text }}</span>
+    </form>
+  </section>
+
   <div id="live">
 
   {% if sweep %}
@@ -172,8 +209,8 @@
     {% if subnets %}
     {% if not sweep %}
     <p class="muted">
-      No sweep has run yet. The first one runs every 15 minutes from startup —
-      press <strong>Scan now</strong> if you would rather not wait.
+      No sweep has run yet. The first one starts a few seconds after SPARK
+      does — press <strong>Scan now</strong> if you would rather not wait.
     </p>
     {% else %}
     <p class="muted">
@@ -195,4 +232,68 @@
   {% endif %}
   </div>
 </div>
+
+<script>
+  // Two small things, both progressive enhancement: with JS off the form still
+  // works and the text still reads correctly, it just stops counting down.
+  (function () {
+    var box = document.getElementById('auto-scan');
+    var field = document.getElementById('interval-field');
+    var status = document.getElementById('next-scan');
+    if (!box || !field) return;
+
+    function syncDimming() {
+      field.classList.toggle('dimmed', !box.checked);
+    }
+    box.addEventListener('change', syncDimming);
+    syncDimming();
+
+    // A countdown, so the page answers "is this actually scheduled" by
+    // visibly moving rather than by asserting it once and going stale.
+    if (!status) return;
+    var select = document.getElementById('scan-interval');
+    var settled = status.textContent;
+    var wasOn = box.checked;
+    var wasEvery = select ? select.value : null;
+
+    // Changing a control does not change the schedule; pressing Apply does.
+    // Without this the page counts down to a scan on the old interval while
+    // displaying the new one, which reads as the setting having taken effect.
+    function dirty() {
+      return box.checked !== wasOn || (select !== null && select.value !== wasEvery);
+    }
+    function show(text) {
+      settled = text;
+      status.textContent = dirty() ? 'Not applied yet — press Apply.' : text;
+    }
+    box.addEventListener('change', function () { show(settled); });
+    if (select) select.addEventListener('change', function () { show(settled); });
+
+    var remaining = parseInt(status.getAttribute('data-in'), 10);
+    var interval = parseInt(status.getAttribute('data-interval'), 10);
+    if (isNaN(remaining) || isNaN(interval)) return;
+
+    function words(seconds) {
+      if (seconds < 60) return 'under a minute';
+      var minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return 'about ' + minutes + ' minute' + (minutes === 1 ? '' : 's');
+      var hours = Math.round(minutes / 60);
+      return 'about ' + hours + ' hour' + (hours === 1 ? '' : 's');
+    }
+
+    setInterval(function () {
+      remaining -= 10;
+      if (remaining > 0) {
+        show('Next scan in ' + words(remaining) + '.');
+      } else if (remaining > -60) {
+        show('Scanning now…');
+      } else {
+        // The sweep has been and gone; re-arm rather than sit at zero. The
+        // real schedule carries jitter, so this is an estimate either way, and
+        // any page load replaces it with the scheduler's own answer.
+        remaining = interval;
+      }
+    }, 10000);
+  })();
+</script>
 {% endblock %}

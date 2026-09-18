@@ -126,18 +126,37 @@ async def sync_jobs() -> int:
     return len(targets)
 
 
-async def schedule_discovery(config) -> bool:  # type: ignore[no-untyped-def]
+async def schedule_discovery(
+    config,  # type: ignore[no-untyped-def]
+    settings: dict | None = None,
+    *,
+    first_run_delay: float | None = None,
+) -> bool:
     """Add or update the periodic subnet sweep.
 
     Returns whether it is scheduled, which is worth logging at startup: a
     silently absent sweep looks exactly like a network with nothing on it.
+
+    `settings` lets a caller that has just written them pass them straight in.
+    That is not only a saved round trip: the alternative is opening a second
+    session for a read from inside a request that may still hold the write
+    lock, which is the shape of the bug that made the Devices page hang.
+
+    `first_run_delay` exists because of a genuinely misleading default. An
+    interval trigger's first fire is one whole interval away, so a fresh
+    container does not sweep for fifteen minutes, and every rebuild restarts
+    that clock. Anyone who deploys, opens the Devices page and presses "Scan
+    now" concludes, reasonably, that automatic scanning does not work. Startup
+    passes a few seconds here so the first sweep lands while you are still
+    looking at the page.
     """
     scheduler = _scheduler
     if scheduler is None:
         return False
 
-    async with session_scope() as session:
-        settings = await get_setting(session, "discovery")
+    if settings is None:
+        async with session_scope() as session:
+            settings = await get_setting(session, "discovery")
 
     if not settings.get("enabled", True) or not config.network.subnets:
         try:
@@ -147,6 +166,11 @@ async def schedule_discovery(config) -> bool:  # type: ignore[no-untyped-def]
         return False
 
     interval = max(60, int(settings.get("sweep_interval_seconds", 900) or 900))
+    extra: dict[str, Any] = {}
+    if first_run_delay is not None:
+        extra["next_run_time"] = datetime.now(timezone.utc) + timedelta(
+            seconds=max(0.0, first_run_delay)
+        )
     scheduler.add_job(
         run_sweep,
         "interval",
@@ -156,8 +180,23 @@ async def schedule_discovery(config) -> bool:  # type: ignore[no-untyped-def]
         id=DISCOVERY_JOB_ID,
         replace_existing=True,
         name="Subnet sweep",
+        **extra,
     )
     return True
+
+
+def discovery_next_run() -> datetime | None:
+    """When the next automatic sweep is due, or None if none is scheduled.
+
+    The Devices page shows this. "Is it scanning automatically?" should be
+    answerable by looking at the page, not by watching it for a quarter of an
+    hour to see whether anything happens.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return None
+    job = scheduler.get_job(DISCOVERY_JOB_ID)
+    return getattr(job, "next_run_time", None) if job is not None else None
 
 
 def trigger_discovery_now(config) -> bool:  # type: ignore[no-untyped-def]

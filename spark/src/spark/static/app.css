@@ -476,3 +476,47 @@ a.stat:hover { border-color: var(--accent); }
 
 .head-actions { display: flex; gap: .5rem; align-items: center; }
 .head-actions form { margin: 0; }
+
+/* ---- automatic scan schedule ------------------------------------------ */
+
+/* One line of controls rather than a form of stacked labels: it is two
+   settings, and stacking them would make a paragraph out of a sentence. */
+.row-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem;
+  margin: 0;
+}
+
+.row-form label { margin: 0; }
+
+.inline-field {
+  display: flex;
+  flex-direction: row;      /* .form label sets column; this is a row */
+  align-items: center;
+  gap: .4rem;
+  margin: 0;
+}
+
+.inline-field select {
+  width: auto;
+  padding: .3rem .45rem;
+  font-size: .875rem;
+}
+
+/* Greyed but still enabled. A disabled <select> submits nothing, which would
+   wipe the stored interval every time automatic scanning was switched off, so
+   this is appearance only -- the opposite choice from fieldset.tuning above,
+   where dropping the values is exactly what is wanted. */
+.inline-field.dimmed { opacity: .45; }
+
+/* Pushed to the far end so the sentence reads left to right and the status
+   does not shuffle the controls when its text changes length. */
+.next-scan { margin-left: auto; }
+
+.scan-schedule { padding: .75rem 1rem; }
+
+@media (max-width: 40rem) {
+  .next-scan { margin-left: 0; flex-basis: 100%; }
+}

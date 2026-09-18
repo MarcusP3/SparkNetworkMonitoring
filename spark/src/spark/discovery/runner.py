@@ -27,6 +27,12 @@ JOB_ID = "discovery:sweep"
 # first schema migration.
 STATE_KEY = "discovery_state"
 
+# The sweep intervals the UI offers, in minutes, and the only values accepted
+# back from it. A free-number box invites "1", which on a /24 means a sweep
+# still running when the next one starts; a fixed list makes the bad answers
+# unavailable rather than merely discouraged.
+SWEEP_INTERVAL_CHOICES: tuple[int, ...] = (5, 10, 15, 30, 60, 120, 360, 720, 1440)
+
 
 async def last_sweep(session) -> dict:  # type: ignore[no-untyped-def]
     """What the previous sweep did, or {} if none has run."""

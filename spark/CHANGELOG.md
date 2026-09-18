@@ -1,5 +1,67 @@
 # Changelog
 
+## Unreleased — automatic scanning, on the page and on the clock (2026-09-18)
+
+Reported as "the devices tab does not run automatically". It was scheduled, and
+had been since increment 4 — but an APScheduler interval trigger's first fire is
+one whole interval away, so a fresh container sat for 15 minutes doing nothing
+and every `--force-recreate` restarted that clock. Measured on the real trigger:
+the first automatic sweep was due 926 seconds after startup. Nothing on the page
+said so, and the only evidence either way was a log line at INFO.
+
+### Added
+
+- **Automatic scanning controls on the Devices page.** A checkbox to turn the
+  periodic sweep on or off and a dropdown of intervals — 5, 10, 15, 30 minutes,
+  1, 2, 6, 12, 24 hours. Applied to the running scheduler, not just written to
+  the database: no restart, no editing `spark.yaml`.
+
+- **A next-scan line that counts down.** "Is this actually scheduled?" is now
+  answerable by looking at the page. It is read from the scheduler rather than
+  from the settings, so the one case where those disagree — the box ticked but
+  no subnets configured — reads as "nothing to scan" instead of a countdown to
+  a sweep that will never happen.
+
+- `scheduler.discovery_next_run()`, and a `first_run_delay` on
+  `schedule_discovery()`.
+
+### Fixed
+
+- **The first sweep after startup now runs in 15 seconds instead of 15
+  minutes.** This is the whole of the reported bug.
+
+- `schedule_discovery()` accepts settings from the caller. It used to open a
+  second session to re-read them, and calling it from inside a request that
+  still held the write lock is the exact shape of the "database is locked" hang
+  that the Devices page had in increment 4.
+
+- The empty-state text no longer claims the first sweep is 15 minutes away.
+
+### Notes
+
+- The interval is validated against the offered list rather than clamped to a
+  range. A value that is not one of the choices did not come from the page, and
+  the safe reading of that is to keep the existing setting.
+
+- The dropdown is greyed with CSS, not the `disabled` attribute, when automatic
+  scanning is off. A disabled `<select>` submits nothing, so the obvious
+  implementation silently resets the stored interval every time the box is
+  unticked. There is a test for this. Note that `fieldset.tuning` on the target
+  form makes the opposite choice deliberately — there, dropping the values *is*
+  the intent, so the server applies its own defaults.
+
+- The controls sit outside `#live`, which a live refresh replaces wholesale; a
+  dropdown you had changed but not applied would otherwise be discarded
+  mid-edit.
+
+### Tests
+
+- `tests/test_schedule.py`, 18 tests: when the first sweep is due, enabling and
+  disabling, ticked-but-no-subnets, the form round trip, junk input, and that
+  rescheduling replaces the job rather than stacking five sweeps of the same
+  network onto the same timer.
+- Suite: 115 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — retention: the database stops growing forever (2026-09-18)
 
 The retention settings have existed since increment 1 and nothing read them.
