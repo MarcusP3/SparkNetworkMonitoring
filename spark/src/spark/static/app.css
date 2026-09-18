@@ -350,12 +350,33 @@ button { font: inherit; cursor: pointer; }
 
 .small { font-size: .82em; }
 
-tr.is-paused td { opacity: .55; }
+/* Paused means "not being checked", so the figures in the row are stale and
+   read dimmed. Two cells are exempt on purpose.
+
+   The status pill is not stale -- it is the thing telling you why the rest is
+   -- and the actions are not either: Resume is precisely what you came to a
+   paused row for, and greying out the control someone is reaching for is the
+   wrong signal entirely. */
+tr.is-paused td:not(:first-child):not(.actions) { opacity: .55; }
 
 .btn-quiet.danger:hover { color: #b3261e; }
 
 /* Status pills. Colour is a reinforcement, never the only signal - the word
-   itself is always present, so a red/green deficiency loses nothing. */
+   itself is always present, so a red/green deficiency loses nothing.
+
+   All one width, because the word inside changes: "unknown" is wider than "up"
+   and narrower than "degraded", so a pill sized to its text makes the whole
+   column -- and every column after it -- jump sideways whenever a target
+   changes state. Centred so the word stays put inside the pill too. */
+.pill.status-up,
+.pill.status-degraded,
+.pill.status-down,
+.pill.status-paused,
+.pill.status-unknown {
+  min-width: 4.75rem;
+  text-align: center;
+}
+
 .pill.status-up       { background: #e6f4ea; color: #1e6b33; }
 .pill.status-degraded { background: #fef7e0; color: #8a5b00; }
 .pill.status-down     { background: #fce8e6; color: #b3261e; }
@@ -625,3 +646,19 @@ input.narrow { max-width: 5.5rem; }
 
 /* A second dd under the same dt is a continuation paragraph, not a new term. */
 .legend dd + dd { margin-top: .5rem; }
+
+/* ---- targets: a status column that does not move --------------------- */
+
+/* Same-width pills stop the word changing the column, but the incident marker
+   beside them still appears and disappears. Reserving the column outright is
+   what actually holds the table still: a target going down should draw the eye
+   to one row, not shuffle every column on the page. */
+.targets-table th:first-child,
+.targets-table td:first-child {
+  width: 9rem;
+}
+
+/* Pause and Resume are different lengths; without a floor the actions column
+   changes width when you press one, and a width:100% table pays for that by
+   shaving pixels off every column to its left. */
+.btn-quiet.toggle-enabled { min-width: 4.75rem; }

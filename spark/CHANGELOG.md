@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — a Targets table that holds still (2026-09-18)
+
+### Fixed
+
+- **Pausing a target no longer greys out its own buttons.** `tr.is-paused td`
+  dimmed the whole row, including the actions — so Resume, the control you came
+  to a paused row to press, was the hardest thing in it to see. The dimming now
+  applies only to the middle cells, which are the ones actually stale. The
+  status pill is exempt too: it is not stale, it is the thing explaining why
+  everything else is.
+
+- **The table stops shifting sideways when a target changes state.** Two causes,
+  and the reported diagnosis — the status text changing length — was the first
+  of them:
+
+  - Status pills sized themselves to their word, so "up" and "unknown" and
+    "degraded" each made the column a different width. All status pills are now
+    one width and centred, and the column is reserved outright so the incident
+    marker appearing cannot move it either.
+  - The second was **"Pause" becoming "Resume"**. The table is `width: 100%`,
+    so a wider actions column is paid for by shaving pixels off every column to
+    its left. Measured at 8px of drift accumulating across the row, after the
+    pill fix had already removed the rest. The button now has a floor.
+
+  Verified by measuring every column header's x-position before and after a
+  pause: 8px of drift, then 0.
+
+### Tests
+
+- Two in `tests/test_targets_page.py` for the markup hooks the CSS hangs off —
+  a class silently disappearing would stop the rules applying with nothing else
+  noticing.
+- Suite: 186 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — hash-pinned dependencies (2026-09-18)
 
 Prompted by the right question: what in here could get compromised. The answer

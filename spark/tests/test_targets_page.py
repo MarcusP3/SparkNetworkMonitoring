@@ -89,6 +89,46 @@ def wobbling_target():
     asyncio.run(D.close_engine())
 
 
+class TestPausedRowLayout:
+    """A paused row must not dim its own controls or move the table.
+
+    Both of these are CSS, so what is asserted here is the hook the CSS hangs
+    off: if the class disappears from the markup the rule silently stops
+    applying and nothing else notices.
+    """
+
+    def test_the_pause_toggle_has_a_fixed_width_class(self):
+        client = client_with([
+            Target(name="resting", check_type=CheckType.PING, address="10.1.10.6",
+                   status=HealthStatus.PAUSED, enabled=False, last_checked_at=utcnow()),
+        ])
+        try:
+            row = row_for(client.get("/targets").text, "resting")
+            # "Pause" and "Resume" are different lengths and the table is
+            # width:100%, so without a floor on this button pressing it shaves
+            # pixels off every column to its left.
+            assert "toggle-enabled" in row
+            assert "Resume" in row
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+    def test_a_paused_row_is_marked_so_the_stale_cells_can_be_dimmed(self):
+        client = client_with([
+            Target(name="resting", check_type=CheckType.PING, address="10.1.10.6",
+                   status=HealthStatus.PAUSED, enabled=False, last_checked_at=utcnow()),
+        ])
+        try:
+            row = row_for(client.get("/targets").text, "resting")
+            assert "is-paused" in row
+            # The actions cell is exempt from the dimming by class, so it has
+            # to keep that class for the exemption to mean anything.
+            assert 'class="actions"' in row
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+
 class TestFailureCount:
     def test_a_down_target_does_not_report_its_running_total(self, down_target):
         row = row_for(down_target.get("/targets").text, "long-gone")

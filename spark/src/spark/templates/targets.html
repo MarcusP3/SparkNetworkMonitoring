@@ -10,7 +10,7 @@
 
   {% if targets %}
   <section class="card">
-    <table class="table">
+    <table class="table targets-table">
       <thead>
         <tr>
           <th>Status</th>
@@ -61,7 +61,11 @@
             </form>
             <a class="btn-quiet" href="/targets/{{ target.id }}/edit">Edit</a>
             <form method="post" action="/targets/{{ target.id }}/toggle">
-              <button type="submit" class="btn-quiet">
+              {# Fixed width: this button's label is the only thing in the row
+                 that changes length, and the table is width:100%, so "Pause"
+                 becoming "Resume" redistributes the difference across every
+                 other column. #}
+              <button type="submit" class="btn-quiet toggle-enabled">
                 {{ 'Resume' if not target.enabled else 'Pause' }}
               </button>
             </form>
