@@ -7,6 +7,8 @@ polls. Without that step the inventory is trivia.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
 from ..discovery.oui import is_locally_administered
+from ..discovery.runner import last_sweep
 from ..models import CheckType, Device, HealthStatus, Target, User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
 
@@ -67,6 +70,14 @@ async def list_devices(
             }
         )
 
+    sweep = await last_sweep(session)
+    if sweep.get("finished_at"):
+        try:
+            finished = datetime.fromisoformat(sweep["finished_at"])
+            sweep["age_seconds"] = (now - finished).total_seconds()
+        except (ValueError, TypeError):
+            sweep["age_seconds"] = None
+
     return templates.TemplateResponse(
         request,
         "devices.html",
@@ -77,6 +88,7 @@ async def list_devices(
             "rows": rows,
             "has_ignored": ignored_count is not None,
             "subnets": config.network.subnets,
+            "sweep": sweep,
         },
     )
 
@@ -86,7 +98,9 @@ async def scan_now(
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
 ):
-    await scheduler_module.run_discovery_now(config)
+    scheduler_module.trigger_discovery_now(config)
+    # Returns at once; the sweep publishes an event when it finishes and the
+    # page updates itself.
     return redirect("/devices")
 
 

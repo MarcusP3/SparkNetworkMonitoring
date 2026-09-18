@@ -13,6 +13,7 @@ it, without a restart.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -157,9 +158,36 @@ async def schedule_discovery(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
-async def run_discovery_now(config) -> None:  # type: ignore[no-untyped-def]
-    """Sweep immediately, for the "Scan now" button."""
-    await run_sweep(config)
+def trigger_discovery_now(config) -> bool:  # type: ignore[no-untyped-def]
+    """Queue a sweep to start immediately, and return without waiting.
+
+    Deliberately not `await run_sweep(...)` inside the request. Two reasons,
+    and the second one is a bug rather than a preference:
+
+      * A sweep of a /24 takes seconds. Holding the HTTP response open for it
+        makes the button feel broken.
+      * The request already holds a write transaction -- resolving the session
+        cookie updates its last-seen time -- and SQLite allows one writer. A
+        sweep writing from a second session inside that request blocks on its
+        own caller until the busy timeout, then fails with "database is
+        locked".
+
+    The sweep publishes an event when it finishes, so the page updates itself.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run_sweep,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=1),
+        args=[config],
+        id="discovery:now",
+        replace_existing=True,
+        misfire_grace_time=60,
+        name="Sweep now",
+    )
+    return True
 
 
 async def run_now(target_id: int) -> None:

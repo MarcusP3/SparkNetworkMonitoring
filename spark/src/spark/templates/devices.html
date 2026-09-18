@@ -10,6 +10,67 @@
 
   <div id="live">
 
+  {% if sweep %}
+  <section class="card sweep-status">
+    {% if sweep.error %}
+      <div class="alert error">
+        The last sweep failed: <code>{{ sweep.error }}</code>
+      </div>
+    {% elif sweep.icmp_available is defined and not sweep.icmp_available %}
+      <div class="alert error">
+        <strong>ICMP is unavailable inside the container</strong>, so nothing can
+        be discovered. The container needs <code>cap_add: [NET_RAW]</code> and
+        <code>network_mode: host</code>; if both are set, the host may need
+        <code>net.ipv4.ping_group_range</code> widened.
+      </div>
+    {% elif sweep.answered == 0 and sweep.probed %}
+      <div class="alert warn">
+        Swept {{ sweep.probed }} address(es) and nothing answered. ICMP itself is
+        working, so this is the network rather than the container — check that
+        the subnet in <code>spark.yaml</code> matches the one this VM is on.
+      </div>
+    {% endif %}
+
+    <p class="muted small">
+      Last sweep
+      {% if sweep.age_seconds is not none and sweep.age_seconds is defined %}
+        {% if sweep.age_seconds < 120 %}just now
+        {% elif sweep.age_seconds < 3600 %}{{ (sweep.age_seconds // 60) | int }}m ago
+        {% else %}{{ (sweep.age_seconds // 3600) | int }}h ago{% endif %}
+      {% else %}—{% endif %}:
+      probed {{ sweep.probed or 0 }},
+      {{ sweep.answered or 0 }} answered,
+      {{ sweep.with_mac or 0 }} with a MAC,
+      {{ sweep.new or 0 }} new.
+    </p>
+
+    {% if sweep.subnets %}
+    <table class="table compact">
+      <thead>
+        <tr><th>Subnet</th><th>Probed</th><th>Answered</th><th>With MAC</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for subnet in sweep.subnets %}
+        <tr>
+          <td>{{ subnet.name }} <code class="small">{{ subnet.cidr }}</code></td>
+          <td class="muted">{{ subnet.probed }}</td>
+          <td class="muted">{{ subnet.answered }}</td>
+          <td class="muted">
+            {{ subnet.with_mac }}
+            {% if subnet.answered and not subnet.with_mac and subnet.attached %}
+              <span class="pill warn" title="Marked attached, but ARP returned
+                    nothing — devices here will use the weaker IP identity">no ARP</span>
+            {% endif %}
+          </td>
+          <td class="muted small">{{ subnet.skipped or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+  {% endif %}
+
   {% if rows %}
   <section class="card">
     <table class="table">
@@ -94,15 +155,17 @@
   <section class="card empty-state">
     <h2>Nothing discovered yet</h2>
     {% if subnets %}
+    {% if not sweep %}
     <p class="muted">
-      The first sweep runs shortly after startup and then every 15 minutes.
-      Press <strong>Scan now</strong> if you would rather not wait.
+      No sweep has run yet. The first one runs every 15 minutes from startup —
+      press <strong>Scan now</strong> if you would rather not wait.
     </p>
+    {% else %}
     <p class="muted">
-      If it stays empty: the container needs <code>network_mode: host</code> and
-      <code>cap_add: [NET_RAW]</code>. On a bridge network the sweep is behind
-      NAT and finds nothing at all.
+      A sweep has run; the summary above says what it found. If it probed
+      nothing at all, no subnets are configured.
     </p>
+    {% endif %}
     {% else %}
     <p class="muted">
       No subnets are configured, so there is nothing to sweep. Add them under

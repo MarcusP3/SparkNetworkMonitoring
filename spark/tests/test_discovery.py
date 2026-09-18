@@ -19,7 +19,14 @@ from spark import db as D
 from spark.config import Config
 from spark.discovery import oui
 from spark.discovery.store import record, record_all
-from spark.discovery.sweep import MAX_HOSTS_PER_SUBNET, Observation, hosts_in, read_arp_table
+from spark.discovery.sweep import (
+    MAX_HOSTS_PER_SUBNET,
+    Observation,
+    SubnetResult,
+    SweepReport,
+    hosts_in,
+    read_arp_table,
+)
 from spark.models import Device
 
 
@@ -236,3 +243,57 @@ class TestOui:
         assert oui.normalise("not-a-mac") is None
         assert oui.lookup(None) is None
         assert not oui.is_locally_administered(None)
+
+
+# --------------------------------------------------------------------------
+# Sweep reporting
+# --------------------------------------------------------------------------
+
+
+class TestSweepReport:
+    """An empty device list has three very different causes.
+
+    "ICMP could not open a socket", "254 probed and none answered", and "never
+    ran" need different fixes, and the list looks identical for all three. The
+    report is what tells them apart, so it has to keep them apart.
+    """
+
+    def test_icmp_failure_is_distinguishable_from_silence(self):
+        unavailable = SweepReport(
+            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254,
+                                  skipped="ICMP unavailable")],
+            icmp_available=False,
+        )
+        silent = SweepReport(
+            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254, answered=0)],
+        )
+        assert unavailable.as_dict()["icmp_available"] is False
+        assert silent.as_dict()["icmp_available"] is True
+        # Both found nothing; only one of them is the container's fault.
+        assert unavailable.answered == silent.answered == 0
+
+    def test_totals_sum_across_subnets(self):
+        report = SweepReport(subnets=[
+            SubnetResult("LAN", "10.1.10.0/24", True, probed=254, answered=9, with_mac=8),
+            SubnetResult("IoT", "10.1.20.0/24", False, probed=254, answered=4, with_mac=0),
+        ])
+        assert (report.probed, report.answered, report.with_mac) == (508, 13, 8)
+
+    def test_as_dict_is_json_serialisable(self):
+        import json
+
+        report = SweepReport(subnets=[
+            SubnetResult("LAN", "10.1.10.0/24", True, probed=4, answered=1)
+        ])
+        report.finished_at = report.started_at
+        # It is stored as JSON in the settings table; a datetime in there would
+        # fail at write time, in a background job, where nobody is looking.
+        assert json.loads(json.dumps(report.as_dict()))["subnets"][0]["name"] == "LAN"
+
+    def test_a_never_run_sweep_is_not_the_same_as_an_empty_one(self):
+        never = {}
+        empty = SweepReport(
+            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254)]
+        ).as_dict()
+        assert not never
+        assert empty["probed"] == 254

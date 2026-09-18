@@ -226,8 +226,12 @@ def main() -> int:
                 check("devices page renders", r.status_code == 200 and "Devices" in r.text)
                 check("honest empty state before any sweep",
                       "Nothing discovered yet" in r.text)
-                check("it names the usual cause of an empty sweep",
-                      "network_mode: host" in r.text and "NET_RAW" in r.text)
+                # It used to blame NET_RAW on any empty list, which is a guess.
+                # Before a sweep has run the honest answer is that none has.
+                check("an empty list before any sweep says exactly that",
+                      "No sweep has run yet" in r.text)
+                check("it does not guess at a cause it has no evidence for",
+                      "ICMP is unavailable inside the container" not in r.text)
 
                 # A device the sweep would have created, without needing a network.
                 import asyncio as _asyncio

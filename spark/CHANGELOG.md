@@ -29,6 +29,35 @@ It now fills itself.
   turns a discovered device into a ping target in one click. That button is
   the point: an inventory you cannot act on is trivia.
 
+### Fixed
+
+- **"Scan now" deadlocked against its own request.** Resolving the session
+  cookie updated the session row's last-seen time, so every authenticated
+  request held SQLite's single writer slot for its whole duration. Sweeping
+  inside that request opened a second session, tried to write, blocked on its
+  caller, and failed after the busy timeout with "database is locked". The
+  button now queues the sweep on the scheduler and returns immediately; the
+  sweep publishes an event when it finishes and the page updates itself.
+
+- **The session row is no longer written on every page view.** `last_seen_at`
+  is rewritten only when it is more than a minute stale. A minute of resolution
+  is ample for an idle-session timestamp, and it removes a write — and a held
+  lock — from every authenticated request.
+
+### Added (diagnostics)
+
+- **The Devices page says why it is empty.** The sweep now records what it did
+  — probed, answered, how many yielded a MAC, per subnet — and the page shows
+  it. Three causes that produce an identical empty list are now told apart:
+  ICMP could not open a socket (a container problem, and it says so), 254
+  addresses probed with no replies (a network or config problem), and no sweep
+  has run yet. Before, all three read "Nothing discovered yet" and the answer
+  was only in `docker logs`.
+- A subnet marked `attached` whose sweep returns replies but no MACs is
+  flagged, since that silently downgrades those devices to IP identity.
+- The old empty state guessed at `NET_RAW` whenever the list was empty. It now
+  says that only when ICMP actually failed.
+
 ### Notes
 
 - Discovery deliberately does not set `Device.status`. "Answered an ICMP sweep

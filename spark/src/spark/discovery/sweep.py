@@ -45,6 +45,76 @@ CONCURRENCY = 64
 
 
 @dataclass
+class SubnetResult:
+    """What one subnet's sweep actually did.
+
+    Kept even when it found nothing, because "swept 254 addresses and none
+    answered" and "never swept it" are different problems with different fixes,
+    and an empty device list cannot tell them apart on its own.
+    """
+
+    name: str
+    cidr: str
+    attached: bool
+    probed: int = 0
+    answered: int = 0
+    with_mac: int = 0
+    skipped: str | None = None
+    observations: list["Observation"] = field(default_factory=list)
+
+
+@dataclass
+class SweepReport:
+    """The outcome of a whole sweep, for the Devices page to show."""
+
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
+    subnets: list[SubnetResult] = field(default_factory=list)
+    icmp_available: bool = True
+    error: str | None = None
+
+    @property
+    def observations(self) -> list["Observation"]:
+        return [o for subnet in self.subnets for o in subnet.observations]
+
+    @property
+    def probed(self) -> int:
+        return sum(s.probed for s in self.subnets)
+
+    @property
+    def answered(self) -> int:
+        return sum(s.answered for s in self.subnets)
+
+    @property
+    def with_mac(self) -> int:
+        return sum(s.with_mac for s in self.subnets)
+
+    def as_dict(self) -> dict:
+        """A JSON-safe summary, for storage and for the page."""
+        return {
+            "started_at": self.started_at.isoformat(),
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "probed": self.probed,
+            "answered": self.answered,
+            "with_mac": self.with_mac,
+            "icmp_available": self.icmp_available,
+            "error": self.error,
+            "subnets": [
+                {
+                    "name": s.name,
+                    "cidr": s.cidr,
+                    "attached": s.attached,
+                    "probed": s.probed,
+                    "answered": s.answered,
+                    "with_mac": s.with_mac,
+                    "skipped": s.skipped,
+                }
+                for s in self.subnets
+            ],
+        }
+
+
+@dataclass
 class Observation:
     """One address that answered, and whatever we could learn about it."""
 
@@ -105,15 +175,23 @@ def hosts_in(cidr: str) -> list[str]:
     return [str(host) for host in network.hosts()]
 
 
-async def ping_sweep(addresses: list[str], timeout: float = 1.0) -> list[str]:
-    """Which of these answer ICMP. Never raises."""
+async def ping_sweep(
+    addresses: list[str], timeout: float = 1.0
+) -> tuple[list[str], bool]:
+    """Which of these answer ICMP, and whether ICMP worked at all.
+
+    The second value is the distinction that matters for diagnosis: an empty
+    list because nothing replied is a network answer, and an empty list because
+    the socket could not be opened is a configuration answer. Collapsing them
+    into "found nothing" is what sends you to read logs.
+    """
     if not addresses:
-        return []
+        return [], True
     try:
         from icmplib import async_multiping
     except ImportError:  # pragma: no cover - dependency is declared
         log.error("icmplib is not installed; cannot sweep")
-        return []
+        return [], False
 
     for privileged in (True, False):
         try:
@@ -124,14 +202,14 @@ async def ping_sweep(addresses: list[str], timeout: float = 1.0) -> list[str]:
                 privileged=privileged,
                 concurrent_tasks=CONCURRENCY,
             )
-            return [host.address for host in hosts if host.is_alive]
+            return [host.address for host in hosts if host.is_alive], True
         except Exception as exc:  # noqa: BLE001
             log.debug("multiping (privileged=%s) failed: %s", privileged, exc)
     log.warning(
         "ICMP sweep failed both privileged and unprivileged. The container "
         "needs cap_add: [NET_RAW], or the host needs net.ipv4.ping_group_range."
     )
-    return []
+    return [], False
 
 
 async def reverse_dns(ip: str, timeout: float = 1.0) -> str | None:
@@ -159,15 +237,26 @@ async def sweep_subnet(
     attached: bool = True,
     timeout: float = 1.0,
     resolve_names: bool = True,
-) -> list[Observation]:
-    """Sweep one subnet and return what answered."""
+) -> SubnetResult:
+    """Sweep one subnet and report what happened."""
+    result = SubnetResult(name=name or cidr, cidr=cidr, attached=attached)
+
     addresses = hosts_in(cidr)
     if not addresses:
-        return []
+        result.skipped = (
+            f"too large: more than {MAX_HOSTS_PER_SUBNET} addresses. "
+            "Split it into smaller ranges."
+        )
+        return result
+    result.probed = len(addresses)
 
-    alive = await ping_sweep(addresses, timeout=timeout)
+    alive, icmp_ok = await ping_sweep(addresses, timeout=timeout)
+    if not icmp_ok:
+        result.skipped = "ICMP unavailable"
+        return result
+    result.answered = len(alive)
     if not alive:
-        return []
+        return result
 
     # Read ARP *after* the sweep: the pings are what populated it.
     arp = read_arp_table() if attached else {}
@@ -187,10 +276,11 @@ async def sweep_subnet(
             for ip, value in zip(alive, resolved)
         }
 
-    observations = []
     for ip in alive:
         mac = arp.get(ip)
-        observations.append(
+        if mac:
+            result.with_mac += 1
+        result.observations.append(
             Observation(
                 ip=ip,
                 mac=mac,
@@ -200,22 +290,32 @@ async def sweep_subnet(
                 randomised_mac=is_locally_administered(mac),
             )
         )
-    return observations
+    return result
 
 
-async def sweep_all(subnets) -> list[Observation]:
+async def sweep_all(subnets) -> SweepReport:
     """Sweep every enabled subnet in the config, one after another.
 
     Sequential on purpose: these run on the same NIC, and overlapping sweeps
     mostly compete with each other for the same ARP table.
     """
-    results: list[Observation] = []
+    report = SweepReport()
     for subnet in subnets:
         if not getattr(subnet, "enabled", True):
             continue
-        found = await sweep_subnet(
+        result = await sweep_subnet(
             subnet.cidr, name=subnet.label, attached=subnet.attached
         )
-        log.info("Swept %s: %d host(s) answered", subnet.label, len(found))
-        results.extend(found)
-    return results
+        report.subnets.append(result)
+        if result.skipped:
+            log.warning("Skipped %s: %s", result.name, result.skipped)
+        else:
+            log.info(
+                "Swept %s: %d of %d answered, %d with a MAC",
+                result.name, result.answered, result.probed, result.with_mac,
+            )
+    report.icmp_available = not any(
+        s.skipped == "ICMP unavailable" for s in report.subnets
+    )
+    report.finished_at = datetime.now(timezone.utc)
+    return report

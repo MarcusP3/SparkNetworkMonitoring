@@ -46,6 +46,9 @@ _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(32))
 
 MIN_PASSWORD_LENGTH = 12
 
+# How stale a session's last-seen timestamp may get before it is rewritten.
+LAST_SEEN_RESOLUTION = 60.0
+
 
 class AuthError(Exception):
     pass
@@ -224,7 +227,13 @@ async def resolve_session(session: AsyncSession, token: str) -> User | None:
     if record.expires_at < utcnow():
         return None
 
-    record.last_seen_at = utcnow()
+    # Only write when it is actually stale. Updating this on every request
+    # means every authenticated page view opens a write transaction and holds
+    # SQLite's single writer slot for the life of the request -- which is what
+    # made a background sweep collide with the request that started it. A
+    # minute of resolution is plenty for an idle-session timestamp.
+    if (utcnow() - record.last_seen_at).total_seconds() > LAST_SEEN_RESOLUTION:
+        record.last_seen_at = utcnow()
     return await session.get(User, record.user_id)
 
 

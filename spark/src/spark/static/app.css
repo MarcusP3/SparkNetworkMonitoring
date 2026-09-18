@@ -438,3 +438,6 @@ tr.just-changed td {
 /* The device count tile is a link now; it should not look like one. */
 a.stat { text-decoration: none; color: inherit; }
 a.stat:hover { border-color: var(--accent); }
+
+.sweep-status .alert { margin-bottom: .75rem; }
+.table.compact td, .table.compact th { padding-top: .3rem; padding-bottom: .3rem; }
