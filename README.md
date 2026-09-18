@@ -388,15 +388,23 @@ Four things that will bite you if you don't know them:
 | 1 | Foundation — config, schema, auth, dashboard shell | ✅ done |
 | 2 | SNMP collection engine + capability probe | ✅ done |
 | 3 | Check engine — ping, TCP, HTTP, DNS, hysteresis, incidents, targets UI | ✅ done |
-| 4 | Alerting — Discord, dependency suppression, quiet hours | next |
-| 5 | Discovery — subnet sweep, Docker inventory, port scan | planned |
-| 6 | Service map — tree and filterable list views | planned |
-| 7 | SNMP metric storage + device pages | planned |
-| 8 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
+| 4 | Discovery — subnet sweep, Docker inventory, port scan | next |
+| 5 | Service map — tree and filterable list views | planned |
+| 6 | SNMP metric storage + device pages | planned |
+| 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
+| 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
 
-Reordered after increment 2: the check engine moved ahead of SNMP storage,
-because a monitor that cannot tell you anything is down is not yet a monitor,
-and DESIGN.md's own rule is not to build phase N+1 before N.
+Reordered twice. After increment 2 the check engine moved ahead of SNMP
+storage, because a monitor that cannot tell you anything is down is not yet a
+monitor. After increment 3, alerting moved to last: the inventory and map work
+is the substance, and the live-updating pages cover "is anything wrong" well
+enough to watch while the rest is built.
+
+The trade-off that buys is real and worth stating plainly — until increment 8,
+SPARK only tells you about an outage while someone is looking at it. The
+dependency suppression and incident records the notifier will need are already
+built and tested, so the last increment is the notifier itself, not the
+thinking behind it.
 
 ---
 
