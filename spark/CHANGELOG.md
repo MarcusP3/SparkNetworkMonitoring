@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — two bits of visual noise (2026-09-18)
+
+### Changed
+
+- **The failure counter is gone from targets that are already down.** "2613
+  consecutive failure(s)" sat where the last-checked time goes and said nothing
+  the status pill had not already said; the number only climbs. It is still
+  shown *below* the threshold, as "failing, 2 of 4" — that is the one place a
+  target wobbling toward an incident is visible before it flips, and it now
+  reads as progress toward a state change rather than as a running tally. A
+  paused target shows nothing either: its counter is frozen at whatever it was
+  when you paused it, so reporting it would describe a moment in the past as
+  though it were now.
+
+### Fixed
+
+- **The "new ✕" badge wrapped onto two lines** on the Devices page, which made
+  one control look like two. Caused by the VLAN column squeezing the Name
+  column; pills now refuse to wrap, the name field gives up the space instead
+  of the badge, and its minimum width came down to suit the narrower column.
+
+### Tests
+
+- `tests/test_targets_page.py`, 5 tests: the count is absent when down and when
+  paused, present below the threshold, absent when healthy, and removing it did
+  not take the status pill or the last-checked time with it.
+- Suite: 170 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — say what the subnet checkboxes actually do (2026-09-18)
 
 Both checkboxes on the Settings page were labelled in shorthand — "L2" and

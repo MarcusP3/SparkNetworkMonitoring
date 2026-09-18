@@ -263,6 +263,10 @@ button { font: inherit; cursor: pointer; }
   border-radius: 999px;
   font-size: .75rem;
   font-weight: 550;
+  /* A pill is one token. Letting it wrap turns "new x" into a two-line lozenge
+     that reads as two controls -- which is what the Devices page did once the
+     VLAN column squeezed the Name column. */
+  white-space: nowrap;
 }
 .pill.ok   { background: var(--ok-bg);   color: var(--ok); }
 .pill.warn { background: var(--warn-bg); color: var(--warn); }
@@ -450,10 +454,16 @@ tr.just-changed td {
 
 .inline-name input {
   width: auto;
-  min-width: 9rem;
+  min-width: 6rem;      /* the Name column is narrower since VLAN arrived */
   padding: .3rem .45rem;
   font-size: .875rem;
 }
+
+/* The badge keeps its size; the text field gives up the space instead. Without
+   this the pill is what gets squeezed, and it is the one part of the row that
+   cannot afford to be. */
+.inline-name .pill { flex-shrink: 0; }
+.inline-name form { min-width: 0; }
 
 /* The device count tile is a link now; it should not look like one. */
 a.stat { text-decoration: none; color: inherit; }

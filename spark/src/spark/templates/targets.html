@@ -45,8 +45,14 @@
           <td class="muted">{{ target.interval_seconds }}s</td>
           <td class="muted small">
             {{ target.last_checked_at.strftime('%H:%M:%S') if target.last_checked_at else '—' }}
-            {% if target.consecutive_failures %}
-              <span class="muted">· {{ target.consecutive_failures }} consecutive failure(s)</span>
+            {# Only while it is on its way down. Once a target is DOWN the count
+               just climbs forever -- 2613 consecutive failures says nothing the
+               status pill and the incident have not already said. Below the
+               threshold it is the one place you can see a target wobbling
+               before it flips, so it reads as progress toward a state change
+               rather than as a running tally. #}
+            {% if target.consecutive_failures and status not in ('down', 'paused') %}
+              <span class="muted">· failing, {{ target.consecutive_failures }} of {{ target.failure_threshold }}</span>
             {% endif %}
           </td>
           <td class="actions">
