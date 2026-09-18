@@ -21,7 +21,7 @@ On every change, check each of these and update the ones the change touched:
 | A feature became usable | README **Status** table, **Roadmap** table |
 | A check type, param, or default | README **Monitoring** section |
 | Config keys or env overrides | README **Configuration** section |
-| A new dependency | `pyproject.toml`, and note in CHANGELOG that a rebuild is required |
+| A new dependency | `pyproject.toml` **and `requirements.lock`** (see below), and note in CHANGELOG that a rebuild is required |
 | New module or directory | README **Project layout** |
 | A convention future code must follow | README **Conventions** |
 | Anything at all | `CHANGELOG.md` under the current increment |
@@ -33,6 +33,35 @@ good entry and has been for most of this project's life.
 If a change deliberately leaves something broken, unfinished, or decided
 against, say so in the CHANGELOG's *Known, unfixed* section rather than letting
 it be rediscovered later.
+
+---
+
+## Dependencies are hash-pinned
+
+`requirements.lock` and `requirements-build.lock` pin every package, direct and
+transitive, to a version and a set of SHA-256 hashes. The Docker build installs
+from them with `--require-hashes` and never re-resolves. Adding a dependency to
+`pyproject.toml` alone is therefore **not enough** — it will work in your venv
+and fail in the image.
+
+```bash
+cd spark
+uv pip compile pyproject.toml --generate-hashes --python-version 3.12 -o requirements.lock
+```
+
+`tests/test_supply_chain.py` fails if the two files disagree, so this cannot be
+forgotten silently. Commit the regenerated lock in the same commit as the
+dependency.
+
+Two things that look like details and are not:
+
+- The build toolchain is locked separately in `requirements-build.lock` and
+  installed with `--no-build-isolation`. Without it, `pip install .` downloads
+  hatchling unverified at build time and the runtime lock guards a door with no
+  wall around it.
+- The base image is pinned by digest, not tag. Re-pin it deliberately; that is
+  the point. `docker inspect --format='{{index .RepoDigests 0}}' python:3.12-slim`
+  after a `docker pull` gives the current one.
 
 ---
 
@@ -52,6 +81,10 @@ it be rediscovered later.
   executed a real migration, so the first one needs care and a test.
 - **Secrets** are files or env vars. The database stores references, not secret
   material. (The Discord webhook URL currently violates this; see CHANGELOG.)
+- **No new dependency without a reason that survives the question "what does
+  this do that the standard library does not".** Every package in the closure
+  is code that runs as root-ish in a container holding `NET_RAW` on someone's
+  home network. The closure is 38 packages; keep it that way.
 
 ## Testing
 

@@ -1,3 +1,15 @@
+# Base image: pin this to a digest, not a tag.
+#
+# `python:3.12-slim` is a moving target -- it is rebuilt regularly and points at
+# different bytes over time, so two builds a month apart are two different
+# images and neither is recorded. Get the current digest with:
+#
+#   docker pull python:3.12-slim
+#   docker inspect --format='{{index .RepoDigests 0}}' python:3.12-slim
+#
+# then replace the line below with what it prints. Re-pin deliberately when you
+# want a newer base -- which is the point: the upgrade becomes a commit you can
+# see rather than a side effect of rebuilding.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -13,10 +25,29 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Dependencies before source, from hash-pinned locks.
+#
+# Two things this buys. The build becomes reproducible -- `pip install .`
+# against `>=` constraints resolves fresh from PyPI every time, so you never
+# build the same image twice and have no record of what shipped. And
+# `--require-hashes` means a hijacked maintainer account is not enough to get
+# code in here: an artifact has to match bytes recorded in this repository, or
+# the build fails having installed nothing.
+#
+# The build toolchain is installed first, and hash-checked too. Without that,
+# `pip install .` fetches hatchling unverified at build time, which is a hole
+# straight through everything below it.
+COPY requirements-build.lock requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements-build.lock \
+    && pip install --no-cache-dir --require-hashes -r requirements.lock
+
 COPY pyproject.toml ./
 COPY src ./src
 
-RUN pip install --no-cache-dir .
+# --no-deps because everything it needs is installed and verified above;
+# --no-build-isolation because hatchling is too, rather than being fetched into
+# a throwaway environment that nothing checks.
+RUN pip install --no-cache-dir --no-deps --no-build-isolation .
 
 RUN mkdir -p /data /config
 

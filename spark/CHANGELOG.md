@@ -1,5 +1,67 @@
 # Changelog
 
+## Unreleased — hash-pinned dependencies (2026-09-18)
+
+Prompted by the right question: what in here could get compromised. The answer
+was not the package list — 15 direct dependencies, 38 in the closure, all
+mainstream. It was that nothing was pinned.
+
+Every constraint was `>=`, there was no lockfile, and the Dockerfile ran a bare
+`pip install .`. So every `docker compose build` resolved fresh from PyPI: you
+never built the same image twice, had no record of what shipped, and a single
+hijacked maintainer account was enough to put code on a host running with
+`NET_RAW` on a home network. That is the `event-stream` shape.
+
+### Added
+
+- **`requirements.lock` and `requirements-build.lock`** — every package, direct
+  and transitive, pinned to a version and its SHA-256 hashes. The image installs
+  from them with `--require-hashes` and never re-resolves.
+
+- **The build toolchain is locked separately and installed with
+  `--no-build-isolation`.** Without that, `pip install .` fetches hatchling
+  unverified at build time, which is a hole straight through the runtime lock.
+  Easy to miss; it defeats the whole exercise.
+
+- **`tests/test_supply_chain.py`**, 9 tests: every declared dependency is
+  locked, nothing is unpinned, every entry carries a well-formed hash, the
+  build toolchain is covered, and the Dockerfile still uses `--require-hashes`
+  and `--no-deps`.
+
+### Changed
+
+- **Dependencies are installed before the source is copied**, so the dependency
+  layer is cached independently of application changes. A source-only edit no
+  longer reinstalls 38 packages.
+
+- **The base image is pinned by digest rather than the `python:3.12-slim` tag**,
+  which is rebuilt regularly and points at different bytes over time.
+
+### Removed
+
+- **`itsdangerous`.** Declared since increment 1, never imported, shipped in
+  every image. Sessions are database-backed tokens rather than signed cookies,
+  so nothing ever used it. A dependency that does nothing is pure attack
+  surface. `config.secret_key()` stays: it is still touched at startup as a
+  fail-fast check that the data directory is writable.
+
+### Verified
+
+- The full install path — build lock, runtime lock, then the app with
+  `--no-deps --no-build-isolation` — run end to end in a clean 3.12 environment.
+- A hash was then corrupted and `pip` refused: exit 1, nothing installed.
+  Worth recording how that test failed first: changing *one* hash of a package
+  changed nothing, because pip accepts an artifact matching **any** listed hash
+  and each package lists several (an sdist and per-platform wheels). The real
+  check needs every hash for a package corrupted. A tamper test that passes for
+  the wrong reason is worse than none.
+
+### Still open
+
+- No CI, so nothing runs `pip-audit` on a schedule. `pip-audit -r
+  requirements.lock` checks for known advisories by hand.
+- The Discord webhook URL is still stored in the database in plaintext.
+
 ## Unreleased — the dashboard was still reading spark.yaml (2026-09-18)
 
 ### Fixed

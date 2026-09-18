@@ -107,6 +107,33 @@ Two layers, deliberately:
 Any YAML value can be overridden by environment variable, nesting with double
 underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
 
+### Dependencies and the supply chain
+
+15 direct dependencies, 38 packages in the full closure, no npm and no build
+step. Everything is pinned by version **and SHA-256 hash** in
+`requirements.lock`, and the image installs from it with `--require-hashes`.
+
+That matters more than the list does. Against `>=` constraints a build resolves
+fresh from PyPI every time, so you never build the same image twice and have no
+record of what shipped — and a single hijacked maintainer account is enough to
+put code on your network. With hashes, an artifact has to match bytes recorded
+in this repository or the build fails having installed nothing. Verified by
+corrupting a hash and watching `pip` refuse.
+
+Adding a dependency means regenerating the lock in the same commit:
+
+```bash
+uv pip compile pyproject.toml --generate-hashes --python-version 3.12 -o requirements.lock
+```
+
+`tests/test_supply_chain.py` fails if `pyproject.toml` and the lock disagree, so
+this cannot rot quietly. Check for known advisories with `pip-audit -r
+requirements.lock`.
+
+The base image is pinned by digest for the same reason: `python:3.12-slim` is
+rebuilt regularly and points at different bytes over time. Re-pin it when you
+want a newer base, deliberately, as a commit.
+
 ### Docker settings that are not optional
 
 ```yaml
@@ -351,6 +378,8 @@ DESIGN.md         the design document
 CLAUDE.md         working agreements for this repo
 spark/
   docker-compose.yml, Dockerfile
+  requirements.lock     every package pinned to a version and SHA-256 hashes
+  requirements-build.lock  the build toolchain, pinned the same way
   config/spark.yaml     the pre-database config (subnets here are a one-time seed)
   CHANGELOG.md
   smoke_test.py         end-to-end walk through the running application
@@ -390,6 +419,7 @@ spark/
     test_schedule.py    when the first sweep is due; the scan schedule form
     test_subnets.py     CIDR/VLAN validation, membership, seeding, migration 3
     test_targets_page.py  what the targets list says about failures, and when
+    test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
