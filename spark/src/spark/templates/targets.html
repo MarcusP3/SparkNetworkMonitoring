@@ -6,6 +6,8 @@
     <a class="btn-primary" href="/targets/new">Add target</a>
   </div>
 
+  <div id="live">
+
   {% if targets %}
   <section class="card">
     <table class="table">
@@ -22,7 +24,9 @@
       </thead>
       <tbody>
         {% for target in targets %}
-        <tr class="{% if not target.enabled %}is-paused{% endif %}">
+        {% set row_status = target.status.value if target.status.value is defined else target.status %}
+        <tr data-target-id="{{ target.id }}" data-status="{{ row_status }}"
+            class="{% if not target.enabled %}is-paused{% endif %}">
           <td>
             {% set status = target.status.value if target.status.value is defined else target.status %}
             <span class="pill status-{{ status }}">{{ status }}</span>
@@ -80,5 +84,6 @@
     <a class="btn-primary" href="/targets/new">Add your first target</a>
   </section>
   {% endif %}
+  </div>
 </div>
 {% endblock %}

@@ -82,6 +82,7 @@ async def dashboard(
 
     watched = [
         {
+            "id": t.id,
             "name": t.name,
             "address": t.address,
             "status": getattr(t.status, "value", t.status),

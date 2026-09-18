@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
 from ..models import (
@@ -187,6 +188,7 @@ async def create_target(
     await session.flush()
     await session.commit()
 
+    events.publish({"kind": "created", "target_id": target.id})
     scheduler_module.schedule_target(target)
     # Check straight away, so adding a target tells you whether it works now
     # rather than at the top of the next interval.
@@ -246,6 +248,7 @@ async def update_target(
     target.depends_on_target_id = int(depends_on_target_id) if depends_on_target_id else None
     await session.commit()
 
+    events.publish({"kind": "updated", "target_id": target.id})
     if target.enabled:
         scheduler_module.schedule_target(target)
     return redirect("/targets")
@@ -271,6 +274,7 @@ async def toggle_target(
         target.status = HealthStatus.PAUSED
     await session.commit()
 
+    events.publish({"kind": "toggled", "target_id": target.id})
     if target.enabled:
         scheduler_module.schedule_target(target)
         await scheduler_module.run_now(target.id)
@@ -303,4 +307,5 @@ async def delete_target(
         scheduler_module.unschedule_target(target_id)
         await session.delete(target)
         await session.commit()
+        events.publish({"kind": "deleted", "target_id": target_id})
     return redirect("/targets")

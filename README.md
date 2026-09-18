@@ -23,6 +23,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 |---|---|
 | Configuration, database, authentication, web shell | ✅ working |
 | Check engine — ping, TCP, HTTP(S), DNS | ✅ working |
+| Live-updating pages (server-sent events) | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |
@@ -340,6 +341,7 @@ spark/
     cli.py              spark-probe
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
+    events.py           in-process pub/sub for live page updates
     checks/
       base.py           CheckSpec and CheckOutcome; no database access
       net.py            ping, tcp, http, dns
@@ -355,6 +357,7 @@ spark/
     static/             hand-written CSS, no build step
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
+    test_events.py      what live updates publish, and what they stay quiet about
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
@@ -413,6 +416,12 @@ you ask most.
 network, discovered whether or not you care. A target is a decision to watch
 something. Merge them and you either monitor everything you find (noise) or lose
 the inventory of what you chose to ignore.
+
+**Live updates push, they do not poll.** `/events` holds one connection per
+open tab and the check runner publishes on state transitions only. Polling
+costs a request per tab per interval forever and is still late; publishing on
+every check would refetch the page once per check per tab, which turns a
+monitor into load on the thing being monitored.
 
 **Hysteresis is not optional.** A target needs N consecutive failures before it
 changes state. This single detail is the difference between a tool you trust and

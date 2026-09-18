@@ -57,6 +57,28 @@ real.
   because saving it shut would submit no tuning fields and reset the target.
   There is a smoke test for exactly that.
 
+### Added
+
+- **Pages update themselves.** The Targets page and the dashboard now refresh
+  the moment a target changes state, instead of showing whatever was true when
+  you last hit reload. A row whose status actually moved is briefly
+  highlighted, so a change that happens while you are looking elsewhere is not
+  silently absorbed.
+
+  Server-sent events rather than polling: one connection per open tab carrying
+  nothing while the network is quiet, versus a request every few seconds per
+  tab forever that still shows a change up to one interval late. `EventSource`
+  reconnects on its own, so a container restart recovers with no retry logic.
+
+  Events fire on real transitions only — not on every check. An event per check
+  would mean a page refetch per check per open tab, which is how a monitoring
+  tool starts loading the server it monitors. There are tests for the silence
+  as well as the signal.
+
+  The page re-fetches itself and swaps in the `#live` element rather than
+  rendering fragments from a second set of templates, so the two cannot drift
+  apart, and swapping rather than reloading keeps scroll position.
+
 ### Fixed
 
 - **Dropdowns were unreadable in dark mode.** The stylesheet already themed

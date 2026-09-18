@@ -3,6 +3,8 @@
 <div class="page">
   <h1>Dashboard</h1>
 
+  <div id="live">
+
   {% for warning in warnings %}
   <div class="alert warn">{{ warning }}</div>
   {% endfor %}
@@ -75,7 +77,7 @@
       </thead>
       <tbody>
         {% for row in watched %}
-        <tr>
+        <tr data-target-id="{{ row.id }}" data-status="{{ row.status }}">
           <td><span class="pill status-{{ row.status }}">{{ row.status }}</span></td>
           <td><strong>{{ row.name }}</strong></td>
           <td><code>{{ row.address }}</code></td>
@@ -126,5 +128,6 @@
     </table>
   </section>
   {% endif %}
+  </div>
 </div>
 {% endblock %}

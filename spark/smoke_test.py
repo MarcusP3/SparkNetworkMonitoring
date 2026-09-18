@@ -221,6 +221,16 @@ def main() -> int:
 
                 client.post(f"/targets/{probe_id}/delete")
 
+                print("\nLive updates")
+                r = client.get("/targets")
+                check("targets page has a live region", 'id="live"' in r.text)
+                check("rows carry identity and status for the swap",
+                      'data-target-id=' in r.text and 'data-status=' in r.text)
+                check("EventSource is wired up", "new EventSource('/events')" in r.text)
+                r = client.get("/")
+                check("dashboard has a live region too",
+                      'id="live"' in r.text and 'data-target-id=' in r.text)
+
                 print("\nTarget validation")
                 r = client.post("/targets/new", data={
                     "name": "bad", "check_type": "tcp", "address": "127.0.0.1",
@@ -302,6 +312,12 @@ def main() -> int:
             r = client2.get("/")
             check("existing database is reused, not re-setup",
                   r.headers.get("location") == "/login", f"got {r.headers.get('location')}")
+
+        print("\nEvent stream is not public")
+        with TestClient(create_app(build_config(tmp)), follow_redirects=False) as anon:
+            r = anon.get("/events")
+            check("/events rejects an unauthenticated client",
+                  r.status_code == 401, f"got {r.status_code}")
 
         print("\nProxy auth guard")
         bad = build_config(tmp)

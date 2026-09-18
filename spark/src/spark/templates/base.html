@@ -35,5 +35,59 @@
   SPARK {{ config.app.instance_name if config.app.instance_name != 'SPARK' else '' }}
   · <span class="muted">network monitoring for homelabs</span>
 </footer>
+<script>
+  // Live updates. The server pushes a one-line event when a target changes
+  // state; the page then re-fetches itself and swaps in the #live region.
+  //
+  // Re-fetching the whole page and taking one element out of it means there is
+  // no second set of fragment templates to keep in step with the real ones --
+  // the page can only ever disagree with itself if the server is wrong.
+  // Swapping #live rather than reloading keeps scroll position and anything
+  // typed into a form outside it.
+  (function () {
+    var live = document.getElementById('live');
+    if (!live || !window.EventSource) return;
+
+    var inFlight = false;
+
+    function statusesById(root) {
+      var map = {};
+      root.querySelectorAll('[data-target-id]').forEach(function (row) {
+        map[row.getAttribute('data-target-id')] = row.getAttribute('data-status');
+      });
+      return map;
+    }
+
+    function refresh() {
+      if (inFlight) return;          // a burst of changes is still one fetch
+      inFlight = true;
+      var before = statusesById(live);
+      fetch(window.location.pathname, { headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+        .then(function (html) {
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var next = doc.getElementById('live');
+          if (!next) return;
+          live.innerHTML = next.innerHTML;
+          // Mark rows whose status actually moved, so a change that happens
+          // while you are looking elsewhere is not silently absorbed.
+          live.querySelectorAll('[data-target-id]').forEach(function (row) {
+            var id = row.getAttribute('data-target-id');
+            if (before[id] !== undefined &&
+                before[id] !== row.getAttribute('data-status')) {
+              row.classList.add('just-changed');
+            }
+          });
+        })
+        .catch(function () { /* a failed refresh is not worth surfacing */ })
+        .finally(function () { inFlight = false; });
+    }
+
+    // EventSource reconnects on its own if the server restarts, so there is no
+    // retry logic here on purpose.
+    var source = new EventSource('/events');
+    source.addEventListener('change', refresh);
+  })();
+</script>
 </body>
 </html>

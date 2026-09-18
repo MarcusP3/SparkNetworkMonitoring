@@ -13,6 +13,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import events
 from ..checks.base import CheckOutcome, CheckSpec
 from ..checks.net import run_check
 from ..db import session_scope
@@ -45,6 +46,7 @@ async def run_target(target_id: int) -> None:
     keep running, but a half-applied transaction would not roll back cleanly,
     so containment is explicit.
     """
+    transition: Transition | None = None
     try:
         async with session_scope() as session:
             target = await session.get(Target, target_id)
@@ -53,6 +55,20 @@ async def run_target(target_id: int) -> None:
                 return
             if not target.enabled:
                 return
-            await check_target(session, target)
+            _outcome, transition = await check_target(session, target)
     except Exception:  # noqa: BLE001 - one bad target must not stop the engine
         log.exception("Check for target %s failed unexpectedly", target_id)
+        return
+
+    # Published after the session_scope block, so the transaction has committed
+    # and a page that reloads on this event cannot read the state that existed
+    # a moment before the change it is being told about.
+    if transition is not None and transition.changed:
+        events.publish(
+            {
+                "kind": "status",
+                "target_id": transition.target_id,
+                "from": str(transition.previous),
+                "to": str(transition.current),
+            }
+        )

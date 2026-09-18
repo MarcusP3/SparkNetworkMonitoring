@@ -400,3 +400,21 @@ fieldset.tuning[disabled] {
   opacity: .45;
   pointer-events: none;
 }
+
+/* ---- live updates ----------------------------------------------------- */
+
+/* A row that just changed state. Fades from a neutral highlight rather than a
+   colour that implies good or bad -- the status pill in the row already says
+   which, and this only needs to say "look here". */
+@keyframes just-changed {
+  from { background: var(--surface-2); }
+  to   { background: transparent; }
+}
+
+tr.just-changed td {
+  animation: just-changed 2.5s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  tr.just-changed td { animation: none; background: var(--surface-2); }
+}

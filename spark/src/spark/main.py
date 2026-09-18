@@ -17,6 +17,7 @@ from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
+from .web.routes_events import router as events_router
 from .web.routes_targets import router as targets_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -87,6 +88,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(dashboard_router)
     app.include_router(targets_router)
+    app.include_router(events_router)
     return app
 
 
