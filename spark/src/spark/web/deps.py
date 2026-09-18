@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -16,7 +17,30 @@ from ..db import get_sessionmaker
 from ..models import User
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+
+def _asset_version() -> str:
+    """A cache key that changes exactly when the stylesheet does.
+
+    Without this, /static/app.css is a stable URL and browsers keep serving
+    the copy they already have. Templates are rendered per request so they
+    update the moment a new image starts, but the CSS does not -- which shows
+    up as a deploy that looks half-applied, and costs you a hard refresh to
+    diagnose every single time.
+
+    A content hash rather than the app version: it changes when the file
+    changes, which is the actual thing that matters, and never when it doesn't.
+    """
+    try:
+        return hashlib.md5((STATIC_DIR / "app.css").read_bytes()).hexdigest()[:8]
+    except OSError:
+        # A missing stylesheet is the static mount's problem, not ours.
+        return "dev"
+
+
+templates.env.globals["asset_version"] = _asset_version()
 
 
 class RedirectException(Exception):

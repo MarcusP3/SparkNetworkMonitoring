@@ -72,6 +72,14 @@ real.
 - Removed the sentence restating the defaults next to the checkbox. The greyed
   fields already show those values, so it said the same thing twice.
 
+- **The stylesheet is now cache-busted.** `/static/app.css` was a stable URL,
+  so browsers kept serving the copy they already had. Templates re-render on
+  every request and so update the instant a new image starts, but the CSS did
+  not — which presents as a deploy that looks half-applied and costs a hard
+  refresh to diagnose, every time. `base.html` now requests
+  `app.css?v=<hash>`, where the hash is of the file's own contents, so the URL
+  changes exactly when the file does and never when it doesn't.
+
 ### Dependencies
 
 - `icmplib` and `dnspython`, both previously named in DESIGN.md's stack table
