@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting
 from ..engine.state import human_duration
@@ -116,12 +117,25 @@ async def dashboard(
         warnings.append(
             "No Discord webhook configured yet, so nothing can alert you."
         )
-    if not config.network.subnets:
+    # From the database, not the config: spark.yaml seeds subnets once and is
+    # never read again, so reading it here showed the file's idea of the
+    # network rather than the one the Settings page edits.
+    known_subnets = await subnet_service.list_subnets(session)
+
+    if not known_subnets:
         warnings.append(
             "No subnets configured, so discovery has nothing to scan. "
-            "Add them under network.subnets in spark.yaml."
+            "Add one under Settings."
         )
-    routed = [s for s in config.network.subnets if not s.attached]
+    asleep = [s for s in known_subnets if not s.enabled]
+    if asleep:
+        names = ", ".join(s.label for s in asleep)
+        warnings.append(
+            f"{names} are listed but not swept, so nothing there is being "
+            "discovered. That is a setting, not a fault — untick Sweep only "
+            "for segments you want on record without scanning."
+        )
+    routed = [s for s in known_subnets if not s.attached and s.enabled]
     if routed:
         names = ", ".join(s.label for s in routed)
         warnings.append(
@@ -139,7 +153,7 @@ async def dashboard(
             "user": user,
             "stats": stats,
             "warnings": warnings,
-            "subnets": config.network.subnets,
+            "subnets": known_subnets,
             "watched": watched,
             "incidents": incidents,
         },

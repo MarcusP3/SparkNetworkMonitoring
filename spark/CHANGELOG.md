@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — the dashboard was still reading spark.yaml (2026-09-18)
+
+### Fixed
+
+- **The dashboard's subnet table ignored anything added in Settings.** Devices,
+  the sweep and the scheduler were all moved onto the database in the last
+  change and the dashboard was left reading `config.network.subnets`, so it
+  went on showing the file's idea of the network while Settings edited the real
+  one. Nothing raised — the two pages simply disagreed, which is the failure
+  mode that takes longest to notice. It now reads the same source as everything
+  else, and its "no subnets" warning points at Settings rather than at a file
+  that is no longer consulted.
+
+- Stale empty states on the Dashboard and Targets pages still said "there is no
+  discovery yet, so targets are added by hand". Discovery shipped in increment
+  4; both now point at the Watch button on the Devices page.
+
+### Added
+
+- The dashboard flags a subnet that is listed but has **Sweep** unticked. That
+  state is invisible otherwise and looks exactly like a working subnet that
+  never finds anything.
+
+### Tests
+
+- Five more in `tests/test_subnets.py`: a subnet added in Settings reaches the
+  dashboard, a removed one leaves it, an edited VLAN shows there, the empty
+  warning no longer mentions `spark.yaml`, and an unswept subnet is called out.
+  The first two would have caught this.
+- Suite: 175 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — two bits of visual noise (2026-09-18)
 
 ### Changed

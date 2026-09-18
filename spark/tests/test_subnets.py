@@ -515,6 +515,48 @@ class TestSettingsPage:
         assert "/login" in response.headers.get("location", "")
 
 
+class TestDashboard:
+    """The dashboard's subnet table reads the same source as everything else.
+
+    It did not, at first. Devices, the scheduler and the sweep were moved onto
+    the database and the dashboard was left reading `config.network.subnets`,
+    so it kept showing spark.yaml's idea of the network while Settings edited
+    the real one. Nothing raised; the two pages just disagreed.
+    """
+
+    def test_a_subnet_added_in_settings_appears_on_the_dashboard(self, client):
+        client.post("/settings/subnets",
+                    data={"cidr": "10.9.9.0/24", "name": "Guest", "vlan": "90",
+                          "attached": "1"})
+        page = client.get("/").text
+        assert "10.9.9.0/24" in page and "Guest" in page
+
+    def test_a_subnet_removed_in_settings_leaves_the_dashboard(self, client):
+        assert "10.1.10.0/24" in client.get("/").text
+        client.post("/settings/subnets/1/delete")
+        assert "10.1.10.0/24" not in client.get("/").text
+
+    def test_an_edited_vlan_tag_shows_on_the_dashboard(self, client):
+        client.post("/settings/subnets/1",
+                    data={"cidr": "10.1.10.0/24", "name": "LAN", "vlan": "55",
+                          "attached": "1", "enabled": "1"})
+        assert "55" in client.get("/").text
+
+    def test_the_empty_warning_points_at_settings_not_the_yaml_file(self, client):
+        client.post("/settings/subnets/1/delete")
+        page = client.get("/").text
+        assert "No subnets configured" in page
+        assert "spark.yaml" not in page, "the file is no longer where subnets live"
+
+    def test_a_subnet_with_sweep_unticked_is_called_out(self, client):
+        client.post("/settings/subnets/1",
+                    data={"cidr": "10.1.10.0/24", "name": "LAN", "attached": "1"})
+        page = client.get("/").text
+        # Listed but not swept is a real state and silently looks like a
+        # working subnet that never finds anything.
+        assert "not swept" in page
+
+
 class TestDeviceFilter:
     def test_unfiltered_shows_everything(self, client):
         assert device_names(client.get("/devices").text) == {"nas", "sensor", "stray"}
