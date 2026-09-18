@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — say what the subnet checkboxes actually do (2026-09-18)
+
+Both checkboxes on the Settings page were labelled in shorthand — "L2" and
+"on" — under headers that already said the same thing, with the real
+explanation in a tooltip nobody hovers. The first question the page got was
+what the attached checkbox meant.
+
+### Changed
+
+- The cryptic inline labels are gone; the column headers do that job, and the
+  checkboxes carry `aria-label`s instead of visible abbreviations.
+
+- The paragraph under the table is now a three-term legend covering
+  **Attached**, **Sweep** and **VLAN**, each with the consequence rather than
+  the definition.
+
+- **Attached** now says how to check — `ip -br addr` on the host — and which
+  way to err. The two mistakes are not symmetrical and the page never said so:
+  ticking it wrongly is harmless, because the ARP table holds no entries for
+  addresses beyond the router, so the lookups come back empty, identity falls
+  back to IP anyway, and the Devices page shows a "no ARP" pill saying the flag
+  disagrees with reality. Unticking it wrongly skips an ARP read that would
+  have worked and throws away MAC identity. So: when in doubt, tick it.
+
+- **Sweep** is documented for the first time. It was an unlabelled checkbox
+  that silently controlled whether a subnet is scanned at all.
+
+- **VLAN** says plainly that nothing reads it — not the sweep, not identity,
+  not the scheduler — so a network that does not want VLAN IDs to matter can
+  still record them.
+
 ## Unreleased — subnets move into the database, with a Settings page (2026-09-18)
 
 Adding a subnet used to be an SSH session, a file edit and a container restart.

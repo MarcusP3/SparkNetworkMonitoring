@@ -582,3 +582,36 @@ input.narrow { max-width: 5.5rem; }
 @media (max-width: 40rem) {
   .filter-count { margin-left: 0; flex-basis: 100%; }
 }
+
+/* ---- settings legend --------------------------------------------------- */
+
+/* A definition list rather than a paragraph: three terms that each need a few
+   sentences read badly as prose, and these are the fields people get wrong. */
+.legend {
+  margin: 1rem 0 0;
+  font-size: .875rem;
+  color: var(--text-muted);
+}
+
+.legend dt {
+  margin-top: .75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.legend dt:first-child { margin-top: 0; }
+
+.legend dd {
+  margin: .2rem 0 0;
+  max-width: 68ch;      /* prose, not a full-width wall */
+  line-height: 1.5;
+}
+
+.legend .pill { font-size: .7rem; vertical-align: baseline; }
+
+/* A command is one token to a reader; letting it break mid-flag turns
+   `ip -br addr` into two things that look like neither. */
+.legend code { white-space: nowrap; }
+
+/* A second dd under the same dt is a continuation paragraph, not a new term. */
+.legend dd + dd { margin-top: .5rem; }

@@ -22,8 +22,8 @@
           <th>Network</th>
           <th>Name</th>
           <th>VLAN</th>
-          <th>Attached</th>
-          <th>Sweep</th>
+          <th title="This machine has an interface on the segment">Attached</th>
+          <th title="Include this subnet in the scan schedule">Sweep</th>
           <th></th>
         </tr>
       </thead>
@@ -63,17 +63,16 @@
             <label class="checkbox">
               <input type="checkbox" name="attached" value="1"
                      form="subnet-{{ subnet.id }}"
+                     aria-label="Directly attached"
                      {% if subnet.attached %}checked{% endif %}>
-              <span class="muted small" title="SPARK has an interface on this
-                    segment, so ARP works and devices get a MAC address">L2</span>
             </label>
           </td>
           <td>
             <label class="checkbox">
               <input type="checkbox" name="enabled" value="1"
                      form="subnet-{{ subnet.id }}"
+                     aria-label="Sweep this subnet"
                      {% if subnet.enabled %}checked{% endif %}>
-              <span class="muted small">on</span>
             </label>
           </td>
           <td class="actions">
@@ -118,13 +117,43 @@
       <button type="submit" class="btn-primary">Add subnet</button>
     </form>
 
-    <p class="muted small">
-      <strong>Directly attached</strong> means this machine has an interface on
-      the segment. ARP only works there, and device identity keys on MAC
-      address — across a router SPARK can ping a host but not learn its MAC, so
-      those devices fall back to IP identity and look new when DHCP moves them.
-      <strong>VLAN</strong> is documentation: nothing reads it.
-    </p>
+    <dl class="legend">
+      <dt>Attached</dt>
+      <dd>
+        Tick it only if <em>this machine</em> has an interface with an address on
+        that segment — <code>ip -br addr</code> on the host lists them. ARP only
+        works on segments you are actually on, and device identity keys on MAC
+        address: across a router SPARK can ping a host but never learn its MAC,
+        so those devices are identified by IP and look like new devices whenever
+        DHCP moves them.
+      </dd>
+      <dd>
+        <strong>When in doubt, tick it.</strong> The two mistakes do not cost the
+        same. Ticking it wrongly is harmless — the ARP table has no entries for
+        addresses beyond the router, so the lookups come back empty, you get IP
+        identity anyway, and the Devices page shows a <span class="pill warn">no
+        ARP</span> pill telling you the flag disagrees with reality. Unticking it
+        wrongly is the expensive one: SPARK skips the ARP read even though it
+        would have worked, and throws away MAC identity you could have had.
+      </dd>
+
+      <dt>Sweep</dt>
+      <dd>
+        Whether this subnet is included when the scan runs. Untick it to keep a
+        segment listed here for documentation without pinging it — useful for
+        somewhere you are not allowed to scan, or a range you only want on
+        record. Devices already discovered there stay in the inventory; they
+        just stop being re-checked.
+      </dd>
+
+      <dt>VLAN</dt>
+      <dd>
+        Documentation only. Nothing in SPARK reads the tag — not the sweep, not
+        device identity, not the scheduler. It labels the subnet here and shows
+        as a column on the Devices page, so the inventory records which VLAN a
+        thing sits on without your network having to care.
+      </dd>
+    </dl>
   </section>
 </div>
 {% endblock %}
