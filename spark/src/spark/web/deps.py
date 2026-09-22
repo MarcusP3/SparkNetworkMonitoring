@@ -40,7 +40,28 @@ def _asset_version() -> str:
         return "dev"
 
 
+def _app_version() -> str:
+    """The version for the footer.
+
+    Read from installed package metadata rather than written into a template,
+    so it cannot drift from what `pyproject.toml` says. A source checkout that
+    was never installed has no metadata, and "dev" is the honest answer there
+    -- better than a number that stopped being true three releases ago.
+    """
+    try:
+        from importlib.metadata import version
+
+        # The distribution name from pyproject.toml, not the import name. They
+        # differ here -- the package is `spark`, the distribution is
+        # `spark-monitor` -- and asking for the wrong one raises
+        # PackageNotFoundError, which this used to swallow into "dev".
+        return version("spark-monitor")
+    except Exception:  # noqa: BLE001 - a footer must never take a page down
+        return "dev"
+
+
 templates.env.globals["asset_version"] = _asset_version()
+templates.env.globals["app_version"] = _app_version()
 
 
 class RedirectException(Exception):

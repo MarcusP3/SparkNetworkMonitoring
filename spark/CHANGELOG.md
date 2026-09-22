@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased — a new look for the shell and the dashboard (2026-09-22)
+
+A visual pass, from a mockup. No new features and no new data: everything on
+the page was already being queried, and anything in the mockup that would have
+needed data the app does not collect — the health chart, the per-card
+sparklines, the trend percentages, the uptime column, search and the
+notification bell — was left out rather than drawn in.
+
+### The shell
+
+- **A deep navy dark theme** with two fixed radial glows, warm from the
+  bottom-left and cool from the top-right. They are tokens, so the light theme
+  switches them off rather than inventing a pastel version of the same effect.
+- **A sticky, translucent top bar** — useful now that Devices can show 250 rows
+  at once — with the current page as a filled pill, and a signed-in block with
+  an avatar, name and role.
+- Larger radii, softer shadows, a wider page, and a footer that carries the
+  real version, read from package metadata rather than typed into a template.
+- **Tables** get a header band, uppercase tracked labels and a row hover.
+
+### The dashboard
+
+- A greeting, the date, and six stat cards with tinted icon tiles — each with a
+  line saying what its number counts, because "1" under "Monitored" is
+  ambiguous in a way that "Actively checked" is not.
+- Network configuration and Watched keep their tables; recent incidents becomes
+  a timeline, which is the right shape for events at points in time.
+- The heading stayed **"Recent incidents"** rather than becoming the mockup's
+  "Recent activity". Every entry in it is an outage; "activity" would promise a
+  feed of everything the app does.
+
+### Two bugs found on the way
+
+- **Status pills were never themed.** `up`, `unknown`, `ongoing` and the rest
+  carried hardcoded light values — `#e6f4ea` on `#1e6b33` — so in dark mode
+  every one of them rendered as a pale chip stamped on a near-black page. They
+  are on tokens now.
+- **Buttons that are links were underlined.** `.btn-primary` and `.btn-quiet`
+  are worn by `<a>` as well as `<button>`, and an anchor brings its own
+  underline; "Add target" rendered as underlined text in a blue box.
+
+### Checked
+
+- **Contrast, computed rather than eyeballed.** Fourteen text/background pairs
+  against WCAG AA. Two failed on the first pass — the light theme's faint text
+  on a table header at 2.71:1 and its warn colour at 4.44:1 — and both were
+  darkened until they passed. All fourteen now clear their target.
+- Rendered at both themes across Dashboard, Targets, Devices, Settings and
+  Setup. Three layout faults were caught that way and fixed: an `ongoing` pill
+  mangled by a class collision between the timeline bullet and the pill dot, a
+  cause and duration running together as one sentence, and the incident marker
+  on Targets wrapping onto a second line once the status pills grew.
+- Suite: 322 passed, 6 skipped. `smoke_test.py`: 76 passed. No test needed
+  changing, which was the point of restyling in place rather than restructuring.
+
+Targets, Devices and Settings inherit the new palette and card styling; their
+layouts are unchanged and come next.
+
 ## Unreleased — the port list is yours to edit (2026-09-22)
 
 The built-in 45 are a good default and a bad answer to "what is on *my*

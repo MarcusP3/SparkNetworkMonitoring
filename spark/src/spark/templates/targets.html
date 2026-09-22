@@ -29,7 +29,7 @@
             class="{% if not target.enabled %}is-paused{% endif %}">
           <td>
             {% set status = target.status.value if target.status.value is defined else target.status %}
-            <span class="pill status-{{ status }}">{{ status }}</span>
+            <span class="pill dot status-{{ status }}">{{ status }}</span>
             {% if open_counts.get(target.id) %}
               <span class="pill bad" title="Open incident">!</span>
             {% endif %}

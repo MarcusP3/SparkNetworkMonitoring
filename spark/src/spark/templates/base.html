@@ -21,8 +21,14 @@
     <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
     <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>
   </nav>
-  <form method="post" action="/logout" class="logout">
-    <span class="who">{{ user.username }}</span>
+  <form method="post" action="/logout" class="user-chip">
+    {# An initial, not a photo. There is nowhere to upload one, and a generic
+       silhouette is a grey blob that says nothing. #}
+    <span class="avatar" aria-hidden="true">{{ user.username[0] }}</span>
+    <span class="who">
+      <span class="who-name">{{ user.username }}</span>
+      <span class="who-role">{{ 'Administrator' if user.is_admin else 'User' }}</span>
+    </span>
     <button type="submit" class="btn-quiet">Sign out</button>
   </form>
 </header>
@@ -33,8 +39,8 @@
 </main>
 
 <footer class="footer">
-  SPARK {{ config.app.instance_name if config.app.instance_name != 'SPARK' else '' }}
-  · <span class="muted">network monitoring for homelabs</span>
+  <span><strong>SPARK</strong> <span class="muted">v{{ app_version }}</span></span>
+  <span class="muted">network monitoring for homelabs</span>
 </footer>
 <script>
   // Live updates. The server pushes a one-line event when a target changes

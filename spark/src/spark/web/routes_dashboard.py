@@ -7,6 +7,8 @@ engine and discovery workers land in the next increments.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,23 @@ from ..models import CheckResult, Device, HealthStatus, Incident, Service, Targe
 from .deps import get_config, get_session, require_user, templates
 
 router = APIRouter()
+
+
+def _greeting() -> str:
+    """Morning, afternoon or evening, by the server's clock.
+
+    The server's, because that is the only clock this page has -- rendering
+    happens before any browser is involved. On a homelab box sitting in the
+    same house as the person reading it, that is the right answer; on a VPS in
+    another timezone it will be wrong, and a greeting is a cheap enough thing
+    to be wrong about that it is not worth a round trip to find out.
+    """
+    hour = datetime.now().astimezone().hour
+    if hour < 12:
+        return "Good morning"
+    if hour < 18:
+        return "Good afternoon"
+    return "Good evening"
 
 
 @router.get("/healthz")
@@ -157,5 +176,10 @@ async def dashboard(
             "subnets": known_subnets,
             "watched": watched,
             "incidents": incidents,
+            "greeting": _greeting(),
+            # Local time, not UTC. Everything stored is UTC on purpose, but a
+            # header that greets you by time of day and then prints a clock
+            # five hours off is worse than printing no clock at all.
+            "now": datetime.now().astimezone(),
         },
     )

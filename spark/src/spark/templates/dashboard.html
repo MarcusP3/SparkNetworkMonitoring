@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page">
-  <h1>Dashboard</h1>
+
+  <div class="greeting">
+    <div>
+      <h1>{{ greeting }}, {{ user.username }}</h1>
+      <p>Here's what's happening with your infrastructure today.</p>
+    </div>
+    <div class="greeting-when">
+      {{ now.strftime('%a, %b %-d, %Y') }}<br>
+      {{ now.strftime('%-I:%M %p') }}
+    </div>
+  </div>
 
   <div id="live">
 
@@ -9,35 +19,78 @@
   <div class="alert warn">{{ warning }}</div>
   {% endfor %}
 
+  {# Six counts, each with the same anatomy: a tinted icon, what it is, the
+     number, and a line saying what the number counts. That last line does the
+     work -- "1" under "Monitored" is ambiguous in a way that "Actively
+     checked" is not. #}
   <section class="stat-row">
     <a class="stat" href="/devices">
+      <span class="stat-head">
+        <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span>
+        <span class="stat-name">Devices</span>
+      </span>
       <span class="stat-value">{{ stats.devices }}</span>
-      <span class="stat-label">Devices</span>
+      <span class="stat-note">Total devices in inventory</span>
     </a>
+
     <div class="stat">
+      <span class="stat-head">
+        <span class="stat-icon tile-2"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span>
+        <span class="stat-name">Services</span>
+      </span>
       <span class="stat-value">{{ stats.services }}</span>
-      <span class="stat-label">Services</span>
+      <span class="stat-note">Discovered on those devices</span>
     </div>
-    <div class="stat">
+
+    <a class="stat" href="/targets">
+      <span class="stat-head">
+        <span class="stat-icon tile-3"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span>
+        <span class="stat-name">Monitored</span>
+      </span>
       <span class="stat-value">{{ stats.targets }}</span>
-      <span class="stat-label">Monitored</span>
-    </div>
+      <span class="stat-note">Actively checked</span>
+    </a>
+
     <div class="stat {% if stats.degraded %}is-warn{% endif %}">
+      <span class="stat-head">
+        <span class="stat-icon tile-4"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span>
+        <span class="stat-name">Degraded</span>
+      </span>
       <span class="stat-value">{{ stats.degraded }}</span>
-      <span class="stat-label">Degraded</span>
+      <span class="stat-note">Answering, but badly</span>
     </div>
+
     <div class="stat {% if stats.down %}is-bad{% endif %}">
+      <span class="stat-head">
+        <span class="stat-icon tile-5"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10.5 4.5 4 4.5-4"/><path d="M5 19h14"/></svg></span>
+        <span class="stat-name">Down</span>
+      </span>
       <span class="stat-value">{{ stats.down }}</span>
-      <span class="stat-label">Down</span>
+      <span class="stat-note">Not answering at all</span>
     </div>
+
     <div class="stat {% if stats.open_incidents %}is-bad{% endif %}">
+      <span class="stat-head">
+        <span class="stat-icon tile-6"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
+        <span class="stat-name">Open incidents</span>
+      </span>
       <span class="stat-value">{{ stats.open_incidents }}</span>
-      <span class="stat-label">Open incidents</span>
+      <span class="stat-note">Still unresolved</span>
     </div>
   </section>
 
   <section class="card">
-    <h2>Configured subnets <a class="muted small" href="/settings">edit</a></h2>
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1.5"/><rect x="2.5" y="16" width="6" height="5" rx="1.5"/><rect x="15.5" y="16" width="6" height="5" rx="1.5"/><path d="M12 8v3.5M5.5 16v-2a1.5 1.5 0 0 1 1.5-1.5h10a1.5 1.5 0 0 1 1.5 1.5v2"/></svg></span>
+      <div>
+        <h2>Network configuration</h2>
+        <p class="card-sub">The segments SPARK sweeps, and how it reaches them.</p>
+      </div>
+      <div class="head-actions">
+        <a class="btn-quiet" href="/settings">Edit subnets</a>
+      </div>
+    </div>
+
     {% if subnets %}
     <table class="table">
       <thead>
@@ -46,14 +99,14 @@
       <tbody>
         {% for subnet in subnets %}
         <tr>
-          <td>{{ subnet.label }}</td>
+          <td><strong>{{ subnet.label }}</strong></td>
           <td><code>{{ subnet.cidr }}</code></td>
-          <td>{{ subnet.vlan if subnet.vlan is not none else '—' }}</td>
+          <td class="muted">{{ subnet.vlan if subnet.vlan is not none else '—' }}</td>
           <td>
             {% if subnet.attached %}
-              <span class="pill ok">Directly attached</span>
+              <span class="pill ok dot">Directly attached</span>
             {% else %}
-              <span class="pill warn">Routed · IP identity only</span>
+              <span class="pill warn dot">Routed · IP identity only</span>
             {% endif %}
             {% if not subnet.enabled %}
               <span class="pill" title="Listed for documentation; the sweep
@@ -71,78 +124,103 @@
     {% endif %}
   </section>
 
-  {% if watched %}
-  <section class="card">
-    <h2>Watched</h2>
-    <table class="table">
-      <thead>
-        <tr><th>Status</th><th>Name</th><th>Address</th><th>Latency</th><th>Last result</th></tr>
-      </thead>
-      <tbody>
-        {% for row in watched %}
-        <tr data-target-id="{{ row.id }}" data-status="{{ row.status }}">
-          <td><span class="pill status-{{ row.status }}">{{ row.status }}</span></td>
-          <td><strong>{{ row.name }}</strong></td>
-          <td><code>{{ row.address }}</code></td>
-          <td class="muted">{{ '%.0f ms' % row.latency_ms if row.latency_ms is not none else '—' }}</td>
-          <td class="muted small">{{ row.detail or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% else %}
-  <section class="card empty-state">
-    <h2>Nothing is being monitored yet</h2>
-    <p class="muted">
-      The check engine is running, but no targets are defined. Add one by hand,
-      or press <strong>Watch</strong> against something on the
-      <a href="/devices">Devices</a> page.
-    </p>
-    <a class="btn-primary" href="/targets/new">Add a target</a>
-  </section>
-  {% endif %}
+  <div class="dash-grid">
 
-  {% if incidents %}
-  <section class="card">
-    <h2>Recent incidents</h2>
-    <table class="table">
-      <thead>
-        <tr><th>Target</th><th>Opened</th><th>Duration</th><th>Cause</th></tr>
-      </thead>
-      <tbody>
+    {% if watched %}
+    <section class="card">
+      <div class="card-head">
+        <span class="card-icon tile-3"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg></span>
+        <div>
+          <h2>Watched</h2>
+          <p class="card-sub">Devices and endpoints checked on a schedule.</p>
+        </div>
+        <div class="head-actions">
+          <a class="btn-quiet" href="/targets/new">Add a target</a>
+        </div>
+      </div>
+      <table class="table">
+        <thead>
+          <tr><th>Status</th><th>Name</th><th>Address</th><th>Latency</th><th>Last result</th></tr>
+        </thead>
+        <tbody>
+          {% for row in watched %}
+          <tr data-target-id="{{ row.id }}" data-status="{{ row.status }}">
+            <td><span class="pill dot status-{{ row.status }}">{{ row.status }}</span></td>
+            <td><strong>{{ row.name }}</strong></td>
+            <td><code>{{ row.address }}</code></td>
+            <td class="muted">{{ '%.0f ms' % row.latency_ms if row.latency_ms is not none else '—' }}</td>
+            <td class="muted small">{{ row.detail or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% else %}
+    <section class="card empty-state">
+      <h2>Nothing is being monitored yet</h2>
+      <p class="muted">
+        The check engine is running, but no targets are defined. Add one by hand,
+        or press <strong>Watch</strong> against something on the
+        <a href="/devices">Devices</a> page.
+      </p>
+      <a class="btn-primary" href="/targets/new">Add a target</a>
+    </section>
+    {% endif %}
+
+    {# Incidents, not "activity". A timeline is the right shape for events at
+       points in time, but the heading says what is actually in the list: every
+       entry is an outage, and "activity" would promise a feed of everything
+       the app does. #}
+    <section class="card">
+      <div class="card-head">
+        <span class="card-icon tile-6"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
+        <div>
+          <h2>Recent incidents</h2>
+          <p class="card-sub">The last ten, newest first.</p>
+        </div>
+      </div>
+
+      {% if incidents %}
+      <ul class="timeline">
         {% for incident in incidents %}
-        <tr>
-          <td>{{ incident.target_name }}</td>
-          <td class="muted small">{{ incident.opened_at.strftime('%Y-%m-%d %H:%M') }}</td>
-          <td class="muted">
-            {% if incident.closed_at %}{{ incident.duration }}
-              {# A duration alone cannot say whether the outage ended or whether
-                 we simply stopped watching, and those read identically. #}
-              {% if incident.resolution == 'paused' %}
-                <div class="muted small" title="Monitoring was paused while this
-                      target was down, so the outage may have continued past
-                      this point">paused, not recovered</div>
-              {% elif incident.resolution == 'superseded' %}
-                <div class="muted small" title="Left open by an older bug and
-                      closed when the next incident opened">superseded</div>
+        <li>
+          <span class="tl-dot {% if not incident.closed_at %}bad{% elif incident.resolution == 'recovered' %}ok{% else %}warn{% endif %}"
+                aria-hidden="true"></span>
+          <span class="what">
+            <strong>{{ incident.target_name }}</strong>
+            <span class="detail">{{ incident.cause or 'No cause recorded' }}</span>
+            <span class="detail">
+              {% if not incident.closed_at %}
+                <span class="pill bad dot">ongoing</span>
+              {% else %}
+                Lasted {{ incident.duration }}
+                {# A duration alone cannot say whether the outage ended or
+                   whether we simply stopped watching, and those read
+                   identically. #}
+                {% if incident.resolution == 'paused' %}
+                  · <span title="Monitoring was paused while this target was
+                        down, so the outage may have continued past this
+                        point">paused, not recovered</span>
+                {% elif incident.resolution == 'superseded' %}
+                  · <span title="Left open by an older bug and closed when the
+                        next incident opened">superseded</span>
+                {% endif %}
               {% endif %}
-            {% else %}
-              <span class="pill bad">ongoing</span>
-            {% endif %}
-          </td>
-          <td class="muted small">
-            {{ incident.cause or '—' }}
-            {% if incident.suppressed_by_dependency %}
-              <span class="pill warn" title="A dependency was already down">symptom</span>
-            {% endif %}
-          </td>
-        </tr>
+              {% if incident.suppressed_by_dependency %}
+                <span class="pill warn" title="A dependency was already down">symptom</span>
+              {% endif %}
+            </span>
+          </span>
+          <span class="when">{{ incident.opened_at.strftime('%b %-d, %H:%M') }}</span>
+        </li>
         {% endfor %}
-      </tbody>
-    </table>
-  </section>
-  {% endif %}
+      </ul>
+      {% else %}
+      <p class="muted">Nothing has gone down yet.</p>
+      {% endif %}
+    </section>
+
+  </div>
   </div>
 </div>
 {% endblock %}
