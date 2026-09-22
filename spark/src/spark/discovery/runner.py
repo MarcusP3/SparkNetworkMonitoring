@@ -21,10 +21,15 @@ from .. import events
 from ..db import get_setting, save_setting, session_scope
 from ..models import Device, utcnow
 from ..subnets import enabled_subnets
-from .ports import WELL_KNOWN, scan_hosts
+from .ports import (
+    WELL_KNOWN,
+    find_interception,
+    pick_control_addresses,
+    scan_hosts,
+)
 from .services import record_all as record_services
 from .store import record_all
-from .sweep import SweepReport, sweep_all
+from .sweep import SweepReport, hosts_in, sweep_all
 
 log = logging.getLogger(__name__)
 
@@ -167,6 +172,26 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
             )
             targets = [(int(device_id), str(ip)) for device_id, ip in rows]
 
+            # Control addresses come from the same session: addresses in an
+            # enabled subnet that discovery has never found anything at.
+            known = {ip for _, ip in targets}
+            all_ips = {
+                str(ip) for ip in (
+                    await session.execute(
+                        select(Device.primary_ip).where(Device.primary_ip.isnot(None))
+                    )
+                ).scalars().all()
+            }
+            subnets = await enabled_subnets(session)
+            controls: list[str] = []
+            for subnet in subnets:
+                if len(controls) >= 3:
+                    break
+                controls.extend(
+                    pick_control_addresses(hosts_in(subnet.cidr), known | all_ips)
+                )
+            controls = controls[:3]
+
         if not targets:
             summary["devices"] = 0
             summary["finished_at"] = utcnow().isoformat()
@@ -175,7 +200,12 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
             log.info("Port scan: no devices to scan")
             return
 
-        scans = await scan_hosts(targets)
+        # Anything that answers where nothing exists is the network talking,
+        # not a service. Excluded from the scan rather than recorded.
+        intercepted = await find_interception(controls)
+        ports = [p for p in sorted(WELL_KNOWN) if p not in intercepted]
+
+        scans = await scan_hosts(targets, ports)
 
         async with session_scope() as session:
             seen, new = await record_services(session, scans)
@@ -183,14 +213,17 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
                 "devices": len(scans),
                 "services": seen,
                 "new": new,
-                "ports_per_device": len(WELL_KNOWN),
+                "ports_per_device": len(ports),
+                "controls": len(controls),
+                "intercepted": sorted(intercepted),
                 "finished_at": utcnow().isoformat(),
             })
             await save_setting(session, PORT_SCAN_STATE_KEY, summary)
 
         log.info(
-            "Port scan: %d device(s), %d service(s) answering, %d new",
+            "Port scan: %d device(s), %d service(s) answering, %d new%s",
             len(scans), seen, new,
+            f" ({len(intercepted)} port(s) excluded as intercepted)" if intercepted else "",
         )
     except Exception as exc:  # noqa: BLE001 - a failed scan must not stop the scheduler
         log.exception("Port scan failed")

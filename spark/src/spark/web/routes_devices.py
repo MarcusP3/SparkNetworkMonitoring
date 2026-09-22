@@ -20,7 +20,7 @@ from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.oui import is_locally_administered
 from ..discovery.ports import concern
-from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_sweep
+from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_port_scan, last_sweep
 from ..discovery.services import services_for
 from ..models import CheckType, Device, HealthStatus, Service, Target, User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
@@ -176,6 +176,7 @@ async def list_devices(
 
     unreviewed = sum(1 for row in rows if not row["device"].acknowledged)
 
+    port_scan = await last_port_scan(session)
     sweep = await last_sweep(session)
     if sweep.get("finished_at"):
         try:
@@ -205,6 +206,7 @@ async def list_devices(
                 ) if subnet == UNASSIGNED else None,
             },
             "sweep": sweep,
+            "port_scan": port_scan,
             "scan": await _scan_schedule(
                 session, sum(1 for s in known_subnets if s.enabled)
             ),

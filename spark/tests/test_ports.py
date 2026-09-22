@@ -341,3 +341,94 @@ class TestServicesForThePage:
 async def _call_services_for(ids):
     async with D.session_scope() as s:
         return await services_for(s, ids)
+
+
+# --------------------------------------------------------------------------
+# Detecting a network that answers for its hosts
+# --------------------------------------------------------------------------
+
+
+class TestPickingControls:
+    def test_known_addresses_are_excluded(self):
+        picked = P.pick_control_addresses(
+            [f"10.1.10.{n}" for n in range(1, 20)],
+            known={f"10.1.10.{n}" for n in range(1, 18)},
+        )
+        assert set(picked) <= {"10.1.10.18", "10.1.10.19"}
+
+    def test_too_few_free_addresses_means_no_controls(self):
+        # One control cannot distinguish interception from a live host, so
+        # rather than guess it declines to test at all.
+        picked = P.pick_control_addresses(
+            ["10.1.10.1", "10.1.10.2"], known={"10.1.10.1", "10.1.10.2"}
+        )
+        assert picked == []
+        assert P.pick_control_addresses(["10.1.10.1"], known=set()) == []
+
+    def test_controls_are_spread_rather_than_clustered(self):
+        picked = P.pick_control_addresses(
+            [f"10.1.10.{n}" for n in range(1, 101)], known=set(), count=3
+        )
+        # The bottom of a subnet is where infrastructure lives and the top is
+        # often the end of a DHCP pool; a cluster at either end is likelier to
+        # hit something real. So assert the span, not the order -- the first
+        # version of this compared the list to its own sorted prefix, which is
+        # the same list and could never fail.
+        assert len(picked) == 3 and len(set(picked)) == 3
+        last_octets = sorted(int(ip.rsplit(".", 1)[1]) for ip in picked)
+        assert last_octets[-1] - last_octets[0] > 50, picked
+
+
+class TestFindInterception:
+    """Simulated with loopback aliases, which is a faithful model of it.
+
+    A listener bound to 0.0.0.0 answers on 127.0.0.2 and 127.0.0.3 alike --
+    exactly what a firewall redirecting a port to itself looks like from the
+    scanner's seat. One bound to 127.0.0.1 answers only there, which is what a
+    real service on one host looks like.
+    """
+
+    def test_a_port_answering_everywhere_is_flagged(self):
+        async def go():
+            server = await asyncio.start_server(lambda r, w: w.close(), "0.0.0.0", 0)
+            port = server.sockets[0].getsockname()[1]
+            async with server:
+                return await P.find_interception(
+                    ["127.0.0.2", "127.0.0.3"], [port], timeout=2.0
+                )
+
+        found = asyncio.run(go())
+        assert len(found) == 1
+
+    def test_a_port_on_one_host_only_is_not_flagged(self):
+        async def go():
+            server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            async with server:
+                # .1 answers, .2 does not. Unanimity fails, so it is a real
+                # service on one machine rather than the network talking.
+                return await P.find_interception(
+                    ["127.0.0.1", "127.0.0.2"], [port], timeout=2.0
+                )
+
+        assert asyncio.run(go()) == set()
+
+    def test_nothing_answering_flags_nothing(self):
+        found = asyncio.run(
+            P.find_interception(["127.0.0.2", "127.0.0.3"], [free_port()], timeout=1.0)
+        )
+        assert found == set()
+
+    def test_fewer_than_two_controls_declines_to_guess(self):
+        async def go():
+            server = await asyncio.start_server(lambda r, w: w.close(), "0.0.0.0", 0)
+            port = server.sockets[0].getsockname()[1]
+            async with server:
+                return await P.find_interception(["127.0.0.2"], [port], timeout=2.0)
+
+        # With one control a live host would suppress every port it runs for
+        # the whole network -- hiding real services, which is the worse error.
+        assert asyncio.run(go()) == set()
+
+    def test_no_controls_at_all_is_not_an_error(self):
+        assert asyncio.run(P.find_interception([], [80])) == set()

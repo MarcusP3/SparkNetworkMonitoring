@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — the scan checks whether the network is lying to it (2026-09-22)
+
+Prompted by every device appearing to run DNS. That turned out to be a
+misreading, but the question it raised is real: a TCP connect scan cannot tell
+a service apart from a firewall answering on its behalf, because the handshake
+genuinely completes either way. From the scanner's seat, a rule redirecting
+port 53 to the local resolver makes every address on the network run DNS.
+
+### Added
+
+- **A control probe.** Before each scan, SPARK probes up to three addresses in
+  your subnets that discovery has never found anything at. A port that answers
+  on a host that is not there is the network talking, not a service, so it is
+  excluded from the scan rather than recorded — listing it would put a row in
+  the inventory for something that does not exist.
+
+- **The Devices page says so** when it happens, naming the ports and how many
+  dead addresses they answered on, with the usual cause: a firewall redirecting
+  a port to itself. A silent omission would be its own kind of lie.
+
+### The two rules that make it safe
+
+- **Unanimity.** A port has to answer on *every* control before it is called
+  intercepted. Anything less and one live machine that slipped into the control
+  set would suppress the ports it runs across the whole network — hiding real
+  services, which is a worse failure than showing false ones.
+
+- **At least two controls, or it declines to judge.** A single "free" address
+  might be a host that appeared since the last sweep. With one sample there is
+  no way to tell, so it does not guess.
+
+Controls are also spread across the subnet rather than taken from one end: the
+bottom is where infrastructure lives and the top is often where a DHCP pool
+ends, so a cluster at either end is likelier to hit something real.
+
+### Tests
+
+- Eight more in `tests/test_ports.py`, simulating interception with loopback
+  aliases — which is a faithful model rather than a mock. A listener bound to
+  `0.0.0.0` answers on `127.0.0.2` and `127.0.0.3` alike, exactly as a firewall
+  redirect looks from the scanner; one bound to `127.0.0.1` answers only there,
+  exactly as a real service does. Both cases are asserted, along with one
+  control declining to judge and no controls not being an error.
+- Verified end to end: a real interceptor bound to `0.0.0.0:53` alongside real
+  services on `127.0.0.1:22` and `:443`. Port 53 was detected against three
+  controls, excluded, and the banner shown; only ssh and https were recorded.
+- One test asserted nonsense and was rewritten — it compared a three-element
+  list to its own sorted prefix, which is the same list and could never fail.
+  It now asserts the property it meant to: that the controls span the range.
+- Suite: 229 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — increment 4b: service discovery (2026-09-22)
 
 The inventory could say what was on the network. It can now say what those

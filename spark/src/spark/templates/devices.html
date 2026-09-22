@@ -94,6 +94,23 @@
   </section>
   {% endif %}
 
+  {% if port_scan and port_scan.intercepted %}
+  <section class="card">
+    <div class="alert warn">
+      <strong>Something on this network answers for every address.</strong>
+      {% for port in port_scan.intercepted %}<code>{{ port }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      answered on {{ port_scan.controls }} addresses that have no host on them,
+      so it is the network replying rather than your devices. Those ports are
+      left out of the scan — listing them would put a row in the inventory for
+      something that does not exist.
+      <div class="muted small">
+        Usually a firewall rule redirecting a port to itself: 53 to force DNS
+        through the local resolver, 80 for a captive portal.
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   {% if sweep %}
   <section class="card sweep-status">
     {% if sweep.error %}
