@@ -1,0 +1,10 @@
+# Repo-root ignores. `spark/.gitignore` covers the application; this covers the
+# things that land next to it.
+
+# Where the Claude desktop app writes files sent to the chat. They appear here
+# only because this repo is the folder connected to Cowork -- they are not part
+# of the project and keep re-staging themselves if left untracked.
+Claude outputs/
+
+# macOS writes one of these into every folder it has ever opened in Finder.
+.DS_Store
