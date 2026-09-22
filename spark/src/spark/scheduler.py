@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from .db import get_setting, session_scope
 from .discovery.runner import JOB_ID as DISCOVERY_JOB_ID
-from .discovery.runner import run_sweep
+from .discovery.runner import PORT_SCAN_JOB_ID, run_port_scan, run_sweep
 from .engine.runner import run_target
 from .retention import JOB_ID as RETENTION_JOB_ID
 from .retention import run_retention
@@ -188,6 +188,81 @@ async def schedule_discovery(
         replace_existing=True,
         name="Subnet sweep",
         **extra,
+    )
+    return True
+
+
+async def schedule_port_scan(
+    settings: dict | None = None,
+    *,
+    first_run_delay: float | None = None,
+) -> bool:
+    """Add or update the periodic port scan.
+
+    Hours rather than minutes: what a box is listening on changes when you
+    deploy something, not minute to minute, and every scan costs a timeout for
+    every filtered port on every device.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+
+    if settings is None:
+        async with session_scope() as session:
+            settings = await get_setting(session, "discovery")
+
+    if not settings.get("port_scan_enabled", True):
+        try:
+            scheduler.remove_job(PORT_SCAN_JOB_ID)
+        except Exception:  # noqa: BLE001 - not scheduled is the desired state
+            pass
+        return False
+
+    interval = max(600, int(settings.get("port_scan_interval_seconds", 21600) or 21600))
+    extra: dict[str, Any] = {}
+    if first_run_delay is not None:
+        extra["next_run_time"] = datetime.now(timezone.utc) + timedelta(
+            seconds=max(0.0, first_run_delay)
+        )
+    scheduler.add_job(
+        run_port_scan,
+        "interval",
+        seconds=interval,
+        jitter=min(int(interval * 0.1) or 1, 300),
+        id=PORT_SCAN_JOB_ID,
+        replace_existing=True,
+        name="Port scan",
+        **extra,
+    )
+    return True
+
+
+def port_scan_next_run() -> datetime | None:
+    scheduler = _scheduler
+    if scheduler is None:
+        return None
+    job = scheduler.get_job(PORT_SCAN_JOB_ID)
+    return getattr(job, "next_run_time", None) if job is not None else None
+
+
+def trigger_port_scan_now() -> bool:
+    """Queue a scan to start now, and return without waiting.
+
+    Same reasoning as trigger_discovery_now: a scan of a dozen devices takes
+    tens of seconds, and the request that started it holds SQLite's one writer
+    slot until it returns.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run_port_scan,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=1),
+        id="discovery:ports:now",
+        replace_existing=True,
+        misfire_grace_time=120,
+        name="Port scan now",
     )
     return True
 

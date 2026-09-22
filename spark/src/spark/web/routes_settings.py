@@ -16,11 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
-from ..db import get_setting
+from ..db import get_setting, save_setting
+from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..models import User
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
+
+
+def _port_count() -> int:
+    from ..discovery.ports import WELL_KNOWN
+
+    return len(WELL_KNOWN)
 
 
 def _checked(value: str) -> bool:
@@ -39,6 +46,7 @@ async def _render(
     status_code: int = 200,
 ):
     rows = await subnet_service.list_subnets(session)
+    discovery = await get_setting(session, "discovery")
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -57,6 +65,14 @@ async def _render(
             "error": error,
             "form": form or {},
             "max_vlan": subnet_service.MAX_VLAN,
+            "scan": {
+                "enabled": bool(discovery.get("port_scan_enabled", True)),
+                "interval_hours": max(
+                    1, int(discovery.get("port_scan_interval_seconds", 21600) or 21600) // 3600
+                ),
+                "choices": PORT_SCAN_INTERVAL_CHOICES,
+                "port_count": _port_count(),
+            },
         },
         status_code=status_code,
     )
@@ -154,4 +170,34 @@ async def remove_subnet(
     await subnet_service.delete(session, subnet_id)
     await session.commit()
     await _apply_to_scheduler(session, config)
+    return redirect("/settings")
+
+
+@router.post("/settings/port-scan")
+async def set_port_scan(
+    enabled: str = Form(""),
+    interval_hours: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Turn the port scan on or off and set how often it runs.
+
+    Validated against the offered list for the same reason the sweep interval
+    is: a value that is not one of the choices did not come from this page, and
+    keeping what is already stored is the safe reading of that.
+    """
+    settings = await get_setting(session, "discovery")
+    settings["port_scan_enabled"] = _checked(enabled)
+    try:
+        hours = int(interval_hours)
+    except (TypeError, ValueError):
+        hours = 0
+    if hours in PORT_SCAN_INTERVAL_CHOICES:
+        settings["port_scan_interval_seconds"] = hours * 3600
+
+    await save_setting(session, "discovery", settings)
+    await session.commit()
+
+    # Settings handed straight in: this request may still hold the write lock.
+    await scheduler_module.schedule_port_scan(settings)
     return redirect("/settings")

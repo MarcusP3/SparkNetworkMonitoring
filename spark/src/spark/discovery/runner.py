@@ -13,10 +13,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
+
+from sqlalchemy import select
 
 from .. import events
 from ..db import get_setting, save_setting, session_scope
+from ..models import Device, utcnow
 from ..subnets import enabled_subnets
+from .ports import WELL_KNOWN, scan_hosts
+from .services import record_all as record_services
 from .store import record_all
 from .sweep import SweepReport, sweep_all
 
@@ -113,3 +119,87 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
         for name in new_names:
             log.info("New device on the network: %s", name)
     events.publish({"kind": "devices", "new": len(new_names)})
+
+
+PORT_SCAN_JOB_ID = "discovery:ports"
+PORT_SCAN_STATE_KEY = "port_scan_state"
+
+# Offered in the UI and the only values accepted back. Hours, because a port
+# scan is not a liveness check -- what is listening on a box changes when you
+# deploy something, not minute to minute.
+PORT_SCAN_INTERVAL_CHOICES: tuple[int, ...] = (1, 3, 6, 12, 24, 72, 168)
+
+
+async def last_port_scan(session) -> dict:  # type: ignore[no-untyped-def]
+    return await get_setting(session, PORT_SCAN_STATE_KEY)
+
+
+async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
+    """Scan the devices discovery has already found for listening services.
+
+    Deliberately driven from the device table rather than from the subnets: the
+    sweep decides who exists, this decides what they are running. Scanning
+    every address in a /24 on the chance something answers is how a two-minute
+    job becomes an hour.
+    """
+    summary: dict = {"started_at": utcnow().isoformat()}
+    try:
+        async with session_scope() as session:
+            settings = await get_setting(session, "discovery")
+            if not settings.get("port_scan_enabled", True):
+                log.debug("Port scanning is disabled in settings; skipping")
+                return
+
+            # Only devices seen recently. A device that has not answered in a
+            # fortnight is not worth a timeout per port.
+            cutoff = utcnow() - timedelta(days=14)
+            rows = list(
+                (
+                    await session.execute(
+                        select(Device.id, Device.primary_ip).where(
+                            Device.ignored.is_(False),
+                            Device.primary_ip.isnot(None),
+                            Device.last_seen.isnot(None),
+                            Device.last_seen >= cutoff,
+                        )
+                    )
+                ).all()
+            )
+            targets = [(int(device_id), str(ip)) for device_id, ip in rows]
+
+        if not targets:
+            summary["devices"] = 0
+            summary["finished_at"] = utcnow().isoformat()
+            async with session_scope() as session:
+                await save_setting(session, PORT_SCAN_STATE_KEY, summary)
+            log.info("Port scan: no devices to scan")
+            return
+
+        scans = await scan_hosts(targets)
+
+        async with session_scope() as session:
+            seen, new = await record_services(session, scans)
+            summary.update({
+                "devices": len(scans),
+                "services": seen,
+                "new": new,
+                "ports_per_device": len(WELL_KNOWN),
+                "finished_at": utcnow().isoformat(),
+            })
+            await save_setting(session, PORT_SCAN_STATE_KEY, summary)
+
+        log.info(
+            "Port scan: %d device(s), %d service(s) answering, %d new",
+            len(scans), seen, new,
+        )
+    except Exception as exc:  # noqa: BLE001 - a failed scan must not stop the scheduler
+        log.exception("Port scan failed")
+        summary["error"] = f"{type(exc).__name__}: {exc}"
+        try:
+            async with session_scope() as session:
+                await save_setting(session, PORT_SCAN_STATE_KEY, summary)
+        except Exception:  # noqa: BLE001
+            log.debug("Could not record the failed port scan", exc_info=True)
+        return
+
+    events.publish({"kind": "services", "new": summary.get("new", 0)})

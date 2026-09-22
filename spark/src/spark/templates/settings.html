@@ -155,5 +155,75 @@
       </dd>
     </dl>
   </section>
+
+  <section class="card">
+    <h2 class="section-title">Port scanning</h2>
+    <p class="muted small">
+      Once a device has been discovered, SPARK can check which of
+      {{ scan.port_count }} common service ports it is listening on — SSH, HTTP,
+      databases, Proxmox, Plex and so on. Only devices already found are
+      scanned, never whole subnets.
+    </p>
+
+    <form method="post" action="/settings/port-scan" class="row-form">
+      <label class="checkbox">
+        <input type="checkbox" name="enabled" value="1" id="port-scan"
+               {% if scan.enabled %}checked{% endif %}>
+        <span>Scan discovered devices for services</span>
+      </label>
+      <label class="inline-field" id="port-scan-field">
+        <span class="muted">every</span>
+        {# Same reasoning as the sweep interval: greyed by CSS rather than
+           disabled, because a disabled select submits nothing and would wipe
+           the stored interval every time this was switched off. #}
+        <select name="interval_hours" id="port-scan-interval">
+          {% if scan.interval_hours not in scan.choices %}
+            <option value="{{ scan.interval_hours }}" selected>{{ scan.interval_hours }} hours</option>
+          {% endif %}
+          {% for hours in scan.choices %}
+            <option value="{{ hours }}" {% if hours == scan.interval_hours %}selected{% endif %}>
+              {% if hours == 1 %}hour
+              {% elif hours < 24 %}{{ hours }} hours
+              {% elif hours == 24 %}day
+              {% elif hours == 168 %}week
+              {% else %}{{ hours // 24 }} days{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn-quiet">Apply</button>
+    </form>
+
+    <dl class="legend">
+      <dt>Why hours and not minutes</dt>
+      <dd>
+        What a machine listens on changes when you deploy something, not minute
+        to minute. And a firewalled port costs a full timeout rather than an
+        instant refusal, so every scan has a floor on how long it can take —
+        running one every few minutes would spend the day scanning.
+      </dd>
+      <dt>What it does to your network</dt>
+      <dd>
+        One TCP connection per port per device, opened and immediately closed.
+        Nothing is sent. It will appear in the logs of anything that logs
+        connection attempts, and an IDS watching your LAN will see it for what
+        it is — worth knowing before you point this at a segment that is not
+        yours to scan.
+      </dd>
+    </dl>
+  </section>
 </div>
+
+<script>
+  // Grey the interval when the box is unticked. Appearance only -- the select
+  // stays enabled so it is still submitted, same as the sweep schedule.
+  (function () {
+    var box = document.getElementById('port-scan');
+    var field = document.getElementById('port-scan-field');
+    if (!box || !field) return;
+    function sync() { field.classList.toggle('dimmed', !box.checked); }
+    box.addEventListener('change', sync);
+    sync();
+  })();
+</script>
 {% endblock %}

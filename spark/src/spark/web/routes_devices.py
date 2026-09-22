@@ -19,8 +19,10 @@ from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.oui import is_locally_administered
+from ..discovery.ports import concern
 from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_sweep
-from ..models import CheckType, Device, HealthStatus, Target, User, utcnow
+from ..discovery.services import services_for
+from ..models import CheckType, Device, HealthStatus, Service, Target, User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -142,6 +144,8 @@ async def list_devices(
     }
 
     known_subnets = await subnet_service.list_subnets(session)
+    # One query for the whole page rather than one per row.
+    by_device = await services_for(session, [d.id for d in devices])
 
     now = utcnow()
     rows = []
@@ -158,6 +162,10 @@ async def list_devices(
                 # orphan its devices and adding one classifies what is already
                 # there.
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
+                "services": [
+                    {"service": svc, "concern": concern(svc.port)}
+                    for svc in by_device.get(device.id, [])
+                ],
             }
         )
 
@@ -238,6 +246,58 @@ async def set_scan_schedule(
     # write lock, and a second session reading it is how the page hung before.
     await scheduler_module.schedule_discovery(config, settings)
     return redirect("/devices")
+
+
+@router.post("/devices/scan-ports")
+async def scan_ports_now(_user: User = Depends(require_user)):
+    """Queue a port scan now. Returns at once; the page updates itself."""
+    scheduler_module.trigger_port_scan_now()
+    return redirect("/devices")
+
+
+@router.post("/devices/services/{service_id}/watch")
+async def watch_service(
+    service_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Turn a discovered service into a TCP target.
+
+    A TCP check rather than a ping: the point of watching a service is to know
+    whether the service answers, and a host that pings while its database is
+    dead is exactly the outage you wanted to catch.
+    """
+    service = await session.get(Service, service_id)
+    if service is None:
+        return redirect("/devices")
+    device = await session.get(Device, service.device_id)
+    if device is None or not device.primary_ip:
+        return redirect("/devices")
+
+    existing = await session.scalar(
+        select(Target).where(Target.service_id == service.id)
+    )
+    if existing is not None:
+        return redirect("/targets")
+
+    label = service.name or f"port {service.port}"
+    target = Target(
+        name=f"{device.display_name} {label}",
+        check_type=CheckType.TCP,
+        address=f"{device.primary_ip}:{service.port}",
+        device_id=device.id,
+        service_id=service.id,
+        status=HealthStatus.UNKNOWN,
+    )
+    session.add(target)
+    device.acknowledged = True
+    await session.flush()
+    await session.commit()
+
+    events.publish({"kind": "created", "target_id": target.id})
+    scheduler_module.schedule_target(target)
+    await scheduler_module.run_now(target.id)
+    return redirect("/targets")
 
 
 @router.post("/devices/scan")

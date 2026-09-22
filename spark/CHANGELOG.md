@@ -1,5 +1,88 @@
 # Changelog
 
+## Unreleased — increment 4b: service discovery (2026-09-22)
+
+The inventory could say what was on the network. It can now say what those
+things are running, and turn any of it into a monitored target in one click.
+
+### Added
+
+- **A TCP connect port scan** of devices discovery has already found. Connect,
+  not SYN: SPARK is a container, `connect()` needs no privilege it does not
+  already have, and the difference only matters to someone trying not to be
+  logged. SPARK is not trying not to be logged.
+
+- **A curated catalogue of 45 service ports** — SSH, HTTP/S, SMB, RDP, the
+  common databases, and the homelab set: Proxmox, Plex, Jellyfin, Home
+  Assistant, Portainer, Grafana. Named, so the Devices page shows "postgres"
+  rather than 5432.
+
+- **A Services column** on the Devices page. Each service is a button: pressing
+  it creates a **TCP** target on that exact port. A ping target tells you the
+  host is up; a host that pings while its database is dead is the outage you
+  wanted to catch.
+
+- **Ports worth a second look are flagged** — telnet and FTP for sending
+  credentials in clear text, an open Docker socket because it is root on that
+  host, Redis and Elasticsearch for defaulting to no authentication. Not a
+  judgement on running them, but an inventory that notices is more use than one
+  that lists everything identically.
+
+- **A Port scanning section in Settings** — on/off and an interval in hours,
+  plus a plain statement of what the scan does to your network, since it is
+  more intrusive than an ICMP sweep and you should be able to read that before
+  pointing it at a segment.
+
+- `discovery/ports.py`, `discovery/services.py`, and `tests/test_ports.py`.
+
+### Two limits that shape the whole thing
+
+Both are the same point: a scan that is slow is a scan that gets switched off.
+
+- **Only discovered devices are scanned, never whole subnets.** The sweep
+  decides who exists; this decides what they are running.
+
+- **A curated list, not a port range.** An open port refuses instantly and a
+  closed one refuses instantly, but a *filtered* port — a firewall dropping
+  rather than rejecting — costs the full timeout every time. At 1024 ports one
+  firewalled host is seventeen minutes on its own. Forty-five bounds it to
+  forty-five seconds.
+
+Also: hours, not minutes. What a machine listens on changes when you deploy
+something. And devices unseen for a fortnight are skipped rather than paying a
+timeout per port.
+
+### Notes
+
+- A service that stops answering is marked closed, not deleted. "This host used
+  to run Postgres" is exactly what an inventory should be able to tell you, and
+  a DELETE cannot.
+- A scan never overwrites a name from a better source, and never closes a
+  service it did not discover. That matters for the Docker inventory arriving
+  next: a container is not absent just because its port was shut to us.
+- No schema change. `Service` has been in the schema since increment 1.
+
+### Deferred
+
+Docker inventory is its own increment. When it lands it will read container
+lists through a **read-only socket proxy** rather than SSH or the TLS API —
+SPARK never touches the socket, so it cannot start, stop or create containers
+even if compromised.
+
+### Tests
+
+- `tests/test_ports.py`, 26 tests. The scanner is tested against **real
+  sockets** — a listener on a free port, a port deliberately closed, an
+  unroutable address, garbage input. Mocking `open_connection` would only prove
+  the mock was called; the question is whether a TCP connect distinguishes a
+  service from the absence of one, and only a socket answers that.
+- The store is tested for what does not raise: a rescan duplicating rows, a
+  closed service vanishing, a scan overwriting a better name.
+- Verified end to end in a browser against six real listeners on 22, 23, 80,
+  443, 6379 and 8006 — all six found and named, telnet and redis flagged, and
+  clicking "https" produced a TCP target on `:443` that came up immediately.
+- Suite: 221 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — one open incident per target (2026-09-18)
 
 Reported as three ongoing incidents for one target, with the right diagnosis:

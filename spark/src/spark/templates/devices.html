@@ -12,6 +12,10 @@
         </button>
       </form>
       {% endif %}
+      <form method="post" action="/devices/scan-ports">
+        <button type="submit" class="btn-quiet"
+                title="Check discovered devices for listening services">Scan ports</button>
+      </form>
       <form method="post" action="/devices/scan">
         <button type="submit" class="btn-primary">Scan now</button>
       </form>
@@ -162,6 +166,7 @@
           <th>VLAN</th>
           <th>MAC</th>
           <th>Vendor</th>
+          <th>Services</th>
           <th>Last seen</th>
           <th></th>
         </tr>
@@ -223,6 +228,28 @@
             {% endif %}
           </td>
           <td class="muted">{{ device.vendor or '—' }}</td>
+          <td class="services">
+            {% if row.services %}
+            {# A wrapper div, not the td itself: making a table cell a flex
+               container is what stranded the action buttons at the top of
+               their row in increment 4. #}
+            <div class="service-list">
+              {% for entry in row.services %}
+              {% set service = entry.service %}
+              <form method="post" action="/devices/services/{{ service.id }}/watch"
+                    class="service-form">
+                <button type="submit"
+                        class="pill service{% if entry.concern %} warn{% endif %}"
+                        title="{% if entry.concern %}{{ entry.concern }} — {% endif %}Watch this service (TCP check on port {{ service.port }})">
+                  {{ service.name or service.port }}
+                </button>
+              </form>
+              {% endfor %}
+            </div>
+            {% else %}
+              <span class="muted small">—</span>
+            {% endif %}
+          </td>
           <td class="muted small">
             {% if row.age_seconds is none %}never
             {% elif row.age_seconds < 120 %}just now

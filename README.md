@@ -29,12 +29,13 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Scan schedule — on/off and interval, set on the Devices page | ✅ working |
 | Subnet management and VLAN tags (`/settings`) | ✅ working |
 | Subnet filter on the Devices page | ✅ working |
+| Service discovery — TCP port scan, watch a service in one click | ✅ working |
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |
 | Alerting (Discord) | ❌ not yet |
-| Discovery — subnet sweep, Docker inventory, port scan | ❌ not yet |
+| Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Service map, topology | ❌ not yet |
 
 In practice: SPARK can tell you something is down, but it cannot yet tell *you*
@@ -397,6 +398,8 @@ spark/
     discovery/
       sweep.py          ICMP sweep, ARP table, reverse DNS
       oui.py            MAC prefix to vendor
+      ports.py          the port catalogue and the TCP connect scan
+      services.py       recording what a scan found, without losing history
       store.py          the device identity rules
     checks/
       base.py           CheckSpec and CheckOutcome; no database access
@@ -421,6 +424,7 @@ spark/
     test_targets_page.py  what the targets list says about failures, and when
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_incidents.py   one open incident per target, across pause/resume
+    test_ports.py       the scanner against real sockets; the service store
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
@@ -453,7 +457,8 @@ Four things that will bite you if you don't know them:
 | 3 | Check engine — ping, TCP, HTTP, DNS, hysteresis, incidents, targets UI | ✅ done |
 | 4 | Device discovery — sweep, MAC identity, devices page | ✅ done |
 | 4c | History retention, scan schedule, subnet management + filter | ✅ done |
-| 4b | Service discovery — port scan, Docker inventory | next |
+| 4b | Service discovery — TCP port scan, services on devices | ✅ done |
+| 4d | Docker inventory — read-only socket proxy | next |
 | 5 | Service map — tree and filterable list views | planned |
 | 6 | SNMP metric storage + device pages | planned |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |

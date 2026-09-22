@@ -66,6 +66,9 @@ def create_app(config: Config | None = None) -> FastAPI:
         sweeping = await scheduler_module.schedule_discovery(
             config, subnet_count=subnet_count, first_run_delay=15
         )
+        # After the first sweep: it scans whatever that sweep found, so going
+        # first would mean scanning an empty device table.
+        await scheduler_module.schedule_port_scan(first_run_delay=120)
         scheduler_module.schedule_retention()
 
         log.info(

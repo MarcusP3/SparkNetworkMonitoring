@@ -244,6 +244,7 @@ button { font: inherit; cursor: pointer; }
   letter-spacing: .04em;
   color: var(--text-muted);
   font-weight: 600;
+  white-space: nowrap;   /* "LAST SEEN" is one label, not two lines */
   padding: .4rem .6rem;
   border-bottom: 1px solid var(--border);
 }
@@ -662,3 +663,48 @@ input.narrow { max-width: 5.5rem; }
    changes width when you press one, and a width:100% table pays for that by
    shaving pixels off every column to its left. */
 .btn-quiet.toggle-enabled { min-width: 4.75rem; }
+
+
+/* ---- devices: discovered services ------------------------------------- */
+
+/* Pills that are buttons: pressing one turns that service into a TCP target,
+   so it has to look pressable without looking like a row of form controls. */
+/* A floor as well as a ceiling. Without the floor the browser hands this
+   column whatever is left after seven others and the pills stack one per line;
+   without the ceiling a host running a dozen services stretches the table off
+   the side of the page. */
+.services {
+  min-width: 11rem;
+  max-width: 20rem;
+}
+
+.service-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  align-items: center;
+}
+
+.service-form { display: contents; }
+
+.pill.service {
+  border: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 550;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.pill.service:hover {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* A port worth a second look -- telnet, an open Docker socket, a database on
+   the LAN. Flagged rather than hidden: an inventory that notices is more use
+   than one that lists everything identically. */
+.pill.service.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.service.warn:hover { background: var(--warn); color: var(--surface); }
