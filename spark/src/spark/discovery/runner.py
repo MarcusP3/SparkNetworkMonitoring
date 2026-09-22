@@ -18,11 +18,11 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from .. import events
+from .. import port_catalogue
 from ..db import get_setting, save_setting, session_scope
 from ..models import Device, utcnow
 from ..subnets import enabled_subnets
 from .ports import (
-    WELL_KNOWN,
     find_interception,
     pick_control_addresses,
     scan_hosts,
@@ -192,6 +192,12 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
                 )
             controls = controls[:3]
 
+            # The person's list, not the built-in one. Read in this session,
+            # with everything else this scan needs, rather than reopened later
+            # while the scan is running.
+            catalogue = await port_catalogue.load(session)
+            names = catalogue.ports()
+
         if not targets:
             summary["devices"] = 0
             summary["finished_at"] = utcnow().isoformat()
@@ -202,10 +208,13 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
 
         # Anything that answers where nothing exists is the network talking,
         # not a service. Excluded from the scan rather than recorded.
-        intercepted = await find_interception(controls)
-        ports = [p for p in sorted(WELL_KNOWN) if p not in intercepted]
+        #
+        # The control probe uses the same catalogue as the scan: a port worth
+        # adding is a port worth checking the network is not answering for.
+        intercepted = await find_interception(controls, sorted(names))
+        ports = [p for p in sorted(names) if p not in intercepted]
 
-        scans = await scan_hosts(targets, ports)
+        scans = await scan_hosts(targets, ports, names=names)
 
         async with session_scope() as session:
             seen, new = await record_services(session, scans)
@@ -214,6 +223,8 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
                 "services": seen,
                 "new": new,
                 "ports_per_device": len(ports),
+                "custom_ports": len(catalogue.custom),
+                "disabled_builtins": len(catalogue.disabled),
                 "controls": len(controls),
                 "intercepted": sorted(intercepted),
                 "finished_at": utcnow().isoformat(),

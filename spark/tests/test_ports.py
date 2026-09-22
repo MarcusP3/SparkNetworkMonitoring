@@ -187,11 +187,20 @@ class TestScanHost:
 # --------------------------------------------------------------------------
 
 
-def scan_with(*open_ports: int) -> P.HostScan:
+def scan_with(*open_ports: int, covered: set[int] | None = None) -> P.HostScan:
+    """A scan of the whole built-in list in which `open_ports` answered.
+
+    `covered` spells out what the scan looked at. It defaults to the built-in
+    list, which is what `probed` already implied -- but it has to be said out
+    loud now, because the recorder only closes a service whose port this scan
+    actually covered, and a scan that claims to have covered nothing closes
+    nothing.
+    """
     return P.HostScan(
         address="10.1.10.50",
         device_id=1,
         probed=len(P.WELL_KNOWN),
+        covered=frozenset(covered if covered is not None else P.WELL_KNOWN),
         open_ports=[P.OpenPort(port=p, name=P.port_name(p)) for p in open_ports],
     )
 

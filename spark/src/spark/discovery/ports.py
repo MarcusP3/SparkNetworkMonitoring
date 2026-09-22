@@ -14,10 +14,20 @@ that is slow is a scan that gets switched off:
 
   * **A curated port list, not a range.** An open port refuses immediately and
     a closed one refuses immediately; a *filtered* port -- a firewall dropping
-    rather than rejecting -- costs the full timeout, every time. With 1024
-    ports and one firewalled host that is seventeen minutes for that host
-    alone. Forty ports bounds the damage to forty seconds, and the forty were
-    chosen to be the ones a homelab actually runs.
+    rather than rejecting -- costs the full timeout, every time.
+
+    What that costs is bounded by the two semaphores below, and the arithmetic
+    is worth doing rather than assuming serial probing -- an earlier version of
+    this comment did assume it and overstated the cost roughly tenfold. One
+    host takes ceil(ports / PER_HOST_CONCURRENCY) timeouts, and the scan as a
+    whole cannot exceed ceil(ports * hosts / TOTAL_CONCURRENCY); whichever is
+    larger wins. Measured against black-holed addresses: 67 hosts x 45 ports is
+    12 seconds, and the same hosts at 85 ports is 23.
+
+    A range is still the thing to avoid -- 1024 ports is 86 seconds on one
+    filtered host, and far more across a network -- but the curated list is
+    cheap enough that a person can add to it. `port_catalogue.py` is what
+    decides the list at scan time; the dict below is only its default.
 
 Nothing here writes to the database or reads it; it takes addresses and returns
 observations, the same split that makes `sweep.py` testable without a network.
@@ -136,6 +146,15 @@ class HostScan:
     probed: int = 0
     open_ports: list[OpenPort] = field(default_factory=list)
     error: str | None = None
+    # Which ports this scan actually looked at. Not the same question as
+    # `probed`, which is a count for the summary line -- this is what lets the
+    # recorder tell "checked and gone" apart from "not checked this time".
+    #
+    # It matters now that the port list is editable. Switching off SMB used to
+    # mean the next scan closed every SMB service on the network, because the
+    # recorder read "not in this scan's results" as "no longer listening". An
+    # empty set therefore means nothing was covered, and closes nothing.
+    covered: frozenset[int] = field(default_factory=frozenset)
 
 
 async def probe(address: str, port: int, timeout: float = CONNECT_TIMEOUT) -> bool:
@@ -173,15 +192,23 @@ async def scan_host(
     device_id: int | None = None,
     timeout: float = CONNECT_TIMEOUT,
     limit: asyncio.Semaphore | None = None,
+    names: dict[int, str | None] | None = None,
 ) -> HostScan:
-    """Scan one device. Returns what answered, in port order."""
+    """Scan one device. Returns what answered, in port order.
+
+    `names` is the caller's catalogue, so a port the person added and named
+    themselves is recorded under that name rather than as a bare number.
+    """
     ports = sorted(ports if ports is not None else WELL_KNOWN)
     result = HostScan(address=address, device_id=device_id)
     if not address or not ports:
-        # probed stays 0: nothing was contacted, and a summary claiming
-        # otherwise would overstate what the scan covered.
+        # probed stays 0 and covered stays empty: nothing was contacted, and a
+        # summary claiming otherwise would overstate what the scan covered --
+        # while a `covered` that lied would make the recorder close services it
+        # never looked at.
         return result
     result.probed = len(ports)
+    result.covered = frozenset(ports)
 
     host_limit = asyncio.Semaphore(PER_HOST_CONCURRENCY)
 
@@ -195,8 +222,11 @@ async def scan_host(
         return port if found else None
 
     found = await asyncio.gather(*(one(port) for port in ports))
+    catalogue = WELL_KNOWN if names is None else names
     result.open_ports = [
-        OpenPort(port=port, name=port_name(port)) for port in found if port is not None
+        OpenPort(port=port, name=catalogue.get(port) or port_name(port))
+        for port in found
+        if port is not None
     ]
     return result
 
@@ -206,6 +236,7 @@ async def scan_hosts(
     ports: list[int] | None = None,
     *,
     timeout: float = CONNECT_TIMEOUT,
+    names: dict[int, str | None] | None = None,
 ) -> list[HostScan]:
     """Scan several devices concurrently. `targets` is (device_id, address).
 
@@ -220,7 +251,7 @@ async def scan_hosts(
         await asyncio.gather(
             *(
                 scan_host(address, ports, device_id=device_id,
-                          timeout=timeout, limit=limit)
+                          timeout=timeout, limit=limit, names=names)
                 for device_id, address in targets
             )
         )

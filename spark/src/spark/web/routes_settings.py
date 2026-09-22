@@ -11,23 +11,58 @@ failure that clears what you typed is a worse outcome than the typo.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import port_catalogue
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
-from ..models import User
+from ..models import Device, User
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
 
-def _port_count() -> int:
-    from ..discovery.ports import WELL_KNOWN
+async def _port_catalogue(session: AsyncSession) -> dict:
+    """Everything the Port scanning card needs to describe and edit the list.
 
-    return len(WELL_KNOWN)
+    The device count is in here because the cost of a port is not a property of
+    the port -- adding one to a network of six devices is free and adding one
+    to a network of two hundred is not, and the page can say which it is rather
+    than leaving it to be found out.
+    """
+    from ..discovery.ports import NOTEWORTHY, WELL_KNOWN
+
+    catalogue = await port_catalogue.load(session)
+    effective = catalogue.ports()
+    devices = await session.scalar(
+        select(func.count(Device.id)).where(Device.ignored.is_(False))
+    )
+    devices = int(devices or 0)
+
+    return {
+        "custom": [
+            {"port": entry.port, "name": entry.name,
+             "shadows": WELL_KNOWN.get(entry.port)}
+            for entry in sorted(catalogue.custom, key=lambda e: e.port)
+        ],
+        "builtins": [
+            {"port": port, "name": name,
+             "on": port not in catalogue.disabled,
+             "concern": NOTEWORTHY.get(port)}
+            for port, name in sorted(WELL_KNOWN.items())
+        ],
+        "builtin_total": len(WELL_KNOWN),
+        "builtin_on": len(WELL_KNOWN) - len(catalogue.disabled),
+        "custom_count": len(catalogue.custom),
+        "max_custom": port_catalogue.MAX_CUSTOM,
+        "effective": len(effective),
+        "devices": devices,
+        "worst_case": port_catalogue.worst_case_seconds(len(effective), devices),
+    }
 
 
 def _checked(value: str) -> bool:
@@ -44,6 +79,8 @@ async def _render(
     error: str | None = None,
     form: dict | None = None,
     status_code: int = 200,
+    port_error: str | None = None,
+    port_form: dict | None = None,
 ):
     rows = await subnet_service.list_subnets(session)
     discovery = await get_setting(session, "discovery")
@@ -71,8 +108,10 @@ async def _render(
                     1, int(discovery.get("port_scan_interval_seconds", 21600) or 21600) // 3600
                 ),
                 "choices": PORT_SCAN_INTERVAL_CHOICES,
-                "port_count": _port_count(),
             },
+            "ports": await _port_catalogue(session),
+            "port_error": port_error,
+            "port_form": port_form or {},
         },
         status_code=status_code,
     )
@@ -200,4 +239,64 @@ async def set_port_scan(
 
     # Settings handed straight in: this request may still hold the write lock.
     await scheduler_module.schedule_port_scan(settings)
+    return redirect("/settings")
+
+
+@router.post("/settings/ports")
+async def add_custom_port(
+    request: Request,
+    port: str = Form(""),
+    name: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Add one port to the scan.
+
+    A rejected entry comes back on the page with the typing intact, like a bad
+    CIDR does. Clearing the field is a worse outcome than the typo was.
+    """
+    error = await port_catalogue.add_custom(session, port, name)
+    if error is not None:
+        return await _render(
+            request, session, config, user,
+            port_error=error,
+            port_form={"port": port, "name": name},
+            status_code=400,
+        )
+    await session.commit()
+    return redirect("/settings")
+
+
+@router.post("/settings/ports/{port}/delete")
+async def remove_custom_port(
+    port: str,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    await port_catalogue.remove_custom(session, port)
+    await session.commit()
+    return redirect("/settings")
+
+
+@router.post("/settings/ports/builtins")
+async def set_builtin_ports(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Record which of the built-in ports are still scanned.
+
+    Read from the raw form rather than through a declared parameter, because
+    this is a variable number of checkboxes under one name and an unticked box
+    submits nothing at all -- so what arrives is the list of ports to keep, and
+    the complement is what gets stored.
+
+    Nothing already discovered is touched. Switching a port off stops SPARK
+    checking it; it does not mean the service stopped answering, and marking it
+    closed on the strength of not having looked would be an invention.
+    """
+    form = await request.form()
+    await port_catalogue.set_builtins(session, form.getlist("keep"))
+    await session.commit()
     return redirect("/settings")

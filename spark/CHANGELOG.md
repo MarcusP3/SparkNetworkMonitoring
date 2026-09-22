@@ -1,5 +1,67 @@
 # Changelog
 
+## Unreleased — the port list is yours to edit (2026-09-22)
+
+The built-in 45 are a good default and a bad answer to "what is on *my*
+network". A homelab runs Deluge on 8112 and Node-RED on 1880, and neither is on
+anybody's well-known list; meanwhile four Windows ports are pure cost on a
+network with no Windows on it.
+
+### Added
+
+- **Custom ports**, in Settings → Port scanning. Port plus an optional name,
+  added a row at a time, each with its own Remove. The name is documentation —
+  it is what the Devices page shows instead of the number.
+- **Built-ins can be switched off.** This is the half that makes the scan
+  *faster*: unticking four Windows ports on a Windows-free network buys back
+  four timeouts per device, every scan, forever.
+- **The budget is stated, not discovered later.** *"Scanning 43 port(s) — 41 of
+  45 built-in, plus 3 of your own. Across 23 devices that is up to about 4s per
+  scan, and only if nothing answers."* The device count is in there because the
+  cost of a port is not a property of the port.
+- A custom entry on a built-in's port **renames** it rather than duplicating
+  it. 3000 is Grafana to most people and your own app to you.
+
+### A bug this would have shipped, and one it exposed
+
+- **Switching a port off would have closed every service on it.** `record_scan`
+  closes any scan-sourced service it did not find, and it did that without
+  asking whether it had looked — so unticking SMB would have marked every SMB
+  service on the network closed at the next scan, on the strength of never
+  having probed them. A scan now carries the set of ports it covered, and only
+  closes within it. An empty set closes nothing.
+- The same bug was **already reachable** before this change: the control probe
+  removes intercepted ports from the list, so a port found intercepted this
+  week silently closed whatever was recorded on it last week.
+- **The control probe only checked the built-ins.** 8080 redirected to a
+  captive portal is the same trap as 80, but a port you added was never
+  eligible to be caught. It now probes the same list the scan uses.
+
+### Corrected
+
+- `ports.py` claimed a 1024-port scan was "seventeen minutes for that host
+  alone" and that forty ports cost forty seconds. Both assumed serial probing
+  and ignored the two semaphores in the same file — out by roughly tenfold. The
+  real model is `max(ceil(ports/12), ceil(ports×hosts/256)) × timeout`, measured
+  against black-holed addresses: 67 hosts × 45 ports is 12 seconds, and the same
+  hosts at 85 ports is 23. The Settings estimate uses that model, and the tests
+  assert it against those measurements.
+
+### Tests
+
+- 64 new in `tests/test_port_catalogue.py`.
+- Mutation-checked, six deliberate breakages, three went unnoticed:
+  - Nothing tested that the **scan runner reads the catalogue at all**. It
+    could have been editable, storable, mergeable and entirely ignored by the
+    thing it configures, with the page looking right throughout. Three tests
+    now cover it, one end to end against a real listening socket.
+  - Nothing caught the control probe ignoring custom ports. Now covered by an
+    interception simulated with a listener on `0.0.0.0` and loopback controls.
+  - An `isinstance(value, bool)` guard in `parse_port` turned out to be dead —
+    parsing via `str()` had already handled it. Removed; the test that proves
+    `True` is not port 1 stays.
+- Suite: 322 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — the Devices page fits on a screen (2026-09-22)
 
 A real network puts a few hundred rows on that page. It was one long table, so

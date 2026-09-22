@@ -159,10 +159,26 @@
   <section class="card">
     <h2 class="section-title">Port scanning</h2>
     <p class="muted small">
-      Once a device has been discovered, SPARK can check which of
-      {{ scan.port_count }} common service ports it is listening on — SSH, HTTP,
-      databases, Proxmox, Plex and so on. Only devices already found are
-      scanned, never whole subnets.
+      Once a device has been discovered, SPARK can check which service ports it
+      is listening on. Only devices already found are scanned, never whole
+      subnets.
+    </p>
+
+    {# The budget, stated rather than discovered later as "the scan got slow".
+       The number of devices is in it because the cost of a port is not a
+       property of the port: one more on a network of six is free, and one more
+       on a network of two hundred is not. #}
+    <p class="muted small port-budget">
+      Scanning <strong>{{ ports.effective }}</strong> port(s) —
+      {{ ports.builtin_on }} of {{ ports.builtin_total }} built-in{% if ports.custom_count %},
+      plus {{ ports.custom_count }} of your own{% endif %}.
+      {% if ports.devices %}
+        Across {{ ports.devices }} device(s) that is up to about
+        <strong>{{ ports.worst_case }}s</strong> per scan, and only if nothing
+        answers — a firewall that drops rather than refuses is what costs time.
+      {% else %}
+        No devices discovered yet, so there is nothing to scan.
+      {% endif %}
     </p>
 
     <form method="post" action="/settings/port-scan" class="row-form">
@@ -194,7 +210,100 @@
       <button type="submit" class="btn-quiet">Apply</button>
     </form>
 
+    <h3 class="sub-title">Your ports</h3>
+    <p class="muted small">
+      Anything the built-in list does not know about — Deluge on 8112, Node-RED
+      on 1880, whatever you run on 8123. A name is optional and is only
+      documentation; it is what the Devices page shows instead of the number.
+    </p>
+
+    {% if port_error %}<div class="alert error">{{ port_error }}</div>{% endif %}
+
+    {% if ports.custom %}
+    <table class="table compact port-table">
+      <thead>
+        <tr><th>Port</th><th>Name</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for entry in ports.custom %}
+        <tr>
+          <td><code>{{ entry.port }}</code></td>
+          <td>
+            {{ entry.name or '—' }}
+            {% if entry.shadows %}
+              <span class="muted small">(renames the built-in “{{ entry.shadows }}”)</span>
+            {% endif %}
+          </td>
+          <td class="actions">
+            <form method="post" action="/settings/ports/{{ entry.port }}/delete">
+              <button type="submit" class="btn-quiet danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <form method="post" action="/settings/ports" class="row-form add-port">
+      <label class="inline-field">
+        <span class="muted small">Port</span>
+        <input type="text" name="port" inputmode="numeric" size="6"
+               value="{{ port_form.port or '' }}" placeholder="5900">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Name (optional)</span>
+        <input type="text" name="name" maxlength="32"
+               value="{{ port_form.name or '' }}" placeholder="vnc">
+      </label>
+      <button type="submit" class="btn-quiet"
+              {% if ports.custom_count >= ports.max_custom %}disabled{% endif %}>Add</button>
+      {% if ports.custom_count >= ports.max_custom %}
+      <span class="muted small">
+        {{ ports.max_custom }} is the limit. Remove one, or switch off built-ins
+        you do not need.
+      </span>
+      {% endif %}
+    </form>
+
+    <details class="builtin-ports">
+      <summary>
+        Built-in ports
+        <span class="muted small">— {{ ports.builtin_on }} of {{ ports.builtin_total }} on</span>
+      </summary>
+      <p class="muted small">
+        Untick anything you have none of. Four Windows ports on a network with
+        no Windows on it are four timeouts per device, every scan, forever —
+        switching them off is the only thing on this page that makes the scan
+        <em>faster</em>.
+      </p>
+      {# One form for the lot, submitted by a button rather than per-box, so
+         unticking six things is one write instead of six. An unticked box
+         submits nothing at all, which is why these say which ports to KEEP. #}
+      <form method="post" action="/settings/ports/builtins">
+        <div class="port-grid">
+          {% for entry in ports.builtins %}
+          <label class="checkbox port-choice{% if entry.concern %} noteworthy{% endif %}"
+                 {% if entry.concern %}title="{{ entry.concern }}"{% endif %}>
+            <input type="checkbox" name="keep" value="{{ entry.port }}"
+                   {% if entry.on %}checked{% endif %}>
+            <span><code>{{ entry.port }}</code> {{ entry.name }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn-quiet">Save built-ins</button>
+      </form>
+    </details>
+
     <dl class="legend">
+      <dt>Switching a port off does not close what is on it</dt>
+      <dd>
+        SPARK stops checking it, which is not the same as the service having
+        stopped — so anything already discovered on that port stays listed at
+        its last known state rather than being marked closed. Marking it closed
+        on the strength of not having looked would be an invention, and a
+        target already watching that port keeps running either way.
+      </dd>
       <dt>Why hours and not minutes</dt>
       <dd>
         What a machine listens on changes when you deploy something, not minute

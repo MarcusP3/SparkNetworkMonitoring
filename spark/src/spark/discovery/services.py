@@ -83,10 +83,19 @@ async def record_scan(session: AsyncSession, scan: HostScan) -> tuple[int, int]:
     # Anything this scan covered and did not find is closed now. Scoped to
     # SCAN-sourced rows: a service known from a container inventory is not
     # absent just because its port was shut to us.
+    #
+    # "Covered" is now asked rather than assumed, and the difference is not
+    # academic. The port list is editable, so a port can leave the scan while
+    # the service on it is still running -- because you switched off SMB, or
+    # because the control probe found the port intercepted and excluded it.
+    # Reading "not in the results" as "not listening" would then mark a live
+    # service closed on the strength of never having looked at it.
     for (port, protocol), service in existing.items():
         if (port, protocol) in open_keys:
             continue
         if service.source is not ServiceSource.SCAN:
+            continue
+        if port not in scan.covered:
             continue
         if service.state != CLOSED:
             log.info(

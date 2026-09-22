@@ -615,6 +615,47 @@ input.narrow { max-width: 5.5rem; }
   .filter-count { margin-left: 0; flex-basis: 100%; }
 }
 
+/* ---- settings: the port catalogue -------------------------------------- */
+
+.sub-title {
+  margin: 1.5rem 0 .25rem;
+  font-size: .9375rem;
+  font-weight: 600;
+}
+
+.port-budget { margin-bottom: 1rem; }
+
+.port-table { max-width: 34rem; }
+.port-table td { vertical-align: middle; }
+
+.add-port input[type="text"] { padding: .3rem .45rem; font-size: .875rem; }
+
+.builtin-ports { margin-top: 1.5rem; }
+
+.builtin-ports summary {
+  cursor: pointer;
+  font-size: .9375rem;
+  font-weight: 600;
+  padding: .25rem 0;
+}
+
+/* Auto-fill rather than a fixed count: 45 ports at one per line is a page of
+   scrolling, and at four fixed columns it overflows on a phone. */
+.port-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: .3rem 1rem;
+  margin: .75rem 0 1rem;
+}
+
+.port-choice { font-size: .875rem; }
+.port-choice code { font-size: .8125rem; }
+
+/* The ones NOTEWORTHY has something to say about. A hint that these are the
+   interesting ones to think about, not a recommendation either way -- plenty
+   of homelabs have a reason to run them. */
+.port-choice.noteworthy span { color: var(--warn); }
+
 /* ---- devices: pager ---------------------------------------------------- */
 
 .pager {

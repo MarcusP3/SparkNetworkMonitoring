@@ -395,10 +395,11 @@ spark/
     events.py           in-process pub/sub for live page updates
     retention.py        nightly downsample and prune; never VACUUMs
     subnets.py          subnet CRUD, validation, and the one-shot YAML seed
+    port_catalogue.py   which ports the scan looks at, and what they cost
     discovery/
       sweep.py          ICMP sweep, ARP table, reverse DNS
       oui.py            MAC prefix to vendor
-      ports.py          the port catalogue and the TCP connect scan
+      ports.py          the default port list and the TCP connect scan
       services.py       recording what a scan found, without losing history
       store.py          the device identity rules
     checks/
@@ -425,6 +426,8 @@ spark/
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_incidents.py   one open incident per target, across pause/resume
     test_ports.py       the scanner against real sockets; the service store
+    test_paging.py      one device per page, exactly once, whatever the filter
+    test_port_catalogue.py  the editable port list, and what it costs to scan
     test_snmp.py        pure-function tests, live tests that skip without an agent
     local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
 ```
