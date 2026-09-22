@@ -61,12 +61,17 @@
 
   <div id="live">
 
-  {% if subnets %}
+  {% if subnets or paging.offer %}
   <section class="card filter-bar">
     {# A GET form, so the filter lands in the URL and survives a reload, a
        bookmark and the live refresh -- which refetches location.search for
-       exactly this reason. #}
+       exactly this reason.
+
+       There is deliberately no `page` field in here. Narrowing to a subnet or
+       changing the page size makes the old page number meaningless, and
+       leaving it out is how "back to page 1" happens without any JavaScript. #}
     <form method="get" action="/devices" class="row-form">
+      {% if subnets %}
       <label class="inline-field">
         <span class="muted small">Subnet</span>
         <select name="subnet" id="subnet-filter">
@@ -82,13 +87,36 @@
           </option>
         </select>
       </label>
-      <noscript><button type="submit" class="btn-quiet">Filter</button></noscript>
+      {% endif %}
+
+      {% if paging.offer %}
+      <label class="inline-field">
+        <span class="muted small">Per page</span>
+        <select name="per_page" id="page-size">
+          {% for size in paging.choices %}
+            <option value="{{ size }}" {% if size == paging.per_page %}selected{% endif %}>{{ size }}</option>
+          {% endfor %}
+          <option value="{{ paging.all_value }}" {% if paging.per_page == paging.all_value %}selected{% endif %}>All</option>
+        </select>
+      </label>
+      {% endif %}
+
+      <noscript><button type="submit" class="btn-quiet">Apply</button></noscript>
+      {# Four spellings rather than one assembled from parts: the two counts
+         mean different things -- how many the filter matched, and how many of
+         those fit on this page -- and a sentence that tries to carry both in
+         every case ends up saying neither clearly. #}
       <span class="muted small filter-count">
-        {% if subnet_filter.selected %}
-          Showing {{ subnet_filter.shown }} of {{ subnet_filter.total }} device(s).
-        {% else %}
-          {{ subnet_filter.total }} device(s).
-        {% endif %}
+        {%- if paging.limited and subnet_filter.selected %}
+          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} on this
+          subnet ({{ subnet_filter.total }} device(s) in all).
+        {%- elif paging.limited %}
+          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} device(s).
+        {%- elif subnet_filter.selected %}
+          Showing {{ paging.total }} of {{ subnet_filter.total }} device(s).
+        {%- else %}
+          {{ paging.total }} device(s).
+        {%- endif %}
       </span>
     </form>
   </section>
@@ -291,6 +319,25 @@
         {% endfor %}
       </tbody>
     </table>
+
+    {% if paging.limited %}
+    {# Prev/next links rather than a numbered list: the order is "last seen
+       first", so which page a device is on changes every sweep and a numbered
+       page is not a place you can meaningfully go back to. #}
+    <nav class="pager" aria-label="Device pages">
+      {% if paging.prev_url %}
+        <a class="btn-quiet" href="/devices{{ paging.prev_url }}" rel="prev">← Previous</a>
+      {% else %}
+        <span class="btn-quiet disabled" aria-disabled="true">← Previous</span>
+      {% endif %}
+      <span class="muted small">Page {{ paging.page }} of {{ paging.pages }}</span>
+      {% if paging.next_url %}
+        <a class="btn-quiet" href="/devices{{ paging.next_url }}" rel="next">Next →</a>
+      {% else %}
+        <span class="btn-quiet disabled" aria-disabled="true">Next →</span>
+      {% endif %}
+    </nav>
+    {% endif %}
   </section>
 
   <p class="muted small">
@@ -341,11 +388,13 @@
 </div>
 
 <script>
-  // The subnet dropdown submits itself. Delegated from document because the
-  // filter bar lives inside #live and is replaced whenever a sweep finishes.
+  // The subnet and per-page dropdowns submit themselves. Delegated from
+  // document because the filter bar lives inside #live and is replaced
+  // whenever a sweep finishes.
   document.addEventListener('change', function (event) {
-    if (event.target && event.target.id === 'subnet-filter') {
-      event.target.form.submit();
+    var el = event.target;
+    if (el && (el.id === 'subnet-filter' || el.id === 'page-size') && el.form) {
+      el.form.submit();
     }
   });
 

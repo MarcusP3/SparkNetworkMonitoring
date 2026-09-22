@@ -615,6 +615,33 @@ input.narrow { max-width: 5.5rem; }
   .filter-count { margin-left: 0; flex-basis: 100%; }
 }
 
+/* ---- devices: pager ---------------------------------------------------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: .75rem 1rem 0;
+  border-top: 1px solid var(--border);
+  margin-top: .25rem;
+}
+
+/* An <a> styled as a button, so it needs the bits a <button> gets for free. */
+.pager .btn-quiet {
+  display: inline-block;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+/* A span rather than a disabled <a>: there is nowhere to go, and something
+   that looks pressable but is not is worse than something plainly spent. */
+.pager .btn-quiet.disabled {
+  opacity: .4;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ---- settings legend --------------------------------------------------- */
 
 /* A definition list rather than a paragraph: three terms that each need a few

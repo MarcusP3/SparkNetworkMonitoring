@@ -7,7 +7,9 @@ polls. Without that step the inventory is trivia.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select, update
@@ -33,6 +35,108 @@ DEFAULT_SWEEP_SECONDS = 900
 # an id because there is no row to point at, and the case is worth being able
 # to select: it is how you notice a segment you forgot to configure.
 UNASSIGNED = "none"
+
+# How many devices one page may show. A fixed list rather than a free number,
+# for the same reason the sweep interval is one: the value ends up in a URL
+# that gets bookmarked and shared, and `?per_page=100000` is a way to make this
+# page render for a minute on a network large enough to need paging at all.
+PAGE_SIZE_CHOICES: tuple[int, ...] = (25, 50, 100, 250)
+DEFAULT_PAGE_SIZE = 50
+
+# "Show all", kept selectable because a small network never wanted paging and
+# should be able to say so once and have it stick in the URL.
+ALL_ON_ONE_PAGE = 0
+
+# Most recently seen first, then by id. The id is not decoration: a sweep
+# records everything it found in one batch, so a great many devices share a
+# last_seen exactly, and the order of rows tied on the only sort column is
+# undefined. Undefined order plus paging means a device can sit on the boundary
+# and be shown twice, or not at all -- and a device nobody sees is a device
+# nobody reviews, which is what this page is for.
+#
+# Lifted out of the query so it can be asserted on directly. SQLite happens to
+# return tied rows in rowid order, so removing the tiebreaker breaks nothing a
+# behavioural test can observe here; it would surface on a different engine, or
+# on a query the planner satisfies from an index. A test that cannot fail is
+# not a guard, so the guard is on the ordering itself.
+DEVICE_ORDER = (Device.last_seen.desc().nullslast(), Device.id.asc())
+
+
+def _page_size(value: str) -> int:
+    """Validate a per-page value, falling back to the default.
+
+    Anything not on the offered list did not come from this page, and the safe
+    reading of that is the default rather than an error: a mangled URL should
+    show devices, not a 422.
+    """
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_PAGE_SIZE
+    if size == ALL_ON_ONE_PAGE or size in PAGE_SIZE_CHOICES:
+        return size
+    return DEFAULT_PAGE_SIZE
+
+
+def _query(subnet: str, per_page: int, page: int) -> str:
+    """The Devices URL for one combination of filter, page size and page.
+
+    Defaults are left out rather than spelled out, so the plain `/devices` link
+    stays plain and a shared URL carries only what was actually chosen.
+    """
+    parts: list[tuple[str, str]] = []
+    if subnet:
+        parts.append(("subnet", subnet))
+    if per_page != DEFAULT_PAGE_SIZE:
+        parts.append(("per_page", str(per_page)))
+    if page > 1:
+        parts.append(("page", str(page)))
+    return f"?{urlencode(parts)}" if parts else ""
+
+
+def _paginate(rows, subnet: str, per_page: int, page: int):  # type: ignore[no-untyped-def]
+    """Cut the list down to one page. Returns (paging, rows).
+
+    Sliced in Python rather than with LIMIT/OFFSET because the subnet a device
+    is on is worked out from its address, not stored on the row -- so the filter
+    this has to compose with cannot be expressed in SQL. At homelab scale the
+    whole list is a few hundred dicts; when that stops being true the subnet
+    would need to be denormalised onto the device first.
+
+    The page number is clamped rather than honoured blindly. Devices arrive and
+    leave between refreshes, so a bookmark or a live refresh pointing past the
+    end should land on the last page -- an empty table reads as a network that
+    vanished, which is the one thing this page must never say by accident.
+    """
+    total = len(rows)
+    limited = per_page != ALL_ON_ONE_PAGE and total > per_page
+    pages = max(1, math.ceil(total / per_page)) if limited else 1
+    page = min(max(1, page), pages)
+
+    if limited:
+        start = (page - 1) * per_page
+        window = rows[start:start + per_page]
+    else:
+        start = 0
+        window = rows
+
+    return {
+        "limited": limited,
+        "per_page": per_page,
+        "choices": PAGE_SIZE_CHOICES,
+        "all_value": ALL_ON_ONE_PAGE,
+        # The dropdown is clutter on a network that fits on one page anyway --
+        # but it has to stay visible once it has been touched, or there is no
+        # way back from "25" on a 30-device network.
+        "offer": total > min(PAGE_SIZE_CHOICES) or per_page != DEFAULT_PAGE_SIZE,
+        "page": page,
+        "pages": pages,
+        "first": start + 1 if window else 0,
+        "last": start + len(window),
+        "total": total,
+        "prev_url": _query(subnet, per_page, page - 1) if page > 1 else None,
+        "next_url": _query(subnet, per_page, page + 1) if page < pages else None,
+    }, window
 
 
 def _apply_subnet_filter(rows, known_subnets, choice):  # type: ignore[no-untyped-def]
@@ -113,6 +217,8 @@ async def _scan_schedule(session: AsyncSession, subnet_count: int) -> dict:
 async def list_devices(
     request: Request,
     subnet: str = "",
+    per_page: str = "",
+    page: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -122,7 +228,7 @@ async def list_devices(
             await session.execute(
                 select(Device)
                 .where(Device.ignored.is_(False))
-                .order_by(Device.last_seen.desc().nullslast())
+                .order_by(*DEVICE_ORDER)
             )
         )
         .scalars()
@@ -144,8 +250,6 @@ async def list_devices(
     }
 
     known_subnets = await subnet_service.list_subnets(session)
-    # One query for the whole page rather than one per row.
-    by_device = await services_for(session, [d.id for d in devices])
 
     now = utcnow()
     rows = []
@@ -162,10 +266,7 @@ async def list_devices(
                 # orphan its devices and adding one classifies what is already
                 # there.
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
-                "services": [
-                    {"service": svc, "concern": concern(svc.port)}
-                    for svc in by_device.get(device.id, [])
-                ],
+                "services": [],
             }
         )
 
@@ -174,7 +275,27 @@ async def list_devices(
     total = len(rows)
     selected, rows = _apply_subnet_filter(rows, known_subnets, subnet)
 
+    # Counted before paging, deliberately. "Mark all 12 reviewed" acts on every
+    # unacknowledged device, so a number that shrank to what happens to be on
+    # screen would understate what the button does.
     unreviewed = sum(1 for row in rows if not row["device"].acknowledged)
+
+    size = _page_size(per_page)
+    try:
+        wanted_page = int(page)
+    except (TypeError, ValueError):
+        wanted_page = 1
+    paging, rows = _paginate(rows, subnet, size, wanted_page)
+
+    # Services are fetched after paging rather than before: one query either
+    # way, but for the devices actually being shown rather than for every
+    # device that exists.
+    by_device = await services_for(session, [r["device"].id for r in rows])
+    for row in rows:
+        row["services"] = [
+            {"service": svc, "concern": concern(svc.port)}
+            for svc in by_device.get(row["device"].id, [])
+        ]
 
     port_scan = await last_port_scan(session)
     sweep = await last_sweep(session)
@@ -199,12 +320,16 @@ async def list_devices(
             "subnet_filter": {
                 "selected": selected,
                 "value": subnet,
-                "shown": len(rows),
+                # No "shown" here. How many the filter matched is `paging.total`
+                # -- one number with one owner. Keeping a second copy is how it
+                # ends up quietly meaning "how many are on screen", which is the
+                # failure paging introduces to every count on this page.
                 "total": total,
                 "unassigned": sum(
                     1 for r in rows if r["subnet"] is None
                 ) if subnet == UNASSIGNED else None,
             },
+            "paging": paging,
             "sweep": sweep,
             "port_scan": port_scan,
             "scan": await _scan_schedule(

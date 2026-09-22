@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased — the Devices page fits on a screen (2026-09-22)
+
+A real network puts a few hundred rows on that page. It was one long table, so
+the sweep summary, the subnet filter and "Mark all reviewed" scrolled off the
+top and stayed there.
+
+### Added
+
+- **A page-size dropdown and a prev/next pager** on the Devices page. 50 a page
+  by default; 25, 100, 250 and All are offered. Both live in the URL, so a
+  choice survives a reload, a bookmark and the live refresh — which already
+  refetches `location.search` for the subnet filter's sake.
+- The count line now says which slice you are looking at: *Showing 26–50 of 63
+  on this subnet (67 device(s) in all).*
+
+### The parts that were easy to get wrong
+
+Paging is a scrolling aid, and every risk in it is the same mistake in a
+different place: the page number quietly changing what something *means*.
+
+- **A device falling between two pages.** The ordering is "last seen first",
+  and a sweep records everything it found in one batch — so a great many
+  devices share a `last_seen` exactly, and the order of rows tied on the only
+  sort column is undefined. The query now ends in `Device.id`. A device nobody
+  sees is a device nobody reviews, which is what this page is for.
+- **Counts collapsing into "how many are on screen".** "Mark all 12 reviewed"
+  acts on every unreviewed device, so it is counted before the slice is taken.
+- **A stale page number.** Clamped to the last page, not honoured blindly —
+  rows come and go between refreshes, and an empty table reads as a network
+  that emptied out. There is deliberately no hidden `page` field in the filter
+  form, which is how changing the subnet or the page size returns to page 1
+  without any JavaScript.
+- **`?per_page=100000`.** Validated against the offered list, like the sweep
+  interval. The value travels in a URL people edit and paste at each other.
+- The size `<select>` is never `disabled` — that mistake has been made twice on
+  this page already, and a disabled select submits nothing.
+
+### Also
+
+- Services are now fetched for the devices being shown rather than for every
+  device that exists. Still one query.
+
+### Tests
+
+- 29 new in `tests/test_paging.py`, including a round trip asserting every
+  device appears exactly once across the pages.
+- Mutation-checked rather than assumed. Five deliberate breakages were
+  introduced to see which tests noticed; two did not, and both were real:
+  - The `subnet_filter.shown` count turned out to be **dead** — nothing read
+    it. Removed, rather than left as a second copy of a number that would
+    eventually drift into meaning "how many are on screen".
+  - The ordering tiebreaker could be deleted with every test still passing,
+    because SQLite happens to return tied rows in rowid order. A test that
+    cannot fail is not a guard, so that one now asserts on the `ORDER BY`
+    itself and says in its docstring why it has to.
+- Verified in a browser at both themes: page boundaries, clamping, the live
+  refresh keeping page 2, and both dropdowns returning to page 1.
+- Suite: 258 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — the scan checks whether the network is lying to it (2026-09-22)
 
 Prompted by every device appearing to run DNS. That turned out to be a
