@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — design document catches up (2026-09-23)
+
+- **DESIGN.md's stack table said HTMX + Alpine.js + Tailwind over WebSocket.**
+  None of those is used: the frontend is Jinja templates, one hand-written
+  stylesheet and small inline scripts, with live updates over Server-Sent
+  Events. The row now says so, and notes what was originally planned.
+- DESIGN.md gains a **Visual identity** section recording the brand decisions
+  (name, mark, colour rules, theme, type, licence). Bumped to v0.4.
+
 ## Unreleased — licensed (2026-09-23)
 
 ### Added

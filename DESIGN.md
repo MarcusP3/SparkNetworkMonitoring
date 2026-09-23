@@ -1,6 +1,6 @@
 # SPARK — Network Monitoring
 
-*Design document · v0.3 · August 2026*
+*Design document · v0.4 · September 2026*
 
 ---
 
@@ -162,11 +162,20 @@ Switch config backup with diffs · syslog/trap receiver · PoE control and port 
 | Auth | `argon2-cffi` + signed session cookie | See below |
 | SNMP *(Ph. 3)* | `pysnmp` | v3 support, pure Python |
 | Storage | SQLite in WAL mode | Handles this write volume easily; revisit only if proven necessary |
-| Frontend | HTMX + Alpine.js + Tailwind, server-rendered | No build step, no npm, no separate SPA deploy. Live updates over WebSocket. |
+| Frontend | Jinja templates, one hand-written stylesheet, small inline scripts | No build step, no npm, no separate SPA deploy, nothing from a CDN. Live updates over Server-Sent Events (`/events`). *(Planned as HTMX + Alpine + Tailwind over WebSocket; the plain version turned out to need none of them.)* |
 | Graph map *(Ph. 3)* | Cytoscape.js | Only heavyweight JS dependency, loaded on one page |
 | Packaging | Docker image + compose file | |
 
 **Deliberate rejections:** React/Next (build toolchain overhead for a single-user LAN tool), Postgres (nothing here needs it), Prometheus+Grafana as the backend (great stack, but then you've built a config generator, not an app), microservices (no).
+
+### Visual identity — decided
+
+- **Name:** SPARK, all caps, wherever a person reads it; `spark` for the package, CLI, container and config file.
+- **Mark:** a flat-top lightning bolt, drawn as inline SVG (`templates/_brand.html`) and repeated in the favicon set under `static/brand/`. Never reused inside the app to mean something else.
+- **Colour:** electric cyan is the brand and the interactive colour (`#22d3ee` dark, `#0e7490` light) and is never a status. Green, amber and red mean up, degraded and down, and appear only on statuses; unknown and paused are grey. There is no blue "info" state.
+- **Theme:** follows the OS light/dark setting, with dark as the tuned default.
+- **Type:** Inter for text, JetBrains Mono for data (addresses, MACs, OIDs, latency), both self-hosted. Nothing loads from the internet: SPARK has to work on a LAN with no internet access.
+- **Licence:** PolyForm Noncommercial 1.0.0, © Marcus Pierce. See `LICENSE.md`.
 
 ### Authentication — decided
 
