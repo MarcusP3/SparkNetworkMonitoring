@@ -1,17 +1,19 @@
-<!doctype html>
+{% from "_brand.html" import mark %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }} · {{ config.app.instance_name }}</title>
   <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="icon" href="/static/brand/favicon.ico?v={{ asset_version }}" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/static/brand/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png?v={{ asset_version }}">
 </head>
 <body>
 {% if user %}
 <header class="topbar">
   <a class="brand" href="/">
-    <span class="brand-mark">⚡</span>
+    {{ mark() }}
     <span>{{ config.app.instance_name }}</span>
   </a>
   <nav class="nav">

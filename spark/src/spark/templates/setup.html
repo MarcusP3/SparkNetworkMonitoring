@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "_brand.html" import mark %}
 {% block content %}
 <div class="card auth-card">
   <div class="auth-head">
-    <span class="brand-mark large">⚡</span>
+    {{ mark("large") }}
     <h1>Set up SPARK</h1>
     <p class="muted">
       One administrator account, created now and stored on this machine only.

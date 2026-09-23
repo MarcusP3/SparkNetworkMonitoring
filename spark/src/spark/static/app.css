@@ -218,8 +218,8 @@ main.centered {
   text-decoration: none;
   letter-spacing: .01em;
 }
-.brand-mark { font-size: 1.15rem; color: var(--accent); }
-.brand-mark.large { font-size: 2rem; display: block; }
+.brand-mark { width: 1.25rem; height: 1.25rem; flex-shrink: 0; color: var(--accent); }
+.brand-mark.large { width: 2.75rem; height: 2.75rem; display: block; margin: 0 auto; }
 
 .nav { display: flex; gap: .2rem; margin-right: auto; }
 .nav a {

@@ -1,4 +1,4 @@
-# ⚡ SPARK
+# <img src="spark/src/spark/static/brand/favicon.svg" width="36" height="36" alt="" align="top"> SPARK
 
 **Network monitoring for homelabs.** Health checks, alerting, and a live map of
 every device and service on your network — in one container, with one SQLite
@@ -416,6 +416,7 @@ spark/
     templates/          Jinja templates
     static/             hand-written CSS, no build step
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
+      brand/            favicon (SVG + ICO) and Apple touch icon
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_events.py      what live updates publish, and what they stay quiet about
@@ -453,7 +454,8 @@ Five things that will bite you if you don't know them:
   things you can click. Up, degraded and down are green, amber and red; unknown
   and paused are grey. No blue "info" state — it read as a fourth status beside
   the cyan. Nothing loads from a CDN, fonts included: SPARK runs on LANs with no
-  internet.
+  internet. The mark is the flat-top bolt in `templates/_brand.html`; its path
+  is duplicated in `static/brand/favicon.svg`, so change both together.
 
 ---
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — the SPARK mark (2026-09-23)
+
+The ⚡ emoji is gone. It rendered differently on every OS and ignored CSS, so
+the header stayed yellow — the degraded colour — after the accent moved to
+cyan. Design only; no behaviour change.
+
+### Changed
+
+- **A drawn mark: a flat-top bolt**, inline SVG from a `mark()` macro in
+  `templates/_brand.html`, coloured by `--accent`. Used in the header, login and
+  setup, and at the top of the README.
+- **Favicon set** in `static/brand/`: `favicon.svg` (modern browsers),
+  `favicon.ico` at 16/32/48 (everything else) and a 180px
+  `apple-touch-icon.png` for a home-screen shortcut. A cyan bolt on a
+  near-black tile, which holds up on both light and dark browser tabs.
+  Cache-busted with the stylesheet's `asset_version`. The raster files were
+  rendered from the SVG in Chromium; regenerate them if the path changes.
+
 ## Unreleased — brand colour and type (2026-09-23)
 
 First pass at a visual identity. Design only: no behaviour, config or
@@ -12,8 +30,8 @@ dependency change, and no rebuild needed beyond picking up the new files.
   cyan-700 is 5.4:1. Filled accent controls take near-black text in dark mode —
   white on the bright cyan fails at 1.8:1.
 - **The brand mark was painted in `--warn`**, the degraded colour. It uses the
-  accent now. (The mark is still the ⚡ emoji, which ignores CSS colour; the
-  SVG mark replaces it next.)
+  accent now. (The mark was still the ⚡ emoji at this point, which ignores
+  CSS colour; the SVG mark replaced it in the next change.)
 - **`--info` is neutral grey, not blue.** It was defined and never used, and a
   blue beside the cyan would have read as a fourth status.
 - The dark theme's cool corner glow and the first stat tile follow the accent.

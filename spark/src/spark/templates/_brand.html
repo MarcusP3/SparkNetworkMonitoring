@@ -1,0 +1,6 @@
+{#- SPARK's mark: the flat-top bolt. Inline SVG rather than an <img> so it takes
+    its colour from CSS (--accent, which differs per theme) and costs no
+    request. The same path is in static/brand/favicon.svg -- change both. -#}
+{% macro mark(extra="") -%}
+<svg class="brand-mark{{ ' ' ~ extra if extra }}" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path fill="currentColor" d="M13 1.5H24.5L18.5 12H25.5L9.5 31L13.5 17.5H6.5Z"/></svg>
+{%- endmacro %}
