@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — status tiles only colour when something is wrong (2026-09-23)
+
+"Let colour mean status" made the Degraded, Down and Open incidents icon tiles
+amber and red — unconditionally. So a healthy network showed a permanent red
+icon above a neutral **0**: the tile and the number disagreed about whether
+anything was wrong. A red that is always there is a red you learn to stop
+seeing, which is the one habit a monitoring dashboard cannot afford to teach.
+
+### Fixed
+
+- The three status tiles now take their colour on the same condition as their
+  number. At zero they are cyan like every other tile; they turn amber or red
+  only when there is something to look at.
+
+### Tests
+
+- `tests/test_dashboard.py`, 7 tests. Checked against the bug rather than
+  assumed: with the old unconditional tiles restored, five fail. One of those
+  had to be rewritten first — `test_tile_and_number_agree` originally tried
+  only non-zero states, where tile and number agreed even with the bug in
+  place, so it passed against the exact code it was written to catch. The
+  disagreement lived at zero, and the test now checks a healthy network too.
+- The README's statement of the tile rule is updated to match.
+- Suite: 329 passed, 6 skipped. `smoke_test.py`: 76 passed.
+
 ## Unreleased — design document catches up (2026-09-23)
 
 - **DESIGN.md's stack table said HTMX + Alpine.js + Tailwind over WebSocket.**

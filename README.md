@@ -453,8 +453,11 @@ Five things that will bite you if you don't know them:
 - **Cyan is the brand, never a status.** `--accent` is for SPARK itself and for
   things you can click. Up, degraded and down are green, amber and red; unknown
   and paused are grey. The reverse holds too: status colours appear only on
-  statuses. Icon tiles are cyan unless the thing they count is degraded or
-  down. No blue "info" state — it read as a fourth status beside
+  statuses. Icon tiles are cyan unless what they count is actually happening:
+  the Degraded, Down and Open incidents tiles turn amber or red only when their
+  number is above zero, on the same condition as the number itself. A red that
+  is always there is a red you learn to stop seeing. No blue "info" state — it
+  read as a fourth status beside
   the cyan. Nothing loads from a CDN, fonts included: SPARK runs on LANs with no
   internet. The mark is the flat-top bolt in `templates/_brand.html`; its path
   is duplicated in `static/brand/favicon.svg`, so change both together.

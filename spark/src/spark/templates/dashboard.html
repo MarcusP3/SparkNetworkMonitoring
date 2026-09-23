@@ -22,7 +22,14 @@
   {# Six counts, each with the same anatomy: a tinted icon, what it is, the
      number, and a line saying what the number counts. That last line does the
      work -- "1" under "Monitored" is ambiguous in a way that "Actively
-     checked" is not. #}
+     checked" is not.
+
+     The three status tiles take their colour on the same condition as their
+     number. Amber and red were unconditional at first, so a healthy network
+     showed a permanent red icon above a neutral 0 -- the tile and the number
+     disagreeing about whether anything was wrong, and a red that is always
+     there is a red you learn to stop seeing. At zero they are cyan like the
+     rest; they only change colour when there is something to look at. #}
   <section class="stat-row">
     <a class="stat" href="/devices">
       <span class="stat-head">
@@ -53,7 +60,7 @@
 
     <div class="stat {% if stats.degraded %}is-warn{% endif %}">
       <span class="stat-head">
-        <span class="stat-icon tile-4"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span>
+        <span class="stat-icon{% if stats.degraded %} tile-4{% endif %}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span>
         <span class="stat-name">Degraded</span>
       </span>
       <span class="stat-value">{{ stats.degraded }}</span>
@@ -62,7 +69,7 @@
 
     <div class="stat {% if stats.down %}is-bad{% endif %}">
       <span class="stat-head">
-        <span class="stat-icon tile-5"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10.5 4.5 4 4.5-4"/><path d="M5 19h14"/></svg></span>
+        <span class="stat-icon{% if stats.down %} tile-5{% endif %}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10.5 4.5 4 4.5-4"/><path d="M5 19h14"/></svg></span>
         <span class="stat-name">Down</span>
       </span>
       <span class="stat-value">{{ stats.down }}</span>
@@ -71,7 +78,7 @@
 
     <div class="stat {% if stats.open_incidents %}is-bad{% endif %}">
       <span class="stat-head">
-        <span class="stat-icon tile-5"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
+        <span class="stat-icon{% if stats.open_incidents %} tile-5{% endif %}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
         <span class="stat-name">Open incidents</span>
       </span>
       <span class="stat-value">{{ stats.open_incidents }}</span>
