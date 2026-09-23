@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — licensed (2026-09-23)
+
+### Added
+
+- **SPARK is licensed under the PolyForm Noncommercial License 1.0.0.** Free
+  for personal, homelab, hobby and educational use; commercial use needs a
+  separate license. `LICENSE.md` carries the official text unmodified, with a
+  `Required Notice:` copyright line above it that anyone passing SPARK on must
+  keep.
+- There are two identical copies: `LICENSE.md` at the repo root, where GitHub
+  looks, and `spark/LICENSE.md`, inside the Docker build context. The
+  Dockerfile copies the second beside `pyproject.toml` so hatchling puts it
+  in the wheel's `dist-info/licenses/`. Change both together.
+- `pyproject.toml` declares `license = "PolyForm-Noncommercial-1.0.0"` (an
+  SPDX identifier) and the author. Metadata only: no dependency change, and
+  the lock files are untouched.
+- The footer shows the copyright and licence in place of the tagline.
+
 ## Unreleased — colour means status (2026-09-23)
 
 Design only; no behaviour change.

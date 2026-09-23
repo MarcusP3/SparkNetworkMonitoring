@@ -2,6 +2,8 @@
 name = "spark-monitor"
 version = "0.1.0"
 description = "SPARK - homelab network monitoring: health, alerting, and a live service map"
+license = "PolyForm-Noncommercial-1.0.0"
+authors = [{ name = "Marcus Pierce" }]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

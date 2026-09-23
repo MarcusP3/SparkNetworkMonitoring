@@ -41,7 +41,9 @@ COPY requirements-build.lock requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements-build.lock \
     && pip install --no-cache-dir --require-hashes -r requirements.lock
 
-COPY pyproject.toml ./
+# LICENSE.md beside pyproject.toml so hatchling ships it in the wheel's
+# dist-info: the Required Notice has to travel with every copy.
+COPY pyproject.toml LICENSE.md ./
 COPY src ./src
 
 # --no-deps because everything it needs is installed and verified above;

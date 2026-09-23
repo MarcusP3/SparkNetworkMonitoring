@@ -532,4 +532,9 @@ changed when.
 
 ## License
 
-Not yet chosen. Pick one before sharing this outside your own network.
+Copyright © 2026 Marcus Pierce. SPARK is licensed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE.md).
+
+Free for personal, homelab, hobby and educational use. Any commercial use —
+including use inside a business, resale, rebranding, or hosting it as a
+service — needs a separate license. Contact me through GitHub.
