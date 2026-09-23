@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — brand colour and type (2026-09-23)
+
+First pass at a visual identity. Design only: no behaviour, config or
+dependency change, and no rebuild needed beyond picking up the new files.
+
+### Changed
+
+- **The accent is SPARK's electric cyan, not a stock blue.** `#22d3ee` in dark
+  mode; `#0e7490` in light, because the bright cyan is 1.8:1 on white and
+  cyan-700 is 5.4:1. Filled accent controls take near-black text in dark mode —
+  white on the bright cyan fails at 1.8:1.
+- **The brand mark was painted in `--warn`**, the degraded colour. It uses the
+  accent now. (The mark is still the ⚡ emoji, which ignores CSS colour; the
+  SVG mark replaces it next.)
+- **`--info` is neutral grey, not blue.** It was defined and never used, and a
+  blue beside the cyan would have read as a fourth status.
+- The dark theme's cool corner glow and the first stat tile follow the accent.
+
+### Added
+
+- **Inter for text, JetBrains Mono for data**, self-hosted in
+  `static/fonts/` with their OFL-1.1 licences. Variable builds, because the
+  stylesheet uses weights 550 and 650. Latin subsets, 88 KB together, from
+  Fontsource 5.3.0 (npm `@fontsource-variable/inter`,
+  `@fontsource-variable/jetbrains-mono`). SHA-256:
+  - `inter-latin-wght.woff2` `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62`
+  - `jetbrains-mono-latin-wght.woff2` `18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e`
+
 ## Unreleased — the rest of the pages catch up (2026-09-22)
 
 The shell pass left Targets, Devices and Settings wearing the new palette on

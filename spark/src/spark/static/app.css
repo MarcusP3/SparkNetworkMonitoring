@@ -2,6 +2,25 @@
    No build step on purpose: clone, docker compose up, done. Everything is
    driven by the custom properties below, so re-theming means editing one block. */
 
+/* Self-hosted, never a CDN: SPARK runs on LANs with no internet. Variable
+   builds because the weights below include 550 and 650, which a static font
+   family would round to its nearest cut. Latin subset; other scripts fall back
+   to the system font glyph by glyph. OFL-1.1, licences beside the files. */
+@font-face {
+  font-family: "Inter";
+  src: url("fonts/inter-latin-wght.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-latin-wght.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
 
@@ -21,23 +40,27 @@
   --text-muted: #5b6676;
   --text-faint: #646d7b;
 
-  --accent: #2f6df6;
-  --accent-soft: rgba(47, 109, 246, .10);
-  --accent-line: rgba(47, 109, 246, .28);
+  /* Brand cyan. Interactive and brand only -- never a status. Light mode uses
+     cyan-700 because the bright brand cyan is 1.8:1 on white; this is 5.4:1,
+     and white text on it is too. */
+  --accent: #0e7490;
+  --accent-soft: rgba(14, 116, 144, .10);
+  --accent-line: rgba(14, 116, 144, .28);
   --accent-contrast: #ffffff;
 
   --ok: #17835b;
   --warn: #985f04;
   --bad: #c0392f;
-  --info: #2f6df6;
+  /* Neutral, not blue: a blue next to the cyan brand read as a fourth status. */
+  --info: #5b6676;
 
   --ok-bg: #e4f4ec;
   --warn-bg: #fdf2e0;
   --bad-bg: #fbeae8;
-  --info-bg: #e8effd;
+  --info-bg: #e4e9f0;
 
   /* Tinted squares behind the icons on the stat cards. */
-  --tile-1: rgba(47, 109, 246, .12);
+  --tile-1: rgba(14, 116, 144, .12);
   --tile-2: rgba(139, 92, 246, .12);
   --tile-3: rgba(23, 131, 91, .12);
   --tile-4: rgba(168, 106, 5, .12);
@@ -50,8 +73,8 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
   --shadow-lift: 0 2px 4px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10);
 
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,7 +86,7 @@
     --glow-warm: radial-gradient(70rem 40rem at -10% 115%,
                                  rgba(234, 88, 12, .16), transparent 62%);
     --glow-cool: radial-gradient(70rem 45rem at 105% -15%,
-                                 rgba(37, 99, 235, .16), transparent 60%);
+                                 rgba(34, 211, 238, .10), transparent 60%);
 
     --surface: #0d1320;
     --surface-2: #141c2c;
@@ -74,22 +97,24 @@
     --text-muted: #8e9bb0;
     --text-faint: #78859a;
 
-    --accent: #3b82f6;
-    --accent-soft: rgba(59, 130, 246, .16);
-    --accent-line: rgba(59, 130, 246, .45);
-    --accent-contrast: #ffffff;
+    /* The brand cyan itself: 10.3:1 on the panels. White text on it fails
+       (1.8:1), so anything filled with it takes the page's near-black. */
+    --accent: #22d3ee;
+    --accent-soft: rgba(34, 211, 238, .14);
+    --accent-line: rgba(34, 211, 238, .45);
+    --accent-contrast: #070b13;
 
     --ok: #34d399;
     --warn: #fbbf24;
     --bad: #f87171;
-    --info: #60a5fa;
+    --info: #8e9bb0;
 
     --ok-bg: rgba(52, 211, 153, .12);
     --warn-bg: rgba(251, 191, 36, .12);
     --bad-bg: rgba(248, 113, 113, .12);
-    --info-bg: rgba(96, 165, 250, .12);
+    --info-bg: rgba(142, 155, 176, .12);
 
-    --tile-1: rgba(59, 130, 246, .16);
+    --tile-1: rgba(34, 211, 238, .16);
     --tile-2: rgba(167, 139, 250, .16);
     --tile-3: rgba(52, 211, 153, .16);
     --tile-4: rgba(251, 191, 36, .16);
@@ -193,7 +218,7 @@ main.centered {
   text-decoration: none;
   letter-spacing: .01em;
 }
-.brand-mark { font-size: 1.15rem; color: var(--warn); }
+.brand-mark { font-size: 1.15rem; color: var(--accent); }
 .brand-mark.large { font-size: 2rem; display: block; }
 
 .nav { display: flex; gap: .2rem; margin-right: auto; }

@@ -415,6 +415,7 @@ spark/
     web/                routes and dependencies
     templates/          Jinja templates
     static/             hand-written CSS, no build step
+      fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_events.py      what live updates publish, and what they stay quiet about
@@ -436,7 +437,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Four things that will bite you if you don't know them:
+Five things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -448,6 +449,11 @@ Four things that will bite you if you don't know them:
   machine decides what a sequence of outcomes means; the check does not.
 - **Migrations are a numbered list in `db.py`**, not Alembic. Append; never edit
   or reorder an entry that has shipped.
+- **Cyan is the brand, never a status.** `--accent` is for SPARK itself and for
+  things you can click. Up, degraded and down are green, amber and red; unknown
+  and paused are grey. No blue "info" state — it read as a fourth status beside
+  the cyan. Nothing loads from a CDN, fonts included: SPARK runs on LANs with no
+  internet.
 
 ---
 
