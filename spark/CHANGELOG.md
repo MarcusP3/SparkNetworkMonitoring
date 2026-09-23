@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — colour means status (2026-09-23)
+
+Design only; no behaviour change.
+
+### Changed
+
+- **Icon tiles are cyan unless they count a status.** Settings wore the amber
+  of *degraded*; Targets, Monitored, Watched and the target form wore the green
+  of *up*. None of them is a status, and a colour that sometimes means state and
+  sometimes means nothing ends up meaning nothing. Amber and red tiles now appear
+  only on the Degraded and Down counts, and on Open incidents, which moves from
+  pink to red because unresolved incidents are exactly a down state.
+- **Violet and pink are gone.** They were literals, unthemed, and 2.7:1 on
+  white — under the 3:1 that icons need. `--tile-2`, `--tile-3` and `--tile-6`
+  and their rules are removed.
+- The avatar gradient runs cyan to darker cyan instead of cyan to violet.
+- A danger button's hover used a hardcoded light-theme red (2.8:1 on the dark
+  panels); it uses `--bad`.
+
 ## Unreleased — the SPARK mark (2026-09-23)
 
 The ⚡ emoji is gone. It rendered differently on every OS and ignored CSS, so

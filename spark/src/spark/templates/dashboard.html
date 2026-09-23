@@ -35,7 +35,7 @@
 
     <div class="stat">
       <span class="stat-head">
-        <span class="stat-icon tile-2"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span>
+        <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span>
         <span class="stat-name">Services</span>
       </span>
       <span class="stat-value">{{ stats.services }}</span>
@@ -44,7 +44,7 @@
 
     <a class="stat" href="/targets">
       <span class="stat-head">
-        <span class="stat-icon tile-3"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span>
+        <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span>
         <span class="stat-name">Monitored</span>
       </span>
       <span class="stat-value">{{ stats.targets }}</span>
@@ -71,7 +71,7 @@
 
     <div class="stat {% if stats.open_incidents %}is-bad{% endif %}">
       <span class="stat-head">
-        <span class="stat-icon tile-6"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
+        <span class="stat-icon tile-5"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
         <span class="stat-name">Open incidents</span>
       </span>
       <span class="stat-value">{{ stats.open_incidents }}</span>
@@ -129,7 +129,7 @@
     {% if watched %}
     <section class="card">
       <div class="card-head">
-        <span class="card-icon tile-3"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg></span>
+        <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg></span>
         <div>
           <h2>Watched</h2>
           <p class="card-sub">Devices and endpoints checked on a schedule.</p>
@@ -173,7 +173,7 @@
        the app does. #}
     <section class="card">
       <div class="card-head">
-        <span class="card-icon tile-6"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
+        <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
         <div>
           <h2>Recent incidents</h2>
           <p class="card-sub">The last ten, newest first.</p>

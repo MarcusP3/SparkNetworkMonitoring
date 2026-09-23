@@ -59,13 +59,13 @@
   --bad-bg: #fbeae8;
   --info-bg: #e4e9f0;
 
-  /* Tinted squares behind the icons on the stat cards. */
+  /* Tinted squares behind icons. Cyan for everything that is not a status;
+     amber and red only where the thing counted IS degraded or down. A green,
+     violet or pink tile on Settings or Targets used to make colour mean
+     nothing, which is the one thing a monitoring UI cannot afford. */
   --tile-1: rgba(14, 116, 144, .12);
-  --tile-2: rgba(139, 92, 246, .12);
-  --tile-3: rgba(23, 131, 91, .12);
   --tile-4: rgba(168, 106, 5, .12);
   --tile-5: rgba(192, 57, 47, .12);
-  --tile-6: rgba(219, 39, 119, .12);
 
   --radius: 14px;
   --radius-sm: 8px;
@@ -115,11 +115,8 @@
     --info-bg: rgba(142, 155, 176, .12);
 
     --tile-1: rgba(34, 211, 238, .16);
-    --tile-2: rgba(167, 139, 250, .16);
-    --tile-3: rgba(52, 211, 153, .16);
     --tile-4: rgba(251, 191, 36, .16);
     --tile-5: rgba(248, 113, 113, .16);
-    --tile-6: rgba(244, 114, 182, .16);
 
     --shadow: 0 1px 2px rgba(0, 0, 0, .5);
     --shadow-lift: 0 2px 4px rgba(0, 0, 0, .5), 0 16px 40px rgba(0, 0, 0, .45);
@@ -264,7 +261,7 @@ main.centered {
   font-size: .875rem;
   font-weight: 700;
   color: var(--accent-contrast);
-  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #a78bfa));
+  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000));
   text-transform: uppercase;
 }
 
@@ -317,9 +314,6 @@ main.centered {
   display: block;
 }
 .stat-icon .icon { width: 18px; height: 18px; }
-.card-icon.tile-2 { background: var(--tile-2); color: #a78bfa; }
-.card-icon.tile-3 { background: var(--tile-3); color: var(--ok); }
-.card-icon.tile-6 { background: var(--tile-6); color: #f472b6; }
 
 .card-head h2 { margin: 0; font-size: 1.0625rem; font-weight: 650; }
 .card-sub { margin: .1rem 0 0; font-size: .8125rem; color: var(--text-muted); }
@@ -455,11 +449,8 @@ a.stat:hover {
   background: var(--tile-1);
   color: var(--accent);
 }
-.stat-icon.tile-2 { background: var(--tile-2); color: #a78bfa; }
-.stat-icon.tile-3 { background: var(--tile-3); color: var(--ok); }
 .stat-icon.tile-4 { background: var(--tile-4); color: var(--warn); }
 .stat-icon.tile-5 { background: var(--tile-5); color: var(--bad); }
-.stat-icon.tile-6 { background: var(--tile-6); color: #f472b6; }
 
 .stat-name { font-size: .875rem; font-weight: 600; color: var(--text-muted); }
 
@@ -600,9 +591,6 @@ a.stat:hover {
   color: var(--accent);
 }
 .page-icon .icon { width: 22px; height: 22px; }
-.page-icon.tile-2 { background: var(--tile-2); color: #a78bfa; }
-.page-icon.tile-3 { background: var(--tile-3); color: var(--ok); }
-.page-icon.tile-4 { background: var(--tile-4); color: var(--warn); }
 
 .page-head h1 {
   margin: 0;
@@ -662,7 +650,7 @@ a.stat:hover {
    wrong signal entirely. */
 tr.is-paused td:not(:first-child):not(.actions) { opacity: .55; }
 
-.btn-quiet.danger:hover { color: #b3261e; }
+.btn-quiet.danger:hover { color: var(--bad); }
 
 /* Status pills. Colour is a reinforcement, never the only signal - the word
    itself is always present, so a red/green deficiency loses nothing.
