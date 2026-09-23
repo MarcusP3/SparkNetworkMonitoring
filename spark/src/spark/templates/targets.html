@@ -2,8 +2,23 @@
 {% block content %}
 <div class="page">
   <div class="page-head">
-    <h1>Targets</h1>
-    <a class="btn-primary" href="/targets/new">Add target</a>
+    <div class="page-title">
+      <span class="page-icon tile-3">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
+          <circle cx="12" cy="12" r="2.5"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Targets</h1>
+        <p class="page-sub">What SPARK checks on a schedule, and how each one answered last.</p>
+      </div>
+    </div>
+    <div class="head-actions">
+      <a class="btn-primary" href="/targets/new">Add target</a>
+    </div>
   </div>
 
   <div id="live">

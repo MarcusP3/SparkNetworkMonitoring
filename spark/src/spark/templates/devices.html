@@ -2,7 +2,21 @@
 {% block content %}
 <div class="page">
   <div class="page-head">
-    <h1>Devices</h1>
+    <div class="page-title">
+      <span class="page-icon">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <rect x="3" y="4" width="18" height="7" rx="2"/>
+          <rect x="3" y="13" width="18" height="7" rx="2"/>
+          <path d="M7 7.5h.01M7 16.5h.01"/>
+        </svg>
+      </span>
+      <div>
+        <h1>Devices</h1>
+        <p class="page-sub">Everything the sweep has found, and what it is running.</p>
+      </div>
+    </div>
     <div class="head-actions">
       {% if unreviewed %}
       <form method="post" action="/devices/acknowledge-all">
@@ -141,6 +155,26 @@
 
   {% if sweep %}
   <section class="card sweep-status">
+    <div class="card-head">
+      <span class="card-icon tile-2">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v9l6.5 3.5"/>
+        </svg>
+      </span>
+      <div>
+        <h2>Last sweep</h2>
+        <p class="card-sub">
+          {% if sweep.age_seconds is not none and sweep.age_seconds is defined %}
+            {% if sweep.age_seconds < 120 %}Just now.
+            {% elif sweep.age_seconds < 3600 %}{{ (sweep.age_seconds // 60) | int }} minutes ago.
+            {% else %}{{ (sweep.age_seconds // 3600) | int }} hours ago.{% endif %}
+          {% else %}Not yet recorded.{% endif %}
+        </p>
+      </div>
+    </div>
+
     {% if sweep.error %}
       <div class="alert error">
         The last sweep failed: <code>{{ sweep.error }}</code>
@@ -161,18 +195,16 @@
       </div>
     {% endif %}
 
-    <p class="muted small">
-      Last sweep
-      {% if sweep.age_seconds is not none and sweep.age_seconds is defined %}
-        {% if sweep.age_seconds < 120 %}just now
-        {% elif sweep.age_seconds < 3600 %}{{ (sweep.age_seconds // 60) | int }}m ago
-        {% else %}{{ (sweep.age_seconds // 3600) | int }}h ago{% endif %}
-      {% else %}—{% endif %}:
-      probed {{ sweep.probed or 0 }},
-      {{ sweep.answered or 0 }} answered,
-      {{ sweep.with_mac or 0 }} with a MAC,
-      {{ sweep.new or 0 }} new.
-    </p>
+    {# The age moved into the card's subtitle, so this is now only the counts.
+       Four figures rather than a sentence: they are read against each other --
+       probed against answered is the one comparison that matters -- and a
+       sentence makes you do that arithmetic in your head. #}
+    <dl class="sweep-figures">
+      <div><dt>Probed</dt><dd>{{ sweep.probed or 0 }}</dd></div>
+      <div><dt>Answered</dt><dd>{{ sweep.answered or 0 }}</dd></div>
+      <div><dt>With a MAC</dt><dd>{{ sweep.with_mac or 0 }}</dd></div>
+      <div><dt>New</dt><dd>{{ sweep.new or 0 }}</dd></div>
+    </dl>
 
     {% if sweep.subnets %}
     <table class="table compact">

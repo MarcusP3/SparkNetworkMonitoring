@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased — the rest of the pages catch up (2026-09-22)
+
+The shell pass left Targets, Devices and Settings wearing the new palette on
+their old layouts. This finishes them. Still design only: no new features, no
+new queries, and every string the tests assert on left where it was.
+
+### Added
+
+- **A page masthead**, shared by every page but the dashboard: an icon tile,
+  the page name, one line saying what the page is for, and the page's actions.
+  The same anatomy as a card header, one size up — a page and a card are the
+  same kind of thing at different scales, and giving them two different
+  headers is how a UI stops feeling like one piece of software.
+- **Control bars read as controls.** The scan-schedule and subnet-filter bars
+  on Devices hold settings rather than findings, so they are flatter and
+  unshadowed. Four equal slabs down the page was the previous reading.
+- **The sweep summary is four figures, not a sentence.** Probed, answered, with
+  a MAC, new. They are read against each other — probed against answered is the
+  comparison that matters — and a sentence makes you do that in your head. The
+  age moved up into the card's subtitle.
+- Settings, the target form, Targets and Devices all pick up the icon and
+  subtitle treatment; the target form gains a way back to Targets.
+
+### Fixed
+
+- **The small uppercase labels failed contrast, and the last pass missed it.**
+  Table headers and the like were checked against a 3.0 threshold, which is the
+  bar for large text — these are 11px, so the bar is 4.5. On that measure the
+  light theme's faint text was 3.25:1 and the dark theme's 3.81:1. Both have
+  been moved until they clear 4.5 on *both* the card and the control-bar
+  surface, which is the pair that actually matters now that bars have their own
+  background. All fourteen pairs pass at the correct threshold.
+
+### Checked
+
+- Rendered at both themes across Dashboard, Targets, Devices, Settings, the
+  target form and Setup.
+- Suite: 322 passed, 6 skipped. `smoke_test.py`: 76 passed. No test changed —
+  the point of restyling in place.
+
 ## Unreleased — a new look for the shell and the dashboard (2026-09-22)
 
 A visual pass, from a mockup. No new features and no new data: everything on

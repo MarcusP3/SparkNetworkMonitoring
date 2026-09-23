@@ -2,18 +2,29 @@
 {% block content %}
 <div class="page">
   <div class="page-head">
-    <h1>Settings</h1>
+    <div class="page-title">
+      <span class="page-icon tile-4"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4 14H3.8a2 2 0 1 1 0-4H4a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4.4a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 20 10h.2a2 2 0 1 1 0 4H20a1.6 1.6 0 0 0-1.5 1Z"/></svg></span>
+      <div>
+        <h1>Settings</h1>
+        <p class="page-sub">What SPARK sweeps, and what it looks for once it gets there.</p>
+      </div>
+    </div>
   </div>
 
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 
   <section class="card">
-    <h2 class="section-title">Subnets</h2>
-    <p class="muted small">
-      The segments SPARK sweeps for devices. These used to live in
-      <code>spark.yaml</code>; that file seeded this list once and is no longer
-      read, so add and remove them here.
-    </p>
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1.5"/><rect x="2.5" y="16" width="6" height="5" rx="1.5"/><rect x="15.5" y="16" width="6" height="5" rx="1.5"/><path d="M12 8v3.5M5.5 16v-2a1.5 1.5 0 0 1 1.5-1.5h10a1.5 1.5 0 0 1 1.5 1.5v2"/></svg></span>
+      <div>
+        <h2>Subnets</h2>
+        <p class="card-sub">
+          The segments SPARK sweeps for devices. These used to live in
+          <code>spark.yaml</code>; that file seeded this list once and is no
+          longer read, so add and remove them here.
+        </p>
+      </div>
+    </div>
 
     {% if subnets %}
     <table class="table subnet-table">
@@ -157,12 +168,17 @@
   </section>
 
   <section class="card">
-    <h2 class="section-title">Port scanning</h2>
-    <p class="muted small">
-      Once a device has been discovered, SPARK can check which service ports it
-      is listening on. Only devices already found are scanned, never whole
-      subnets.
-    </p>
+    <div class="card-head">
+      <span class="card-icon tile-3"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12 19 6.5"/></svg></span>
+      <div>
+        <h2>Port scanning</h2>
+        <p class="card-sub">
+          Once a device has been discovered, SPARK can check which service
+          ports it is listening on. Only devices already found are scanned,
+          never whole subnets.
+        </p>
+      </div>
+    </div>
 
     {# The budget, stated rather than discovered later as "the scan got slow".
        The number of devices is in it because the cost of a port is not a

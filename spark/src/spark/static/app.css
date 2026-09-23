@@ -19,7 +19,7 @@
   --border-strong: #ccd3de;
   --text: #121722;
   --text-muted: #5b6676;
-  --text-faint: #7b8697;
+  --text-faint: #646d7b;
 
   --accent: #2f6df6;
   --accent-soft: rgba(47, 109, 246, .10);
@@ -72,7 +72,7 @@
     --border-strong: #2b374d;
     --text: #e8edf6;
     --text-muted: #8e9bb0;
-    --text-faint: #6b788c;
+    --text-faint: #78859a;
 
     --accent: #3b82f6;
     --accent-soft: rgba(59, 130, 246, .16);
@@ -548,11 +548,47 @@ a.stat:hover {
 
 /* ---- targets ---------------------------------------------------------- */
 
+/* The masthead every page but the dashboard wears: an icon tile, the name of
+   the page, one line saying what it is for, and the page's actions. The same
+   anatomy as .card-head, one size up -- a page and a card are the same kind of
+   thing at different scales, and giving them two different headers is how a UI
+   stops feeling like one piece of software. */
 .page-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.75rem;
+}
+
+.page-title { display: flex; align-items: flex-start; gap: .9rem; }
+
+.page-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  background: var(--tile-1);
+  color: var(--accent);
+}
+.page-icon .icon { width: 22px; height: 22px; }
+.page-icon.tile-2 { background: var(--tile-2); color: #a78bfa; }
+.page-icon.tile-3 { background: var(--tile-3); color: var(--ok); }
+.page-icon.tile-4 { background: var(--tile-4); color: var(--warn); }
+
+.page-head h1 {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+.page-sub { margin: .15rem 0 0; font-size: .875rem; color: var(--text-muted); }
+
+@media (max-width: 40rem) {
+  .page-head .head-actions { width: 100%; }
 }
 
 .page.narrow { max-width: 46rem; }
@@ -867,8 +903,39 @@ input.narrow { max-width: 5.5rem; }
 
 /* ---- devices: subnet filter -------------------------------------------- */
 
-.filter-bar { padding: .75rem 1rem; }
+/* Control bars, not content cards. Both of these hold settings rather than
+   findings, and giving them the same weight as the tables below made the page
+   read as four equal slabs. Flatter surface, no shadow, less padding. */
+.filter-bar, .scan-schedule {
+  padding: .8rem 1.1rem;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
 .filter-count { margin-left: auto; }
+
+/* The sweep's four figures, read against each other rather than as a
+   sentence -- probed against answered is the comparison that matters. */
+.sweep-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  margin: 0 0 .5rem;
+}
+.sweep-figures div { display: flex; flex-direction: column-reverse; gap: .1rem; }
+.sweep-figures dt {
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+.sweep-figures dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
 
 @media (max-width: 40rem) {
   .filter-count { margin-left: 0; flex-basis: 100%; }
