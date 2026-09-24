@@ -33,7 +33,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
-| SNMP collection | ⚠️ credential profiles and a per-device **Test** in Settings; v2c and v3 authPriv both work. Not yet polled on a schedule or persisted |
+| SNMP collection | ⚠️ profiles, per-device **Test**, and scheduled polling (health, interface status and traffic rates) stored with history. No device page or charts yet |
 | Alerting (Discord) | ❌ not yet |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Service map, topology | ❌ not yet |
@@ -116,7 +116,7 @@ Two layers, deliberately:
 | Where | What lives there |
 |---|---|
 | `config/spark.yaml` | Things needed *before the database exists*: bind address, data directory, auth mode. Its `network.subnets` block seeds the database once and is then ignored |
-| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, and later the alert webhook and retention |
+| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, and later the alert webhook and retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
 underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
@@ -302,6 +302,47 @@ fixes:
 | `Unreachable` | No answer at all. Down, SNMP off, *or* a wrong community or privacy password — an agent drops a request it cannot authenticate rather than refusing it, so from outside these look identical |
 | `CipherUnavailable` | SPARK cannot encrypt v3 traffic. SPARK's fault, not the device's |
 
+### Polling
+
+Every device on the SNMP list is polled on a schedule — **every 60 seconds by
+default**, set with **Poll every** on the card (30 seconds to an hour). A device
+added to the list gets its first poll within a few seconds. **Pause** stops
+polling one device and keeps its history; **Remove** takes the device off the
+list *and deletes its history*.
+
+Each poll asks for:
+
+- uptime, CPU % (or the load average, where the device has no percentage),
+  memory %, and the hottest temperature sensor, if there is one;
+- every interface's name, status, speed and counters.
+
+Model and serial are left to Test; they do not change minute to minute, and on
+a large chassis that walk is the heaviest one.
+
+The card shows the latest poll for each device — `polling` with the numbers,
+or `no answer` with the reason — and when the next one is due. Charts and a
+per-device page are the next stage.
+
+**Traffic is stored as a rate per interval, and only for interfaces that are
+up.** Every interface's status is always recorded; an empty port just doesn't
+add a row of zeros every minute. Turning counters into rates has four traps,
+and each one produces a wrong number rather than an error:
+
+| Case | What SPARK does |
+|---|---|
+| A 32-bit counter wraps (every 4 GiB — about 34 s at a full gigabit) | Adds the wrap back once. If the result is faster than the link, it was more than one wrap and is discarded |
+| A 64-bit counter goes backwards | A reset, not a wrap: new baseline, no rate |
+| The device rebooted (`sysUpTime` went backwards) | New baseline, no rate |
+| More than three intervals since the last answer | New baseline, no rate — an hour's average is not a one-minute sample |
+
+A device that offers only 32-bit counters can't be measured above about
+570 Mbps at 60-second polling (4 GiB per minute). `spark-probe` warns when a
+device has only 32-bit counters.
+
+History follows the **same retention as checks**: raw samples for a week, then
+five-minute averages *and peaks* for 90 days, then hourly for two years. Same
+settings, same nightly job.
+
 ### Find out what your gear actually supports, from the command line
 
 Vendor SNMP documentation is unreliable, and prosumer switches frequently omit
@@ -328,18 +369,21 @@ database.
 | Interfaces | IF-MIB, then ifXTable | 64-bit counters preferred; `spark-probe` warns when a device only offers 32-bit ones |
 | Memory | HOST-RESOURCES-MIB, then UCD-SNMP-MIB | |
 | Temperature | ENTITY-SENSOR-MIB | Absent on most prosumer switches |
-| CPU % | HOST-RESOURCES-MIB `hrProcessorLoad` | Often unavailable — see below |
+| CPU % | HOST-RESOURCES-MIB `hrProcessorLoad` | Unavailable on some devices, and for the first minute of any net-snmp agent — see below |
 | Load average | UCD-SNMP-MIB `laLoad` | Fallback when CPU % is unavailable |
 
-**CPU percentage is frequently unavailable, and SPARK will not invent one.**
-`hrProcessorLoad` is missing on plenty of devices, and the UCD scalars that used
-to serve as the fallback (`ssCpuIdle`, `ssCpuUser`) are deprecated and no longer
-answered by modern net-snmp — which covers pfSense, OPNsense and Linux
-appliances. The raw counters that replaced them are cumulative ticks and need
-two samples to become a percentage, so that arrives with SNMP polling. Until
-then `cpu_percent` is `None` rather than a fabricated `0`, and the load average
-is reported in its own right. A load of 1.4 on a four-core box is not 140% CPU
-and is not displayed as though it were.
+**When a device offers no CPU percentage, SPARK will not invent one.**
+`cpu_percent` is `None` rather than a fabricated `0`, and the load average is
+reported in its own right. A load of 1.4 on a four-core box is not 140% CPU and
+is not displayed as though it were.
+
+**net-snmp reports no CPU percentage for its first minute.** `hrProcessorLoad`
+(and the older `ssCpuIdle`) are one-minute averages, empty until the agent has
+sampled for a minute. A Test run straight after restarting `snmpd` shows CPU
+as unsupported; run it again a minute later. An earlier version of this README
+said modern net-snmp never serves them — that was measured against a test agent
+that had just started, and is wrong. pfSense, OPNsense and Linux hosts that
+have been up for more than a minute report CPU % normally.
 
 Every metric carries a `sources` entry naming where it came from, because a
 device reporting CPU via UCD-SNMP and one reporting it via HOST-RESOURCES are
@@ -451,6 +495,7 @@ spark/
     retention.py        nightly downsample and prune; never VACUUMs
     subnets.py          subnet CRUD, validation, and the one-shot YAML seed
     snmp_config.py      SNMP credential profiles, devices, and Test
+    snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
     discovery/
@@ -491,6 +536,7 @@ spark/
     test_snmp.py        pure-function tests, live tests that skip without an agent
     test_snmp_crypto.py SNMPv3 privacy actually works; failures are told apart
     test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
+    test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
@@ -500,7 +546,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Five things that will bite you if you don't know them:
+Seven things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -512,6 +558,11 @@ Five things that will bite you if you don't know them:
   machine decides what a sequence of outcomes means; the check does not.
 - **Migrations are a numbered list in `db.py`**, not Alembic. Append; never edit
   or reorder an entry that has shipped.
+- **SNMP counters** use the `Counter64` column type. They run to 2^64 − 1 and a
+  plain `Integer` raises `OverflowError` above 2^63 − 1.
+- **Retention cutoffs are aligned to the bucket width** (`retention._floor`).
+  A new downsampled series must use the aligned cutoffs, or a bucket straddling
+  the cutoff loses its later half the next night, silently.
 - **Cyan is the brand, never a status.** `--accent` is for SPARK itself and for
   things you can click. Up, degraded and down are green, amber and red; unknown
   and paused are grey. The reverse holds too: status colours appear only on
@@ -538,7 +589,7 @@ Five things that will bite you if you don't know them:
 | 4b | Service discovery — TCP port scan, services on devices | ✅ done |
 | 4d | Docker inventory — read-only socket proxy | next |
 | 5 | Service map — tree and filterable list views | planned |
-| 6 | SNMP — credentials + Test ✅, polling + storage, device pages | in progress |
+| 6 | SNMP — credentials + Test ✅, polling + storage ✅, device pages | in progress |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
 

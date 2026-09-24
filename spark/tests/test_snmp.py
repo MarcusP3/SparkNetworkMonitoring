@@ -239,10 +239,11 @@ class TestAgainstLocalAgent:
         assert health.memory_percent is not None
         assert 0 <= health.memory_percent <= 100
 
-        # Not every device reports an instantaneous CPU percentage. net-snmp on
-        # a plain Linux host serves neither hrProcessorLoad nor ssCpuIdle, so
-        # asserting a number here is asserting something the protocol does not
-        # promise. Assert the contract instead: whatever is reported is in
+        # Not every device reports an instantaneous CPU percentage, and
+        # net-snmp itself serves hrProcessorLoad only once it has run for about
+        # a minute -- so against a freshly started test agent there is none.
+        # Asserting a number would make this pass or fail on the agent's age.
+        # Assert the contract instead: whatever is reported is in
         # range and says where it came from, and a device that cannot give a
         # percentage still gives a load average rather than a fabricated 0.
         if health.cpu_percent is not None:

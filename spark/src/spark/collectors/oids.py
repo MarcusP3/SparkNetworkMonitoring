@@ -105,18 +105,18 @@ HR_STORAGE_USED = "1.3.6.1.2.1.25.2.3.1.6"
 
 # UCD-SNMP-MIB - net-snmp on Linux, which covers a lot of appliances
 #
-# ssCpuIdle/ssCpuUser/ssCpuSystem are the one-minute *average* scalars, and
-# modern net-snmp does not serve them - verified against net-snmp: both
-# 2021.11.11.0 and 2021.11.9.0 return nothing while the raw counters answer.
-# Anything derived from them on pfSense, OPNsense or a Linux appliance is
-# silently always null, so they are listed only to document the dead end.
+# ssCpuIdle/ssCpuUser/ssCpuSystem are the one-minute *average* scalars, marked
+# deprecated in the MIB in favour of the raw counters below. An earlier note
+# here said modern net-snmp does not serve them; that was measured against an
+# agent that had just started. They (and hrProcessorLoad) are empty for about
+# the first minute of snmpd's life and answer normally after it -- re-measured
+# against net-snmp in SNMP stage 2. Unused because hrProcessorLoad covers the
+# same devices and is the standard one.
 UCD_CPU_IDLE_DEPRECATED = "1.3.6.1.4.1.2021.11.11.0"
 UCD_CPU_USER_DEPRECATED = "1.3.6.1.4.1.2021.11.9.0"
 
-# The raw counters that replaced them. These are cumulative ticks, so a
-# percentage needs two samples and a delta of idle against the total - which
-# needs somewhere to keep the previous sample. That belongs with the scheduler,
-# so it is deliberately not done here yet.
+# The raw counters. Cumulative ticks: a percentage needs two samples. Only the
+# capability probe uses them, to report that the table exists.
 UCD_CPU_RAW_USER = "1.3.6.1.4.1.2021.11.50.0"
 UCD_CPU_RAW_NICE = "1.3.6.1.4.1.2021.11.51.0"
 UCD_CPU_RAW_SYSTEM = "1.3.6.1.4.1.2021.11.52.0"

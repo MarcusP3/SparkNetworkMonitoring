@@ -73,6 +73,11 @@ Two things that look like details and are not:
 - **Enums** use `enum_column()` and subclass `enum.StrEnum`. Plain `String`
   columns return bare strings, and `(str, Enum)` members format as
   `HealthStatus.DOWN` instead of `down`.
+- **SNMP counters** use the `Counter64` column type, not `Integer`: they run to
+  2^64 − 1 and SQLite integers stop at 2^63 − 1.
+- **Retention cutoffs are aligned to bucket width.** Any new downsampled series
+  folds with the aligned cutoffs from `run_retention`, or the bucket straddling
+  the cutoff loses its later half the following night.
 - **Checks never raise.** They return a `CheckOutcome` carrying a reason. A
   poller that throws when the thing it polls is broken has failed at its job.
   The state machine interprets sequences of outcomes; individual checks do not.

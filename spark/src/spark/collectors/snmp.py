@@ -208,6 +208,10 @@ def _to_python(value: Any) -> Any:
     return str(value.prettyPrint()) if hasattr(value, "prettyPrint") else str(value)
 
 
+def _as_int(value: Any) -> int | None:
+    return int(value) if isinstance(value, (int, float)) else None
+
+
 def _format_mac(value: Any) -> str | None:
     """Normalise a physical address to aa:bb:cc:dd:ee:ff."""
     if value is None:
@@ -385,7 +389,13 @@ class SnmpCollector:
 
     # ---------------- health ----------------
 
-    async def collect_health(self) -> DeviceHealth:
+    async def collect_health(self, *, inventory: bool = True) -> DeviceHealth:
+        """One health snapshot.
+
+        `inventory=False` skips the ENTITY-MIB walk for model and serial. They
+        do not change minute to minute, and on a large chassis the physical
+        table is the biggest walk here, so the scheduled poll leaves it to Test.
+        """
         health = DeviceHealth()
         try:
             system = await self.get(
@@ -408,13 +418,14 @@ class SnmpCollector:
 
         # Each of these is optional and independent; one failing must not cost
         # us the others.
-        await asyncio.gather(
+        parts = [
             self._collect_cpu(health),
             self._collect_memory(health),
             self._collect_temperature(health),
-            self._collect_entity(health),
-            return_exceptions=True,
-        )
+        ]
+        if inventory:
+            parts.append(self._collect_entity(health))
+        await asyncio.gather(*parts, return_exceptions=True)
         return health
 
     async def _collect_cpu(self, health: DeviceHealth) -> None:
@@ -428,12 +439,17 @@ class SnmpCollector:
         except Exception:  # noqa: BLE001
             pass
 
-        # No second source for an instantaneous percentage: net-snmp stopped
-        # serving ssCpuIdle, and the raw counters that replaced it need two
-        # samples to become one. Report the load average instead, honestly
-        # labelled, and leave cpu_percent as None rather than inventing a
-        # number. The delta calculation lands with the scheduler, which is the
-        # first thing that has anywhere to keep a previous sample.
+        # No percentage: report the load average instead, honestly labelled,
+        # and leave cpu_percent as None rather than inventing a number.
+        #
+        # An earlier review concluded net-snmp no longer serves
+        # hrProcessorLoad or ssCpuIdle and planned a raw-tick fallback for the
+        # scheduler. Measured since: both answer once snmpd has been running
+        # for about a minute -- they are one-minute averages and are empty
+        # until the first minute has been sampled. The review's agent had just
+        # started. So on a device that has been up for more than a minute,
+        # this branch is reached only when the device really has no CPU MIB,
+        # and a raw-tick fallback would cover nothing but that first minute.
         try:
             loads = await self.get(O.UCD_LOAD_1MIN, O.UCD_LOAD_5MIN, O.UCD_LOAD_15MIN)
         except Exception:  # noqa: BLE001
@@ -608,7 +624,11 @@ class SnmpCollector:
             elif isinstance(speeds.get(index), (int, float)) and speeds[index]:
                 speed_mbps = int(int(speeds[index]) / 1_000_000)
 
-            has_64 = index in in64 or index in out64
+            # Both directions from the same table, or neither. Taking whichever
+            # answered per direction could pair a 64-bit "in" with a 32-bit
+            # "out" under one flag, and a rate across that is noise.
+            has_64 = index in in64 and index in out64
+            in_src, out_src = (in64, out64) if has_64 else (in32, out32)
 
             interfaces.append(
                 InterfaceStat(
@@ -622,10 +642,13 @@ class SnmpCollector:
                     admin_status=O.IF_ADMIN_STATUS_NAMES.get(int(admin.get(index, 0) or 0)),
                     oper_status=O.IF_OPER_STATUS_NAMES.get(int(oper.get(index, 0) or 0)),
                     speed_mbps=speed_mbps,
-                    in_octets=int(in64.get(index, in32.get(index, 0)) or 0),
-                    out_octets=int(out64.get(index, out32.get(index, 0)) or 0),
-                    in_errors=int(in_err.get(index, 0) or 0),
-                    out_errors=int(out_err.get(index, 0) or 0),
+                    # None, not 0, when a counter did not come back. A missing
+                    # reading recorded as zero makes the next good one look
+                    # like the whole counter arrived in one interval.
+                    in_octets=_as_int(in_src.get(index)),
+                    out_octets=_as_int(out_src.get(index)),
+                    in_errors=_as_int(in_err.get(index)),
+                    out_errors=_as_int(out_err.get(index)),
                     counters_are_64bit=has_64,
                 )
             )

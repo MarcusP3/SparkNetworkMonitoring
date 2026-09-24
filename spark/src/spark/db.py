@@ -28,6 +28,12 @@ from .models import (
     CheckRollup,
     Setting,
     SnmpDevice,
+    SnmpHealthRollup,
+    SnmpHealthSample,
+    SnmpInterface,
+    SnmpInterfaceRollup,
+    SnmpInterfaceSample,
+    SnmpPoll,
     SnmpProfile,
     Subnet,
 )
@@ -197,7 +203,22 @@ async def _add_snmp_tables(session: AsyncSession) -> None:
     await connection.run_sync(SnmpDevice.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 6
+@migration(7, "add the SNMP polling and history tables")
+async def _add_snmp_polling_tables(session: AsyncSession) -> None:
+    """Create the polling tables on databases that predate them.
+
+    From model metadata with `checkfirst`, like every migration since 2.
+    Interfaces before their samples and rollups, which reference them.
+    """
+    connection = await session.connection()
+    for model in (
+        SnmpPoll, SnmpInterface, SnmpHealthSample, SnmpInterfaceSample,
+        SnmpHealthRollup, SnmpInterfaceRollup,
+    ):
+        await connection.run_sync(model.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 7
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

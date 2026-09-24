@@ -249,3 +249,37 @@ class TestHourlyRollup:
         # outage look like the network got faster.
         assert 19.9 < hourly.latency_avg < 20.1, hourly.latency_avg
         assert hourly.down == 10 and hourly.samples == 20
+
+
+class TestConsecutiveNights:
+    def test_no_sample_is_lost_across_two_nights(self, db, monkeypatch):
+        """The bucket the cutoff falls inside must not lose its later half.
+
+        The raw cutoff is "now minus seven days" to the second, so it lands
+        partway through a five-minute bucket. Tonight folds the part before
+        it; tomorrow folds the rest into a bucket that already exists -- and
+        INSERT OR IGNORE drops it, then the delete removes the raw rows. One
+        bucket's worth per target per night, gone without a sound. Cutoffs
+        aligned to the bucket width leave nothing straddling.
+        """
+        import spark.retention as retention_module
+
+        async def go():
+            seeded = await _seed(days=10)
+            real_now = utcnow()
+            # Off any 5-minute boundary, so the cutoff straddles a bucket.
+            tonight = real_now.replace(minute=2, second=30, microsecond=0)
+            for night in (tonight, tonight + timedelta(days=1)):
+                monkeypatch.setattr(retention_module, "utcnow", lambda n=night: n)
+                summary = await run_retention()
+                assert "error" not in summary, summary
+            async with D.session_scope() as s:
+                raw = await s.scalar(select(func.count()).select_from(CheckResult))
+                folded = await s.scalar(
+                    select(func.coalesce(func.sum(CheckRollup.samples), 0))
+                    .where(CheckRollup.bucket_seconds == FIVE_MINUTES)
+                )
+            return seeded, raw, folded
+
+        seeded, raw, folded = asyncio.run(go())
+        assert raw + folded == seeded, (seeded, raw, folded)

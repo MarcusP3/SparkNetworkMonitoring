@@ -27,6 +27,7 @@
     </div>
 
     {% if subnets %}
+    <div class="table-scroll">
     <table class="table subnet-table">
       <thead>
         <tr>
@@ -98,6 +99,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
     <p class="muted">
       No subnets configured, so there is nothing to discover. Add the network
@@ -236,6 +238,7 @@
     {% if port_error %}<div class="alert error">{{ port_error }}</div>{% endif %}
 
     {% if ports.custom %}
+    <div class="table-scroll">
     <table class="table compact port-table">
       <thead>
         <tr><th>Port</th><th>Name</th><th></th></tr>
@@ -259,6 +262,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
 
     <form method="post" action="/settings/ports" class="row-form add-port">
@@ -427,6 +431,7 @@
     </p>
 
     {% if snmp.profiles %}
+    <div class="table-scroll">
     <table class="table compact snmp-profiles">
       <thead><tr><th>Name</th><th>Security</th><th>Devices</th><th></th></tr></thead>
       <tbody>
@@ -468,6 +473,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
 
     <details class="add-profile" {% if not snmp.profiles or snmp_form %}open{% endif %}>
@@ -479,6 +485,23 @@
     </details>
 
     <h3 class="sub-title">Devices</h3>
+    <form method="post" action="/settings/snmp/polling" class="row-form snmp-polling">
+      <label class="inline-field">
+        <span class="muted small">Poll every</span>
+        <select name="interval_seconds" class="auto-submit" aria-label="SNMP polling interval">
+          {% for seconds in snmp.interval_choices %}
+            <option value="{{ seconds }}" {% if seconds == snmp.interval %}selected{% endif %}>
+              {%- if seconds < 60 %}{{ seconds }} seconds{% elif seconds == 60 %}1 minute{% elif seconds < 3600 %}{{ seconds // 60 }} minutes{% else %}1 hour{% endif -%}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit" class="btn-quiet">Save</button></noscript>
+      <span class="muted small">
+        Each device on the list is asked for its health and interface counters
+        on this schedule, and the answers are kept as history.
+      </span>
+    </form>
     {% if not snmp.profiles %}
       <p class="muted small">Add a profile first; each device uses one.</p>
     {% elif not snmp.candidates and not snmp.devices %}
@@ -509,8 +532,9 @@
     {% endif %}
 
     {% if snmp.devices %}
+    <div class="table-scroll">
     <table class="table snmp-devices">
-      <thead><tr><th>Device</th><th>Profile</th><th>Last test</th><th></th></tr></thead>
+      <thead><tr><th>Device</th><th>Profile</th><th>Polling</th><th>Last test</th><th></th></tr></thead>
       <tbody>
         {% for entry in snmp.devices %}
         {% set row = entry.row %}
@@ -529,6 +553,34 @@
               </select>
               <noscript><button type="submit" class="btn-quiet">Set</button></noscript>
             </form>
+          </td>
+          <td class="snmp-poll">
+            {% set poll = entry.poll %}
+            {% if not row.enabled %}
+              <span class="pill neutral">paused</span>
+            {% elif not poll %}
+              <span class="muted small">First poll {{ entry.next_in or 'shortly' }}.</span>
+            {% elif poll.last_error %}
+              <span class="pill bad dot">no answer</span>
+              <div class="muted small snmp-error">{{ poll.last_error }}</div>
+              <div class="muted small">
+                {%- if poll.last_ok_at %}Last answered {{ entry.ok_ago }}{% else %}Has not answered a poll yet{% endif -%}
+              </div>
+            {% else %}
+              <span class="pill ok dot">polling</span>
+              <div class="small snmp-metrics">
+                {%- set parts = [] -%}
+                {%- if poll.cpu_percent is not none %}{% set _ = parts.append('CPU ' ~ (poll.cpu_percent | round | int) ~ '%') %}
+                {%- elif poll.load_1min is not none %}{% set _ = parts.append('Load ' ~ poll.load_1min) %}{% endif -%}
+                {%- if poll.memory_percent is not none %}{% set _ = parts.append('Memory ' ~ (poll.memory_percent | round | int) ~ '%') %}{% endif -%}
+                {%- if poll.temperature_max is not none %}{% set _ = parts.append((poll.temperature_max | round | int) ~ '°C') %}{% endif -%}
+                {%- if poll.interfaces_total %}{% set _ = parts.append(poll.interfaces_up ~ ' of ' ~ poll.interfaces_total ~ ' interfaces up') %}{% endif -%}
+                {{ parts | join(' · ') if parts else 'Answering; no health values offered' }}
+              </div>
+            {% endif %}
+            {% if row.enabled and poll and poll.last_polled_at %}
+              <div class="muted small">Polled {{ entry.polled_ago }}{% if entry.next_in %} · next {{ entry.next_in }}{% endif %}</div>
+            {% endif %}
           </td>
           <td class="snmp-result">
             {% if not row.last_checked_at %}
@@ -560,6 +612,14 @@
             <form method="post" action="/settings/snmp/devices/{{ row.id }}/test">
               <button type="submit" class="btn-quiet">Test</button>
             </form>
+            <form method="post" action="/settings/snmp/devices/{{ row.id }}/polling">
+              {% if row.enabled %}
+                <button type="submit" class="btn-quiet">Pause</button>
+              {% else %}
+                <input type="hidden" name="enabled" value="1">
+                <button type="submit" class="btn-quiet">Resume</button>
+              {% endif %}
+            </form>
             <form method="post" action="/settings/snmp/devices/{{ row.id }}/delete">
               <button type="submit" class="btn-quiet danger">Remove</button>
             </form>
@@ -568,6 +628,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
 
     <dl class="legend">
@@ -591,6 +652,20 @@
         SPARK has to be able to read the key. <strong>Back up
         <code>secret.key</code> with the database</strong> — without it every
         credential has to be entered again.
+      </dd>
+      <dt>What polling collects</dt>
+      <dd>
+        Every interval: uptime, CPU (or load average where the device offers no
+        percentage), memory, temperature where there is a sensor, and each
+        interface's status and traffic counters. Traffic is stored as a rate
+        per interval, and only for interfaces that are up. Model and serial are
+        left to Test — they do not change minute to minute. History follows the
+        same retention as checks: raw for a week, then five-minute and hourly
+        averages and peaks.
+      </dd>
+      <dd>
+        CPU and memory read empty for about the first minute after a device's
+        SNMP agent starts; the agent needs a minute of its own samples first.
       </dd>
       <dt>What Test does</dt>
       <dd>

@@ -25,11 +25,13 @@ from .discovery.runner import PORT_SCAN_JOB_ID, run_port_scan, run_sweep
 from .engine.runner import run_target
 from .retention import JOB_ID as RETENTION_JOB_ID
 from .retention import run_retention
-from .models import Target
+from .models import SnmpDevice, Target
+from .snmp_poll import clamp_interval, poll_device
 
 log = logging.getLogger(__name__)
 
 JOB_PREFIX = "target:"
+SNMP_PREFIX = "snmp:"
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -333,6 +335,90 @@ def schedule_retention() -> bool:
         name="Downsample and prune history",
     )
     return True
+
+
+def snmp_job_id(row_id: int) -> str:
+    return f"{SNMP_PREFIX}{row_id}"
+
+
+async def sync_snmp_jobs(
+    config,  # type: ignore[no-untyped-def]
+    *,
+    interval: int | None = None,
+    row_ids: list[int] | None = None,
+) -> int:
+    """Make the SNMP poll jobs match the enabled devices on the SNMP list.
+
+    Called at startup and after anything on the SNMP card changes. `interval`
+    and `row_ids` let a request that has just written them pass them in, for
+    the reason given on schedule_discovery: a second session opened from
+    inside a request that may hold the write lock is how the Devices page once
+    hung.
+
+    A job whose interval has not changed is left alone, so saving an unrelated
+    setting does not push every device's next poll back by a whole interval.
+    New jobs start within seconds, staggered, so a device added in the UI shows
+    numbers while you are still looking at it and a restart does not poll
+    everything in the same instant.
+    """
+    scheduler = _scheduler
+    if scheduler is None:
+        return 0
+
+    if interval is None or row_ids is None:
+        async with session_scope() as session:
+            if interval is None:
+                interval = clamp_interval(
+                    (await get_setting(session, "snmp")).get("poll_interval_seconds")
+                )
+            if row_ids is None:
+                row_ids = list(
+                    (await session.execute(
+                        select(SnmpDevice.id).where(SnmpDevice.enabled.is_(True))
+                    )).scalars()
+                )
+    interval = clamp_interval(interval)
+
+    wanted = {snmp_job_id(r) for r in row_ids}
+    for job in scheduler.get_jobs():
+        if job.id.startswith(SNMP_PREFIX) and job.id not in wanted:
+            scheduler.remove_job(job.id)
+
+    now = datetime.now(timezone.utc)
+    started = 0
+    for row_id in sorted(row_ids):
+        existing = scheduler.get_job(snmp_job_id(row_id))
+        current = getattr(getattr(existing, "trigger", None), "interval", None)
+        if existing is not None and current == timedelta(seconds=interval):
+            continue
+        scheduler.add_job(
+            poll_device,
+            "interval",
+            seconds=interval,
+            jitter=min(int(interval * 0.1) or 1, 30),
+            args=[config, row_id],
+            id=snmp_job_id(row_id),
+            replace_existing=True,
+            name=f"SNMP poll {row_id}",
+            next_run_time=now + timedelta(seconds=3 + (started * 2) % interval),
+        )
+        started += 1
+    return len(row_ids)
+
+
+def snmp_next_runs() -> dict[int, datetime]:
+    """When each device's next poll is due, keyed by SNMP list row id."""
+    scheduler = _scheduler
+    if scheduler is None:
+        return {}
+    out: dict[int, datetime] = {}
+    for job in scheduler.get_jobs():
+        if job.id.startswith(SNMP_PREFIX) and job.next_run_time is not None:
+            try:
+                out[int(job.id[len(SNMP_PREFIX):])] = job.next_run_time
+            except ValueError:
+                continue
+    return out
 
 
 async def run_now(target_id: int) -> None:

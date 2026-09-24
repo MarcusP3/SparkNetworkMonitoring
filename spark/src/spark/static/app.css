@@ -1137,7 +1137,15 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 .add-snmp-device { margin: .5rem 0 1rem; }
 
 .snmp-devices td { vertical-align: top; }
+
+/* Wide tables scroll inside their card rather than widening the page. At
+   phone width the Settings tables are wider than the screen, and without this
+   the whole page scrolled sideways. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .snmp-result .pill { margin-right: .35rem; }
+.snmp-polling { margin: .25rem 0 .75rem; flex-wrap: wrap; }
+.snmp-polling .inline-field select { width: auto; min-width: 8rem; }
+.snmp-metrics { margin-top: .3rem; font-variant-numeric: tabular-nums; }
 .snmp-error { max-width: 42rem; margin-top: .25rem; overflow-wrap: anywhere; }
 .inline-select select { width: auto; min-width: 9rem; padding: .3rem .5rem; font-size: .875rem; }
 

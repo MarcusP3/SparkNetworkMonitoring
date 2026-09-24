@@ -99,16 +99,18 @@ def create_app(config: Config | None = None) -> FastAPI:
         # first would mean scanning an empty device table.
         await scheduler_module.schedule_port_scan(first_run_delay=120)
         scheduler_module.schedule_retention()
+        snmp_polled = await scheduler_module.sync_snmp_jobs(config)
 
         log.info(
             "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "
-            "polling %d target(s), discovery %s)",
+            "polling %d target(s), SNMP %d device(s), discovery %s)",
             __version__,
             config.app.host,
             config.app.port,
             config.auth.mode,
             subnet_count,
             scheduled,
+            snmp_polled,
             "on" if sweeping else "off",
         )
         yield

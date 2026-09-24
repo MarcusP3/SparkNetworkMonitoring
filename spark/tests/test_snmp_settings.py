@@ -404,7 +404,11 @@ class TestTheTestButton:
         client, cfg = env
         self._add(client, v2c(community="sparktest", port="11161"))
         # The restored-onto-a-fresh-install case: same database, new key.
+        # The key is read once per process and cached on the config, so
+        # rewriting the file alone changes nothing mid-run -- the cache is
+        # what a restart onto another install actually replaces.
         cfg.app.secret_key_path.write_text("an-entirely-different-install-key-" * 2)
+        cfg._secret_key = None
         from spark import vault as vault_module
         vault_module._vault.cache_clear()
 
@@ -417,6 +421,19 @@ class TestTheTestButton:
 # --------------------------------------------------------------------------
 
 
+async def _wind_back_to_5(session) -> None:  # type: ignore[no-untyped-def]
+    """Make a database look like version 5: no SNMP tables of any kind.
+
+    The polling tables (migration 7) reference snmp_device, so they go first;
+    a real version-5 database never had them.
+    """
+    for table in ("snmp_interface_rollup", "snmp_interface_sample", "snmp_health_rollup",
+                  "snmp_health_sample", "snmp_interface", "snmp_poll",
+                  "snmp_device", "snmp_profile"):
+        await session.execute(text(f"DROP TABLE {table}"))
+    await D._set_version(session, 5)
+
+
 class TestMigration:
     def test_an_existing_database_gains_the_tables(self):
         """A version-5 database, with no SNMP tables, upgrades cleanly."""
@@ -426,9 +443,7 @@ class TestMigration:
             D.init_engine(cfg)
             await D.init_db(cfg)
             async with D.session_scope() as s:
-                await s.execute(text("DROP TABLE snmp_device"))
-                await s.execute(text("DROP TABLE snmp_profile"))
-                await D._set_version(s, 5)
+                await _wind_back_to_5(s)
             await D.close_engine()
 
         async def upgrade():
@@ -455,9 +470,7 @@ class TestMigration:
             await D.init_db(cfg)
             if wind_back:
                 async with D.session_scope() as s:
-                    await s.execute(text("DROP TABLE snmp_device"))
-                    await s.execute(text("DROP TABLE snmp_profile"))
-                    await D._set_version(s, 5)
+                    await _wind_back_to_5(s)
                 await D.close_engine()
                 D.init_engine(cfg)
                 await D.init_db(cfg)
@@ -472,3 +485,65 @@ class TestMigration:
             return shape
 
         assert asyncio.run(columns(fresh, False)) == asyncio.run(columns(migrated, True))
+
+
+# --------------------------------------------------------------------------
+# Polling controls on the card
+# --------------------------------------------------------------------------
+
+
+class TestPollingControls:
+    def _listed(self, client) -> None:  # type: ignore[no-untyped-def]
+        assert client.post("/settings/snmp/profiles", data=v2c()).status_code == 303
+        assert client.post("/settings/snmp/devices",
+                           data={"device_id": "1", "profile_id": "1"}).status_code == 303
+
+    def test_the_interval_is_saved_and_only_offered_values_are_accepted(self, env):
+        client, cfg = env
+        assert "Poll every" in client.get("/settings").text
+        assert client.post("/settings/snmp/polling",
+                           data={"interval_seconds": "300"}).status_code == 303
+
+        async def read():
+            D.init_engine(cfg)
+            async with D.session_scope() as s:
+                return await D.get_setting(s, "snmp")
+        assert asyncio.run(read())["poll_interval_seconds"] == 300
+
+        bad = client.post("/settings/snmp/polling", data={"interval_seconds": "45"})
+        assert bad.status_code == 400 and "polling interval" in bad.text
+        assert asyncio.run(read())["poll_interval_seconds"] == 300
+
+    def test_pause_and_resume(self, env):
+        client, cfg = env
+        self._listed(client)
+        client.post("/settings/snmp/devices/1/polling", data={})
+        assert rows(cfg, SnmpDevice)[0].enabled is False
+        assert "paused" in client.get("/settings").text
+        client.post("/settings/snmp/devices/1/polling", data={"enabled": "1"})
+        assert rows(cfg, SnmpDevice)[0].enabled is True
+
+    def test_adding_a_device_schedules_its_poll(self, env):
+        client, _cfg = env
+        from spark import scheduler as scheduler_module
+        self._listed(client)
+        assert scheduler_module.get_scheduler().get_job("snmp:1") is not None
+        client.post("/settings/snmp/devices/1/delete")
+        assert scheduler_module.get_scheduler().get_job("snmp:1") is None
+
+    def test_the_latest_poll_is_shown(self, env):
+        client, cfg = env
+        self._listed(client)
+        from spark.models import SnmpPoll
+
+        async def seed():
+            D.init_engine(cfg)
+            async with D.session_scope() as s:
+                s.add(SnmpPoll(snmp_device_id=1, last_polled_at=utcnow(),
+                               last_ok_at=utcnow(), cpu_percent=12.6, memory_percent=40.2,
+                               interfaces_total=26, interfaces_up=4))
+        asyncio.run(seed())
+        page = client.get("/settings").text
+        assert "CPU 13%" in page and "Memory 40%" in page
+        assert "4 of 26 interfaces up" in page
+        assert "Polled " in page

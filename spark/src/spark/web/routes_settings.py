@@ -17,12 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import port_catalogue
 from .. import scheduler as scheduler_module
 from .. import snmp_config
+from .. import snmp_poll
 from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
-from ..models import Device, SnmpDevice, User
+from ..models import Device, SnmpDevice, SnmpPoll, User, utcnow
 from ..vault import vault_for
 from .deps import get_config, get_session, redirect, require_user, templates
 
@@ -95,6 +96,15 @@ async def _snmp(session: AsyncSession) -> dict:
         if d.id not in listed_ids
     ]
     candidates.sort(key=lambda d: _ip_sort_key(d.primary_ip))
+    polls = {
+        poll.snmp_device_id: poll
+        for poll in (await session.execute(select(SnmpPoll))).scalars()
+    }
+    next_runs = scheduler_module.snmp_next_runs()
+    now = utcnow()
+    interval = snmp_poll.clamp_interval(
+        (await get_setting(session, "snmp")).get("poll_interval_seconds")
+    )
     return {
         "profiles": [
             {
@@ -108,14 +118,40 @@ async def _snmp(session: AsyncSession) -> dict:
             for p in profiles
         ],
         "devices": [
-            {"row": row, "device": device, "profile": profile, "probe": row.last_probe or {}}
+            {"row": row, "device": device, "profile": profile, "probe": row.last_probe or {},
+             "poll": polls.get(row.id),
+             "polled_ago": _ago(getattr(polls.get(row.id), "last_polled_at", None), now),
+             "ok_ago": _ago(getattr(polls.get(row.id), "last_ok_at", None), now),
+             "next_in": _until(next_runs.get(row.id), now)}
             for row, device, profile in listed
         ],
+        "interval": interval,
+        "interval_choices": POLL_INTERVAL_CHOICES,
         "candidates": candidates,
         "auth_protocols": AUTH_PROTOCOLS,
         "priv_protocols": PRIV_PROTOCOLS,
         "min_key": snmp_config.MIN_V3_KEY,
     }
+
+
+def _span(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 90:
+        return f"{seconds}s"
+    if seconds < 90 * 60:
+        return f"{round(seconds / 60)}m"
+    if seconds < 36 * 3600:
+        return f"{round(seconds / 3600)}h"
+    return f"{round(seconds / 86400)}d"
+
+
+def _ago(when, now) -> str | None:  # type: ignore[no-untyped-def]
+    """"34s ago". Relative, so the card reads the same in any time zone."""
+    return None if when is None else f"{_span((now - when).total_seconds())} ago"
+
+
+def _until(when, now) -> str | None:  # type: ignore[no-untyped-def]
+    return None if when is None else f"in {_span((when - now).total_seconds())}"
 
 
 def _ip_sort_key(address: str | None) -> tuple:
@@ -375,6 +411,30 @@ async def set_builtin_ports(
 
 SNMP_ANCHOR = "/settings#snmp"
 
+# Offered on the card. Anything else posted is refused rather than rounded, so
+# the page never shows an interval nobody chose.
+POLL_INTERVAL_CHOICES = (30, 60, 120, 300, 600, 900, 1800, 3600)
+
+
+async def _apply_snmp_schedule(
+    session: AsyncSession, config: Config, *, interval: int | None = None
+) -> None:
+    """Make the running poll jobs match the SNMP list that was just saved.
+
+    Read here, in the request's session, and handed over -- see
+    `_apply_to_scheduler` for why the scheduler is not left to open its own.
+    """
+    if interval is None:
+        interval = snmp_poll.clamp_interval(
+            (await get_setting(session, "snmp")).get("poll_interval_seconds")
+        )
+    row_ids = list(
+        (await session.execute(
+            select(SnmpDevice.id).where(SnmpDevice.enabled.is_(True))
+        )).scalars()
+    )
+    await scheduler_module.sync_snmp_jobs(config, interval=interval, row_ids=row_ids)
+
 
 def _profile_form(**fields: str) -> tuple[snmp_config.ProfileInput, dict]:
     """The submitted profile, and the part of it safe to put back on a page.
@@ -483,6 +543,7 @@ async def add_snmp_device(
         return await _render(request, session, config, user, snmp_error=message,
                              status_code=400)
     await session.commit()
+    await _apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 
@@ -509,10 +570,53 @@ async def change_snmp_device_profile(
 async def remove_snmp_device(
     row_id: int,
     session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
     _user: User = Depends(require_user),
 ):
     await snmp_config.remove_device(session, row_id)
     await session.commit()
+    await _apply_snmp_schedule(session, config)
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/devices/{row_id}/polling")
+async def set_snmp_device_polling(
+    row_id: int,
+    enabled: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Pause or resume one device's polling. History is kept either way."""
+    row = await session.get(SnmpDevice, row_id)
+    if row is not None:
+        row.enabled = _checked(enabled)
+        await session.commit()
+        await _apply_snmp_schedule(session, config)
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/polling")
+async def set_snmp_polling(
+    request: Request,
+    interval_seconds: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    try:
+        interval = int(interval_seconds)
+    except ValueError:
+        interval = -1
+    if interval not in POLL_INTERVAL_CHOICES:
+        return await _render(request, session, config, user,
+                             snmp_error="Choose a polling interval from the list.",
+                             status_code=400)
+    settings = await get_setting(session, "snmp")
+    settings["poll_interval_seconds"] = interval
+    await save_setting(session, "snmp", settings)
+    await session.commit()
+    await _apply_snmp_schedule(session, config, interval=interval)
     return redirect(SNMP_ANCHOR)
 
 

@@ -77,6 +77,35 @@ class UTCDateTime(TypeDecorator):
         return value.astimezone(timezone.utc)
 
 
+class Counter64(TypeDecorator):
+    """An unsigned 64-bit SNMP counter, in SQLite's signed 64-bit INTEGER.
+
+    Counter64 runs to 2**64 - 1 and SQLite's largest integer is 2**63 - 1, so
+    the top half of the range does not fit: the driver raises OverflowError on
+    write. Rare in practice -- it takes eight exabytes through one port -- but
+    some agents start their counters at a random value, and a poll that raises
+    on one device's numbers is a poll that stops recording that device.
+
+    Stored in two's complement instead: exact, still an INTEGER, read back as
+    the same unsigned number. Only ever compared for equality or differenced
+    in Python, never ordered in SQL, so the sign in storage is invisible.
+    """
+
+    impl = Integer
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        value = int(value)
+        return value - (1 << 64) if value >= (1 << 63) else value
+
+    def process_result_value(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        return value + (1 << 64) if value < 0 else value
+
+
 def enum_column(enum_cls, **kwargs):  # type: ignore[no-untyped-def]
     """Store an enum by its *value*, and read it back as an enum member.
 
@@ -643,6 +672,218 @@ class SnmpDevice(Base, TimestampMixin):
     device = relationship("Device")
 
 
+# ---------------------------------------------------------------------------
+# SNMP polling
+#
+# Tables of their own rather than columns on snmp_device, for the reason given
+# there: a new table is a `create` with `checkfirst`, an added column is an
+# ALTER. Every one hangs off snmp_device with CASCADE, so taking a device off
+# the SNMP list takes its history with it.
+# ---------------------------------------------------------------------------
+
+
+class SnmpPoll(Base):
+    """The latest scheduled poll of one device: when, whether, and what it said.
+
+    Separate from the Test result on snmp_device on purpose. Test answers
+    "what does this device support?", once, on request; this answers "how is
+    it now?" every interval, and neither may overwrite the other.
+
+    `uptime_seconds` is here for more than display: it going backwards between
+    polls is how a reboot is recognised, and a reboot resets every counter, so
+    the poll after one takes a new baseline instead of computing a rate.
+    """
+
+    __tablename__ = "snmp_poll"
+
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_polled_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+
+    uptime_seconds: Mapped[float | None] = mapped_column(Float)
+    cpu_percent: Mapped[float | None] = mapped_column(Float)
+    load_1min: Mapped[float | None] = mapped_column(Float)
+    memory_percent: Mapped[float | None] = mapped_column(Float)
+    temperature_max: Mapped[float | None] = mapped_column(Float)
+    interfaces_total: Mapped[int | None] = mapped_column(Integer)
+    interfaces_up: Mapped[int | None] = mapped_column(Integer)
+    # Where each value came from, as the collector reported it.
+    sources: Mapped[dict | None] = mapped_column(JSON)
+
+
+class SnmpInterface(Base):
+    """One interface on a polled device, as of the last poll that saw it.
+
+    Also where the previous counter reading lives. A rate is the difference
+    between two readings, and this is the first place SPARK has had to keep
+    the earlier one.
+
+    Keyed by ifIndex, which is stable on almost everything but renumbered by a
+    reboot on some cheap switches. When that happens the names follow the new
+    numbering on the next poll and the history under a number briefly belongs
+    to a different port. Recorded rather than solved: keying by name instead
+    breaks on the far more common devices whose names are not unique.
+
+    Interfaces that stop appearing are kept, not deleted -- deleting would
+    cascade their history away -- and are recognisable by `last_seen` being
+    older than the device's last good poll.
+    """
+
+    __tablename__ = "snmp_interface"
+    __table_args__ = (
+        UniqueConstraint("snmp_device_id", "if_index", name="uq_snmp_interface"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), index=True
+    )
+    if_index: Mapped[int] = mapped_column(Integer)
+
+    name: Mapped[str | None] = mapped_column(String(128))
+    descr: Mapped[str | None] = mapped_column(String(255))
+    alias: Mapped[str | None] = mapped_column(String(255))
+    type_name: Mapped[str | None] = mapped_column(String(64))
+    mac: Mapped[str | None] = mapped_column(String(17))
+    admin_status: Mapped[str | None] = mapped_column(String(16))
+    oper_status: Mapped[str | None] = mapped_column(String(16))
+    speed_mbps: Mapped[int | None] = mapped_column(Integer)
+
+    # The previous reading. 32 or 64: a difference across a change of width is
+    # meaningless, so a change of width means a new baseline.
+    counter_bits: Mapped[int | None] = mapped_column(Integer)
+    in_octets: Mapped[int | None] = mapped_column(Counter64)
+    out_octets: Mapped[int | None] = mapped_column(Counter64)
+    in_errors: Mapped[int | None] = mapped_column(Counter64)
+    out_errors: Mapped[int | None] = mapped_column(Counter64)
+    counters_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    # The latest rate, bits per second. None when there was nothing to compare
+    # with, or when the comparison could not be trusted.
+    in_bps: Mapped[float | None] = mapped_column(Float)
+    out_bps: Mapped[float | None] = mapped_column(Float)
+
+    status_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    @property
+    def label(self) -> str:
+        return self.alias or self.name or self.descr or f"if{self.if_index}"
+
+
+class SnmpHealthSample(Base):
+    """One poll's health reading; the SNMP counterpart of check_result.
+
+    A row for every poll, answered or not. An unanswered poll is a row with
+    `reachable` false and nothing else, which is what lets a chart show a gap
+    as a gap and a rollup count how often the device answered.
+    """
+
+    __tablename__ = "snmp_health_sample"
+    __table_args__ = (Index("ix_snmp_health_device_ts", "snmp_device_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE")
+    )
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    reachable: Mapped[bool] = mapped_column(Boolean, default=False)
+    cpu_percent: Mapped[float | None] = mapped_column(Float)
+    load_1min: Mapped[float | None] = mapped_column(Float)
+    memory_percent: Mapped[float | None] = mapped_column(Float)
+    temperature_max: Mapped[float | None] = mapped_column(Float)
+
+
+class SnmpInterfaceSample(Base):
+    """One interval's traffic on one interface, as a rate.
+
+    Stored only for interfaces that are up, and only when the rate could be
+    trusted. An empty port would otherwise add a row of zeros every minute
+    forever; its status is still on snmp_interface.
+
+    Errors are the count during the interval, not the running total, so a sum
+    over any window is the number of errors in it.
+    """
+
+    __tablename__ = "snmp_interface_sample"
+    __table_args__ = (Index("ix_snmp_if_sample_if_ts", "interface_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    interface_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_interface.id", ondelete="CASCADE")
+    )
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    in_bps: Mapped[float | None] = mapped_column(Float)
+    out_bps: Mapped[float | None] = mapped_column(Float)
+    in_errors: Mapped[int | None] = mapped_column(Integer)
+    out_errors: Mapped[int | None] = mapped_column(Integer)
+
+
+class SnmpHealthRollup(Base):
+    """Downsampled health history, on the same 5-minute/hourly ladder as checks.
+
+    Average and peak both: a CPU averaging 20% over an hour that spent five
+    minutes pinned at 100% is a different hour from one that sat at 20%, and
+    an average alone cannot tell you which you had.
+    """
+
+    __tablename__ = "snmp_health_rollup"
+    __table_args__ = (
+        UniqueConstraint(
+            "snmp_device_id", "bucket_start", "bucket_seconds", name="uq_snmp_health_bucket"
+        ),
+        Index("ix_snmp_health_rollup", "snmp_device_id", "bucket_seconds", "bucket_start"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE")
+    )
+    bucket_start: Mapped[datetime] = mapped_column(UTCDateTime)
+    bucket_seconds: Mapped[int] = mapped_column(Integer)
+
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    reachable: Mapped[int] = mapped_column(Integer, default=0)
+    cpu_avg: Mapped[float | None] = mapped_column(Float)
+    cpu_max: Mapped[float | None] = mapped_column(Float)
+    load_avg: Mapped[float | None] = mapped_column(Float)
+    memory_avg: Mapped[float | None] = mapped_column(Float)
+    memory_max: Mapped[float | None] = mapped_column(Float)
+    temperature_max: Mapped[float | None] = mapped_column(Float)
+
+
+class SnmpInterfaceRollup(Base):
+    """Downsampled traffic history: averages, peaks and error totals."""
+
+    __tablename__ = "snmp_interface_rollup"
+    __table_args__ = (
+        UniqueConstraint(
+            "interface_id", "bucket_start", "bucket_seconds", name="uq_snmp_if_bucket"
+        ),
+        Index("ix_snmp_if_rollup", "interface_id", "bucket_seconds", "bucket_start"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    interface_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_interface.id", ondelete="CASCADE")
+    )
+    bucket_start: Mapped[datetime] = mapped_column(UTCDateTime)
+    bucket_seconds: Mapped[int] = mapped_column(Integer)
+
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    in_avg: Mapped[float | None] = mapped_column(Float)
+    in_max: Mapped[float | None] = mapped_column(Float)
+    out_avg: Mapped[float | None] = mapped_column(Float)
+    out_max: Mapped[float | None] = mapped_column(Float)
+    in_errors: Mapped[int | None] = mapped_column(Integer)
+    out_errors: Mapped[int | None] = mapped_column(Integer)
+
+
 class Setting(Base, TimestampMixin):
     """Runtime settings a user edits in the UI.
 
@@ -684,6 +925,9 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "quiet_hours_end": "",
         "notify_on_recovery": True,
         "notify_on_new_device": True,
+    },
+    "snmp": {
+        "poll_interval_seconds": 60,
     },
     "retention": {
         "raw_days": 7,

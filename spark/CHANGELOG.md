@@ -1,5 +1,101 @@
 # Changelog
 
+## Unreleased — SNMP, stage 2: scheduled polling and history (2026-09-24)
+
+Devices on the SNMP list are now polled on a schedule and the answers kept.
+**Migration 7** adds six tables; it runs by itself on start. No new
+dependency, so `docker compose up -d --build` is only needed because the code
+changed; there is nothing to chown this time.
+
+### Added
+
+- **Polling** (`snmp_poll.py`), every 60 seconds by default, set in
+  Settings → SNMP (30 s to 1 h). Each poll records uptime, CPU % or load
+  average, memory %, the hottest temperature sensor, and every interface's
+  status, speed and counters. Per-device **Pause**/**Resume**. A device added
+  to the list is polled within seconds; jobs whose interval has not changed
+  are left alone when the list is saved, so editing one device does not push
+  every other device's next poll back.
+- **Traffic as rates**, bits per second per interval, stored only for
+  interfaces that are up. 32-bit wraps are added back once and the result is
+  discarded if it is faster than the link (two wraps look like one); a 64-bit
+  counter going backwards, a reboot (`sysUpTime` went backwards, or grew by
+  less than the time that passed), a change of counter width, or a gap of more
+  than three intervals each give a new baseline and no rate. Each rule has a
+  test worked out by hand, and each test was checked by breaking the rule and
+  watching it fail.
+- **History on the check ladder**: raw for 7 days, 5-minute average *and
+  peak* for 90, hourly for 730, same settings and the same nightly job.
+  Health averages are weighted by answered polls, traffic averages by sample
+  count, so a quiet or silent stretch does not drag an average toward zero.
+- **The card** shows each device's latest poll — `polling` with the numbers,
+  `no answer` with the reason, or `paused` — and when the next one is due.
+- `snmp_poll` rows cascade from `snmp_device`: removing a device from the SNMP
+  list deletes its history. Pause keeps it.
+- A `Counter64` column type. SNMP counters run to 2^64 − 1 and SQLite integers
+  stop at 2^63 − 1; the top half is stored in two's complement and read back
+  exact, instead of raising `OverflowError` on the agents that start their
+  counters high.
+
+### Fixed
+
+- **Retention lost samples every night.** The raw cutoff was "now minus seven
+  days" to the second, so it fell inside a five-minute bucket. That night folded
+  the part before it; the next night's fold of the rest collided with the
+  existing bucket, `INSERT OR IGNORE` dropped it, and the delete then removed
+  the raw rows. Up to one bucket's worth per target per night, silently —
+  reproduced as 14,397 of 14,400 samples surviving two nights. Cutoffs are now
+  aligned to the bucket width. Applies to check history as well as SNMP.
+- **A missing counter was recorded as 0.** `collect_interfaces` filled any
+  counter that did not come back with zero, so the next good reading looked
+  like the whole counter arrived in one interval. Now `None`.
+- **Counter widths could be mixed.** An interface was flagged 64-bit if
+  *either* direction answered from the 64-bit table, so a 64-bit "in" could be
+  paired with a 32-bit "out". Now both directions or neither.
+- **The Settings tables made the whole page scroll sideways on a phone.** They
+  now scroll inside their card.
+- `test_an_undecryptable_credential_says_what_to_do` failed whenever the SNMP
+  agent was running: the key is now cached per process (hardening review),
+  so rewriting `secret.key` mid-test changed nothing. It skipped in the
+  review's run, which had no agent. The test now clears the cache, which is
+  what a restore onto another install actually replaces.
+
+### Corrected
+
+- **net-snmp does serve CPU %.** Code review item 6 (increment 2) concluded
+  modern net-snmp answers neither `hrProcessorLoad` nor `ssCpuIdle`, and
+  planned a raw-tick fallback for this stage. Re-measured: both are one-minute
+  averages, empty for the first minute or so after `snmpd` starts (measured:
+  still empty at 60 s, answering at 75 s) and normal after that. The review's agent had just started. The
+  fallback would have covered only that first minute, so it was not built;
+  the README, `oids.py` and the collector comments now say what is true.
+
+### Tests
+
+42 new: counter arithmetic (wrap, reset, ceiling, width, gap, reboot),
+recording (first poll, rates, a missed poll bridged, reboot, status changes,
+vanished interfaces, 2^64 − 1 round trip, cascade), scheduling, SNMP
+retention, the collector's counters with faked walks, migration 7 against a
+fresh install, the card's controls, a live poll of the net-snmp agent, and
+retention across two consecutive nights.
+Fifteen deliberate breaks of the new rules were each caught. `pytest` 465
+passed with the agent (447 + 18 skipped without), `smoke_test.py` 76 passed.
+
+### Known, unfixed
+
+- **ifIndex renumbering.** Interfaces are keyed by ifIndex. A few cheap
+  switches renumber on reboot; the names follow on the next poll, but history
+  under an index briefly belongs to a different port. Keying by name breaks on
+  the more common devices whose names are not unique.
+- **32-bit-only devices** can't be measured above about 570 Mbps at 60 s
+  polling. Shorter intervals raise that ceiling.
+- **Reverse DNS logs `InvalidStateError` under uvloop.** Found while testing
+  this stage, not caused by it: `discovery/sweep.py` wraps
+  `loop.getnameinfo` in `wait_for`, and when the timeout cancels it uvloop
+  logs an unhandled exception from its callback. Harmless to the sweep, noisy
+  in the log. Production uses uvloop.
+- No charts or device page yet — stage 3.
+
 ## Unreleased — security and hardening review (2026-09-24)
 
 A full pass over the application, its dependencies and its container, and the
