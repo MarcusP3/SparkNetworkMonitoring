@@ -1,5 +1,132 @@
 # Changelog
 
+## Unreleased — security and hardening review (2026-09-24)
+
+A full pass over the application, its dependencies and its container, and the
+fixes for what it found. `pip-audit` against `requirements.lock`: no known
+advisories in the 39-package closure. `bandit`: one real finding (below), two
+false positives (the retention SQL interpolates a constant, not input).
+
+**This release needs a rebuild and one command on the host.** The container no
+longer runs as root, so the data directory has to belong to the new user:
+
+```bash
+cd spark
+sudo chown -R 9700:9700 data
+docker compose up -d --build
+```
+
+SPARK refuses to start, and prints exactly that command, if the directory is
+not writable. Nothing else about the deployment changes.
+
+### Security
+
+- **The container runs as uid 9700, not root.** It holds a map of the network,
+  every credential it has been given, and a raw socket on the LAN; a bug in it
+  or in any package under it should not also be uid 0 in the VM's network
+  namespace. Real ICMP still works: `CAP_NET_RAW` is attached to the Python
+  binary as a file capability, which the kernel grants at exec to an
+  unprivileged user as long as the capability is in the container's bounding
+  set. Verified with a raw ICMP socket opened as uid 65534. The compose file
+  now drops every other capability (`cap_drop: [ALL]`) and mounts
+  `./config` read-only. **Do not add `no-new-privileges`**: it tells the
+  kernel to ignore file capabilities, and ping would silently degrade.
+
+- **Security headers on every response** (`web/hardening.py`, a raw ASGI
+  middleware so the `/events` stream is untouched). A `Content-Security-Policy`
+  that permits only SPARK's own origin, with a per-request nonce for the four
+  inline scripts — no `unsafe-inline` — plus `frame-ancestors 'none'`,
+  `form-action 'self'`, `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`, and
+  `Cache-Control: no-store` on HTML so a page full of the network's inventory
+  does not sit in a shared machine's back button. The stylesheet and fonts
+  stay cacheable; they are versioned by content hash.
+
+- **Cross-site writes are refused.** Every POST is checked against `Origin`
+  (or `Referer`) and answered 403 if it names another host. `SameSite=Lax`
+  already stopped a cross-site form post carrying the cookie; this is the
+  second, independent layer. Requests with neither header — curl, the test
+  client — are allowed, because a browser carrying a cookie across sites
+  always sends one. Behind a reverse proxy, the `Host` header must be
+  preserved (proxies do this by default).
+
+- **The OpenAPI document and Swagger page are gone.** `/openapi.json` and
+  `/api/docs` were served to anyone without a session: every route and every
+  form field, on the box that holds the map. There is no API to document.
+
+- **Password login is refused in proxy mode.** `POST /login` still verified
+  passwords when `auth.mode: proxy`, and minted a cookie nothing would read —
+  so the admin password could be guessed from behind the proxy on an instance
+  that never asks for it.
+
+- **Rate limiting could be bypassed with a header in proxy mode.**
+  `client_ip()` used the *first* `X-Forwarded-For` entry, which is the one the
+  client writes; a proxy appends its own observation last. Now the last entry.
+
+- **The session cookie is `Secure` when the login arrived over TLS.** It was
+  never `Secure`, so a TLS-fronted install sent its session over any `http://`
+  link. On plain HTTP nothing changes: forcing it there would mean the cookie
+  is silently never sent. The scheme is uvicorn's view of the request —
+  direct, or from `X-Forwarded-Proto` when the proxy is one it trusts.
+
+- Two committed zip archives (`spark-increment-2.zip`,
+  `_to_delete_spark-increment-1.zip`) are untracked; `*.zip` is ignored at the
+  repository root as it already was under `spark/`.
+
+- `bandit`'s one real hit: the CSS cache-buster's MD5 is marked
+  `usedforsecurity=False`, so a FIPS-mode Python does not refuse to start.
+
+### Fixed
+
+- **A bad target form was a 500, not a 400.** An unknown `check_type` raised
+  out of the route; a dependency on a target that did not exist failed at
+  commit; a target could be made to depend on itself, so its every failure was
+  a symptom of its own failure and never alerted. All three are now messages
+  on the form. Tuning values are clamped to what the form offers
+  (interval 5 s–24 h, timeout 0.5–60 s, thresholds 1–100): a `0` timeout
+  fails every probe and a 3600 s one holds a scheduler slot for an hour.
+
+- **"Check now" could record `database is locked`.** The route awaited the
+  check inside its own request transaction, which had a pending write
+  whenever the session's last-seen time was stale — and SQLite has one
+  writer. The transaction is now committed before the check runs, the same
+  fix the scan buttons got earlier.
+
+- **Ping `count` and `interval` are bounded** (1–20 and 0.05–5 s). They come
+  from the free-text params box, and `"count": 500` was a check that never
+  finished.
+
+### Performance
+
+- Resolving a session is one query (a join) rather than two, on every
+  authenticated request.
+- `secret.key` is read once per process rather than on every credential the
+  vault seals or opens.
+
+### Tests
+
+- `tests/test_hardening.py`, 27 tests, each written to fail against the code
+  before this pass. Mutation-checked: removing the middleware fails five.
+- Suite: 407 passed (was 380). `smoke_test.py`: 76.
+
+### Known, unfixed
+
+- The base image is still pinned by tag, not digest, despite the Dockerfile's
+  own comment. Neither machine used for this pass could reach Docker Hub. On
+  the VM: `docker pull python:3.12-slim && docker inspect
+  --format='{{index .RepoDigests 0}}' python:3.12-slim`, then put the result
+  in the `FROM` line.
+- `app.host: 0.0.0.0` with host networking binds every interface. The VM has
+  one NIC, so there is nothing else to bind to today; set `SPARK__APP__HOST`
+  if that changes.
+- Two people completing first-run setup in the same instant could each
+  create an admin. The window is one transaction on a fresh install.
+- The Discord webhook URL is still stored in plaintext (alerting is last on
+  the roadmap; it should go through `vault.py` when it lands).
+- The CSP allows only SPARK's origin, so any future third-party script or
+  stylesheet needs a nonce or the policy needs a source; `hardening.py` is
+  the one place to change.
+
 ## Unreleased — SNMP, stage 1: credentials and Test (2026-09-24)
 
 The SNMP collector has existed since increment 2 and nothing called it. This is

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from . import scheduler as scheduler_module
 from .config import Config, load_config
 from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException
+from .web.hardening import Hardening
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
 from .web.routes_devices import router as devices_router
@@ -25,6 +27,27 @@ from .web.routes_targets import router as targets_router
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 log = logging.getLogger("spark")
+
+
+def require_writable(data_dir: Path) -> None:
+    """Fail at startup, with the fix in the message, if SPARK cannot write its data.
+
+    Checked by writing, not by `os.access`: that answers for the real uid and
+    ignores ACLs, and a probe file is the only test that agrees with what
+    SQLite is about to attempt.
+    """
+    data_dir.mkdir(parents=True, exist_ok=True)
+    probe = data_dir / ".write-test"
+    try:
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError as exc:
+        raise SystemExit(
+            f"SPARK cannot write to its data directory {data_dir} ({exc}).\n"
+            f"The container runs as uid {os.getuid()}, not root. On the host, run:\n"
+            f"    sudo chown -R {os.getuid()}:{os.getgid()} ./data\n"
+            "from the spark/ directory (the one docker-compose.yml is in)."
+        ) from exc
 
 
 def configure_logging(level: str) -> None:
@@ -43,6 +66,12 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Before the database is opened: SQLite's own error for an unwritable
+        # directory is "unable to open database file", which says nothing
+        # about ownership. The container no longer runs as root, so a data
+        # directory created by an older image, or by Docker on first start, is
+        # the one thing most likely to be wrong on upgrade.
+        require_writable(config.app.data_dir)
         init_engine(config)
         await init_db(config)
 
@@ -90,10 +119,18 @@ def create_app(config: Config | None = None) -> FastAPI:
         title="SPARK",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/api/docs",
+        # No OpenAPI document and no Swagger page. There is no API to document
+        # -- every route serves a form or a page -- and the schema was the one
+        # thing served to anyone without a session: a map of every route and
+        # every form field on the box that holds a map of the network.
+        openapi_url=None,
+        docs_url=None,
         redoc_url=None,
     )
     app.state.config = config
+    # Outermost, so the headers land on every response including redirects and
+    # errors, and a cross-site POST is refused before any dependency runs.
+    app.add_middleware(Hardening)
 
     @app.exception_handler(RedirectException)
     async def _handle_redirect(_request: Request, exc: RedirectException):

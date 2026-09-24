@@ -44,7 +44,7 @@
   <span><strong>SPARK</strong> <span class="muted">v{{ app_version }}</span></span>
   <span class="muted">© 2026 Marcus Pierce · PolyForm Noncommercial 1.0.0</span>
 </footer>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   // Live updates. The server pushes a one-line event when a target changes
   // state; the page then re-fetches itself and swaps in the #live region.
   //

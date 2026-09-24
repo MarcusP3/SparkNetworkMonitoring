@@ -105,7 +105,12 @@ def client_ip(request: Request, auth_config: AuthConfig) -> str:
         return direct
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        # The *last* entry, not the first. A proxy appends the address it saw
+        # to whatever the client already sent, so the first entry is the
+        # client's to write -- which made the per-IP login limit a header
+        # away from useless -- and the last is the one the trusted proxy
+        # itself added.
+        return forwarded.split(",")[-1].strip() or direct
     return direct
 
 
@@ -218,10 +223,19 @@ async def create_session(
 
 
 async def resolve_session(session: AsyncSession, token: str) -> User | None:
-    record = await session.scalar(
-        select(UserSession).where(UserSession.token_hash == _token_hash(token))
-    )
-    if record is None or record.revoked:
+    # One round trip, not two: the session row and its user together. This
+    # runs on every authenticated request, so it is the query that matters.
+    row = (
+        await session.execute(
+            select(UserSession, User)
+            .join(User, User.id == UserSession.user_id)
+            .where(UserSession.token_hash == _token_hash(token))
+        )
+    ).first()
+    if row is None:
+        return None
+    record, user = row
+    if record.revoked:
         return None
 
     if record.expires_at < utcnow():
@@ -234,7 +248,7 @@ async def resolve_session(session: AsyncSession, token: str) -> User | None:
     # minute of resolution is plenty for an idle-session timestamp.
     if (utcnow() - record.last_seen_at).total_seconds() > LAST_SEEN_RESOLUTION:
         record.last_seen_at = utcnow()
-    return await session.get(User, record.user_id)
+    return user
 
 
 async def revoke_session(session: AsyncSession, token: str) -> None:

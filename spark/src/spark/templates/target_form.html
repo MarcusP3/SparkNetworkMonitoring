@@ -128,7 +128,7 @@
   </form>
 </div>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   // Show only the params hint for the selected check type. Progressive
   // enhancement: with JS off every hint stays visible, which is still correct.
   (function () {

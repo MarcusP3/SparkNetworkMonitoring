@@ -34,7 +34,11 @@ def _asset_version() -> str:
     changes, which is the actual thing that matters, and never when it doesn't.
     """
     try:
-        return hashlib.md5((STATIC_DIR / "app.css").read_bytes()).hexdigest()[:8]
+        # A cache key, not a checksum anyone relies on; MD5 is fine for that
+        # and the flag says so, so a FIPS build does not refuse to start.
+        return hashlib.md5(
+            (STATIC_DIR / "app.css").read_bytes(), usedforsecurity=False
+        ).hexdigest()[:8]
     except OSError:
         # A missing stylesheet is the static mount's problem, not ours.
         return "dev"

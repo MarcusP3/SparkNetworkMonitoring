@@ -12,12 +12,24 @@ services:
 
     # Real ICMP needs raw sockets. Without this, ping degrades to TCP probes
     # and the latency numbers stop meaning what you think they mean.
+    #
+    # Everything else Docker grants by default -- CHOWN, SETUID, NET_BIND_SERVICE,
+    # a dozen more -- is dropped first. The process runs as uid 9700, not root
+    # (see the Dockerfile), and NET_RAW reaches it through a file capability
+    # on the Python binary. That is why there is no `no-new-privileges` here:
+    # it would make the kernel ignore that file capability, and ICMP would
+    # quietly stop working.
+    cap_drop:
+      - ALL
     cap_add:
       - NET_RAW
 
     volumes:
-      - ./data:/data          # spark.db and the session secret key
-      - ./config:/config      # spark.yaml
+      # spark.db and secret.key. Must be owned by uid 9700 on the host
+      # (`sudo chown -R 9700:9700 data`); SPARK refuses to start, and says
+      # exactly this, if it is not.
+      - ./data:/data
+      - ./config:/config:ro   # spark.yaml; SPARK never writes it
       # Uncomment once Docker-host inventory arrives (increment 4). Read-only,
       # and only the key SPARK uses to reach the remote daemons.
       # - ./secrets:/secrets:ro

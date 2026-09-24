@@ -59,6 +59,56 @@ def _parse_params(raw: str) -> tuple[dict, str | None]:
     return value, None
 
 
+# Bounds for the tuning fields. Not a policy, a sanity check: a 0-second
+# timeout fails every probe, a 0-second interval polls in a busy loop, and a
+# 3600-second timeout keeps one target's job -- and its slot in the scheduler
+# -- open for an hour. None of these are things the form offers, so a value
+# outside them did not come from it.
+MIN_INTERVAL_SECONDS = 5
+MAX_INTERVAL_SECONDS = 86400
+MIN_TIMEOUT_SECONDS = 0.5
+MAX_TIMEOUT_SECONDS = 60.0
+MAX_THRESHOLD = 100
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return min(max(value, low), high)
+
+
+async def _validate(
+    session: AsyncSession,
+    *,
+    check_type: str,
+    depends_on_target_id: str,
+    editing: Target | None,
+) -> tuple[CheckType | None, int | None, str | None]:
+    """The two fields a form can get wrong in a way `int()` does not catch.
+
+    Both used to raise out of the route as a 500: `CheckType("nope")` is a
+    `ValueError`, and a dependency on a target that does not exist -- or on
+    itself -- was either an integrity error at commit or a target whose
+    failures were forever a symptom of its own failure.
+    """
+    try:
+        kind = CheckType(check_type)
+    except ValueError:
+        return None, None, f"{check_type!r} is not a check type."
+    if kind is CheckType.DOCKER:
+        return None, None, "Docker checks are not available yet."
+
+    parent_id: int | None = None
+    if depends_on_target_id.strip():
+        try:
+            parent_id = int(depends_on_target_id)
+        except ValueError:
+            return None, None, "Choose a target from the list, or none."
+        if editing is not None and parent_id == editing.id:
+            return None, None, "A target cannot depend on itself."
+        if await session.get(Target, parent_id) is None:
+            return None, None, "That target no longer exists."
+    return kind, parent_id, None
+
+
 def _is_tuned(target: Target | None) -> bool:
     """Does this target differ from the defaults.
 
@@ -170,7 +220,13 @@ async def create_target(
     user: User = Depends(require_user),
 ):
     parsed, error = _parse_params(params)
-    if error:
+    kind, parent_id = None, None
+    if not error:
+        kind, parent_id, error = await _validate(
+            session, check_type=check_type, depends_on_target_id=depends_on_target_id,
+            editing=None,
+        )
+    if error or kind is None:
         context = await _form_context(
             session, config, user, None, error=error, submitted=await request.form()
         )
@@ -178,14 +234,14 @@ async def create_target(
 
     target = Target(
         name=name.strip(),
-        check_type=CheckType(check_type),
+        check_type=kind,
         address=address.strip(),
         params=parsed,
-        interval_seconds=max(5, int(interval_seconds)),
-        timeout_seconds=float(timeout_seconds),
-        failure_threshold=max(1, int(failure_threshold)),
-        recovery_threshold=max(1, int(recovery_threshold)),
-        depends_on_target_id=int(depends_on_target_id) if depends_on_target_id else None,
+        interval_seconds=int(_clamp(int(interval_seconds), MIN_INTERVAL_SECONDS, MAX_INTERVAL_SECONDS)),
+        timeout_seconds=_clamp(float(timeout_seconds), MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS),
+        failure_threshold=int(_clamp(int(failure_threshold), 1, MAX_THRESHOLD)),
+        recovery_threshold=int(_clamp(int(recovery_threshold), 1, MAX_THRESHOLD)),
+        depends_on_target_id=parent_id,
         status=HealthStatus.UNKNOWN,
     )
     session.add(target)
@@ -237,19 +293,25 @@ async def update_target(
         return redirect("/targets")
 
     parsed, error = _parse_params(params)
-    if error:
+    kind, parent_id = None, None
+    if not error:
+        kind, parent_id, error = await _validate(
+            session, check_type=check_type, depends_on_target_id=depends_on_target_id,
+            editing=target,
+        )
+    if error or kind is None:
         context = await _form_context(session, config, user, target, error=error)
         return templates.TemplateResponse(request, "target_form.html", context, status_code=400)
 
     target.name = name.strip()
-    target.check_type = CheckType(check_type)
+    target.check_type = kind
     target.address = address.strip()
     target.params = parsed
-    target.interval_seconds = max(5, int(interval_seconds))
-    target.timeout_seconds = float(timeout_seconds)
-    target.failure_threshold = max(1, int(failure_threshold))
-    target.recovery_threshold = max(1, int(recovery_threshold))
-    target.depends_on_target_id = int(depends_on_target_id) if depends_on_target_id else None
+    target.interval_seconds = int(_clamp(int(interval_seconds), MIN_INTERVAL_SECONDS, MAX_INTERVAL_SECONDS))
+    target.timeout_seconds = _clamp(float(timeout_seconds), MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
+    target.failure_threshold = int(_clamp(int(failure_threshold), 1, MAX_THRESHOLD))
+    target.recovery_threshold = int(_clamp(int(recovery_threshold), 1, MAX_THRESHOLD))
+    target.depends_on_target_id = parent_id
     await session.commit()
 
     events.publish({"kind": "updated", "target_id": target.id})
@@ -301,6 +363,11 @@ async def check_target_now(
     target = await session.get(Target, target_id)
     if target is None:
         return redirect("/targets")
+    # Release this request's transaction before the check runs. Resolving the
+    # cookie may have updated the session's last-seen time, which is a write,
+    # and SQLite has one writer: the check's own session would otherwise wait
+    # on this one until the busy timeout and record "database is locked".
+    await session.commit()
     await scheduler_module.run_now(target_id)
     return redirect("/targets")
 

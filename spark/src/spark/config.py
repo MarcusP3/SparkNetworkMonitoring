@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 DEFAULT_CONFIG_PATH = Path(os.environ.get("SPARK_CONFIG", "/config/spark.yaml"))
 ENV_PREFIX = "SPARK__"
@@ -123,7 +123,18 @@ class Config(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
 
+    # Read once per process. The vault asks for the key on every credential
+    # it seals or opens, and each ask was a file read; the key does not change
+    # while SPARK is running, and if the file is replaced underneath a running
+    # instance the stored ciphertext is unreadable either way.
+    _secret_key: str | None = PrivateAttr(default=None)
+
     def secret_key(self) -> str:
+        if self._secret_key is None:
+            self._secret_key = self._load_or_create_secret_key()
+        return self._secret_key
+
+    def _load_or_create_secret_key(self) -> str:
         """The install's root secret, generated once and persisted.
 
         The key the stored SNMP credentials are encrypted under is derived from

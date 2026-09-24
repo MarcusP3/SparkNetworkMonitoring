@@ -25,17 +25,20 @@ from .deps import current_user, get_config, get_session, redirect, templates
 router = APIRouter()
 
 
-def _set_session_cookie(response, token: str, config: Config) -> None:  # type: ignore[no-untyped-def]
+def _set_session_cookie(request: Request, response, token: str, config: Config) -> None:  # type: ignore[no-untyped-def]
     response.set_cookie(
         SESSION_COOKIE,
         token,
         max_age=config.auth.session_days * 86400,
         httponly=True,
         samesite="lax",
-        # Not forcing Secure: SPARK is commonly reached over plain HTTP on a
-        # LAN, and a Secure cookie there would silently never be sent. Put it
-        # behind TLS via a reverse proxy and this becomes worth revisiting.
-        secure=False,
+        # Secure exactly when the login itself arrived over TLS. Forcing it
+        # would break the common case -- plain HTTP on a LAN, where a Secure
+        # cookie is silently never sent -- and never setting it left a
+        # TLS-fronted install sending its session over any http:// link. The
+        # scheme is uvicorn's view: direct, or from X-Forwarded-Proto when the
+        # proxy is one it trusts (`--forwarded-allow-ips`).
+        secure=request.url.scheme == "https",
         path="/",
     )
 
@@ -126,7 +129,7 @@ async def setup_submit(
         ip=client_ip(request, config.auth),
     )
     response = redirect("/")
-    _set_session_cookie(response, token, config)
+    _set_session_cookie(request, response, token, config)
     return response
 
 
@@ -171,6 +174,13 @@ async def login_submit(
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
+    if config.auth.mode == "proxy":
+        # The proxy is the authenticator. This route still verified passwords
+        # in proxy mode -- and minted a cookie nothing would read -- which
+        # left the admin password open to guessing, from behind the proxy,
+        # on an instance that never asks for it.
+        return redirect("/login")
+
     ip = client_ip(request, config.auth)
     try:
         user = await authenticate(session, username, password, ip, config.auth)
@@ -204,7 +214,7 @@ async def login_submit(
     )
     destination = _safe_next(next)
     response = redirect(destination)
-    _set_session_cookie(response, token, config)
+    _set_session_cookie(request, response, token, config)
     return response
 
 

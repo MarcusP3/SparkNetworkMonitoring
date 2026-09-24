@@ -8,3 +8,7 @@ Claude outputs/
 
 # macOS writes one of these into every folder it has ever opened in Finder.
 .DS_Store
+
+# Increment archives that were once committed by mistake. `spark/.gitignore`
+# already ignores them under spark/; this covers the root.
+*.zip

@@ -419,7 +419,7 @@
   </div>
 </div>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   // The subnet and per-page dropdowns submit themselves. Delegated from
   // document because the filter bar lives inside #live and is replaced
   // whenever a sweep finishes.

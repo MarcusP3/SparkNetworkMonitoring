@@ -38,8 +38,11 @@ async def check_ping(spec: CheckSpec) -> CheckOutcome:
     except ImportError:  # pragma: no cover - dependency is declared
         return CheckOutcome.down("icmplib is not installed")
 
-    count = int(spec.param("count", 3) or 3)
-    interval = float(spec.param("interval", 0.2) or 0.2)
+    # Bounded: `count` is free text in the params box, and each echo waits
+    # `interval` (or, unanswered, the timeout), so "count": 500 is a check
+    # that never finishes and a job that never yields its scheduler slot.
+    count = min(max(int(spec.param("count", 3) or 3), 1), 20)
+    interval = min(max(float(spec.param("interval", 0.2) or 0.2), 0.05), 5.0)
     loss_warn = float(spec.param("loss_warn_percent", 1) or 0)
 
     last_error: str | None = None

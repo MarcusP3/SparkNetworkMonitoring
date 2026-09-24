@@ -83,8 +83,8 @@ Two things that look like details and are not:
   material. (The Discord webhook URL currently violates this; see CHANGELOG.)
 - **No new dependency without a reason that survives the question "what does
   this do that the standard library does not".** Every package in the closure
-  is code that runs as root-ish in a container holding `NET_RAW` on someone's
-  home network. The closure is 38 packages; keep it that way.
+  is code that runs in a container holding `NET_RAW` on someone's
+  home network. The closure is 39 packages; keep it that way.
 
 ## Testing
 
@@ -107,5 +107,8 @@ somewhere with 3.12 rather than lowering `requires-python`.
 
 Runs on a dedicated Ubuntu VM with Docker, host networking and `NET_RAW` — not
 Docker Desktop, whose host networking is layer 4 only and cannot do the ARP and
-ICMP discovery depends on. `docker compose up -d --build` is needed after any
+ICMP discovery depends on. The container runs as uid 9700 with `CAP_NET_RAW`
+as a file capability on the Python binary; `./data` must be owned by 9700 and
+the compose file must never gain `no-new-privileges` (it disables file
+capabilities). `docker compose up -d --build` is needed after any
 dependency change; a plain `up -d` reuses the existing image.

@@ -605,7 +605,7 @@
   </section>
 </div>
 
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   // Grey the interval when the box is unticked. Appearance only -- the select
   // stays enabled so it is still submitted, same as the sweep schedule.
   (function () {

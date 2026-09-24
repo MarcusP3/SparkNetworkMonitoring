@@ -110,7 +110,7 @@ underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
 
 ### Dependencies and the supply chain
 
-15 direct dependencies, 38 packages in the full closure, no npm and no build
+15 direct dependencies, 39 packages in the full closure, no npm and no build
 step. Everything is pinned by version **and SHA-256 hash** in
 `requirements.lock`, and the image installs from it with `--require-hashes`.
 
@@ -139,12 +139,21 @@ want a newer base, deliberately, as a commit.
 
 ```yaml
 network_mode: host      # ARP/ICMP sweeps only see the LAN from the host netns
-cap_add: [NET_RAW]      # real ICMP; without it ping degrades to TCP probes
+cap_drop: [ALL]         # nothing Docker grants by default is needed...
+cap_add: [NET_RAW]      # ...except real ICMP; without it ping degrades to TCP probes
 volumes: [./data:/data] # spark.db and the session key must survive a rebuild
 ```
 
 On a bridge network SPARK sits behind NAT and discovery finds **nothing**. This
 is the single most common way to end up with an empty dashboard.
+
+The container runs as **uid 9700, not root**. The `./data` bind mount has to be
+owned by that uid — `sudo chown -R 9700:9700 data` from `spark/` — and SPARK
+refuses to start, printing that command, if it is not. ICMP still works for
+the unprivileged user because `CAP_NET_RAW` is attached to the Python binary
+as a file capability; that is also why the compose file must **not** set
+`no-new-privileges`, which makes the kernel ignore file capabilities and
+would silently degrade ping.
 
 ### Networks and device identity
 
@@ -344,7 +353,16 @@ or not the username exists, so the login form cannot be used to enumerate
 accounts.
 
 The cookie carries an opaque token and is not itself signed — a database leak
-hands over no usable sessions, and revocation is a row update.
+hands over no usable sessions, and revocation is a row update. It is marked
+`Secure` when the login itself arrived over HTTPS.
+
+Every response carries a Content-Security-Policy that allows only SPARK's own
+origin (inline scripts run on a per-request nonce), `frame-ancestors 'none'`,
+`nosniff`, and `no-store` on pages. Every POST is checked against its `Origin`
+header and refused if it came from another site, as a second layer over
+`SameSite=Lax`. Behind a reverse proxy, keep the `Host` header intact (the
+default everywhere) or every form will answer 403. There is no OpenAPI
+document or Swagger page; there is no API.
 
 SPARK ends up holding a map of your entire network, an inventory of every
 service on it, and references to credentials that reach your Docker hosts. That
@@ -365,11 +383,12 @@ SPARK refuses to start in proxy mode with an empty `trusted_proxies`. Trusting
 an identity header from any source is forgeable by anything on the network —
 worse than no auth, because it looks like security.
 
-> **Known gaps.** There is no TLS; the session cookie is deliberately not
-> `Secure`, because SPARK is normally reached over plain HTTP on a LAN and a
-> `Secure` cookie there would silently never be sent. Put it behind a reverse
-> proxy before exposing it. The container also runs as root, and `/api/docs` is
-> unauthenticated.
+> **Known gaps.** There is no TLS of SPARK's own; on plain HTTP the session
+> cookie cannot be `Secure` without silently never being sent, so put it
+> behind a reverse proxy before exposing it beyond the LAN. Rate limiting is
+> per source IP, which is the right key for a single-account instance but
+> means a lockout is also a way to lock the real admin out from that address
+> for fifteen minutes.
 
 ---
 
@@ -438,6 +457,7 @@ spark/
       oids.py           numeric OID catalogue and capability probes
       snmp.py           the SNMP collector
     web/                routes and dependencies
+      hardening.py      security headers, CSP nonces, same-origin check on writes
     templates/          Jinja templates
     static/             hand-written CSS, no build step
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
@@ -459,6 +479,7 @@ spark/
     test_snmp_crypto.py SNMPv3 privacy actually works; failures are told apart
     test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
     test_vault.py       credential encryption, key derivation, the key file
+    test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
 ```
 
