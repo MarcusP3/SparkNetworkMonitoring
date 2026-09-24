@@ -802,7 +802,10 @@ tr.just-changed td {
 }
 
 .inline-name input {
-  width: auto;
+  /* A set width rather than the browser's 20-character default: the SNMP
+     column needed the room, and at the default the table no longer fit its
+     card even on a wide screen. Long names scroll inside the field. */
+  width: 9rem;
   min-width: 6rem;      /* the Name column is narrower since VLAN arrived */
   padding: .3rem .45rem;
   font-size: .875rem;
@@ -1262,7 +1265,7 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
    without the ceiling a host running a dozen services stretches the table off
    the side of the page. */
 .services {
-  min-width: 11rem;
+  min-width: 9rem;   /* 11rem before the SNMP column: two pills a line still */
   max-width: 20rem;
 }
 
@@ -1436,3 +1439,15 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
    in the browser's blue and visited purple -- two colours SPARK does not
    otherwise use. Accent, because a link is a thing you can click. */
 .card-sub a, .page-sub a, p.muted a { color: var(--accent); }
+
+/* ---- SNMP: find devices ------------------------------------------------ */
+
+.snmp-find { margin: .25rem 0 1rem; }
+.snmp-find-head { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.snmp-find-head form { margin: 0; }
+.snmp-descr { max-width: 36rem; overflow-wrap: anywhere; }
+.snmp-add-all { display: flex; align-items: center; gap: .6rem; margin: .5rem 0 0; }
+
+/* A pill that is also a link (the SNMP column on Devices). */
+a.pill { text-decoration: none; }
+a.pill:hover { filter: brightness(1.12); }

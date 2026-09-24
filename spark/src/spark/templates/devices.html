@@ -75,7 +75,7 @@
 
   <div id="live">
 
-  {% if subnets or paging.offer %}
+  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value %}
   <section class="card filter-bar">
     {# A GET form, so the filter lands in the URL and survives a reload, a
        bookmark and the live refresh -- which refetches location.search for
@@ -103,6 +103,18 @@
       </label>
       {% endif %}
 
+      {% if snmp_filter.listed or snmp_filter.value %}
+      <label class="inline-field">
+        <span class="muted small">SNMP</span>
+        <select name="snmp" id="snmp-filter">
+          <option value="">All devices</option>
+          {% for key, label in snmp_filter.choices.items() %}
+            <option value="{{ key }}" {% if key == snmp_filter.value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+
       {% if paging.offer %}
       <label class="inline-field">
         <span class="muted small">Per page</span>
@@ -121,12 +133,12 @@
          those fit on this page -- and a sentence that tries to carry both in
          every case ends up saying neither clearly. #}
       <span class="muted small filter-count">
-        {%- if paging.limited and subnet_filter.selected %}
-          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} on this
-          subnet ({{ subnet_filter.total }} device(s) in all).
+        {%- if paging.limited and filtered %}
+          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} matching
+          ({{ subnet_filter.total }} device(s) in all).
         {%- elif paging.limited %}
           Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} device(s).
-        {%- elif subnet_filter.selected %}
+        {%- elif filtered %}
           Showing {{ paging.total }} of {{ subnet_filter.total }} device(s).
         {%- else %}
           {{ paging.total }} device(s).
@@ -246,6 +258,7 @@
           <th>VLAN</th>
           <th>MAC</th>
           <th>Vendor</th>
+          <th>SNMP</th>
           <th>Services</th>
           <th>Last seen</th>
           <th></th>
@@ -308,6 +321,14 @@
             {% endif %}
           </td>
           <td class="muted">{{ device.vendor or '—' }}</td>
+          <td>
+            {% if row.snmp %}
+              <a href="/devices/{{ device.id }}" class="pill {{ row.snmp.kind }}{% if row.snmp.kind != 'neutral' %} dot{% endif %}"
+                 title="SNMP polling — open this device's charts">{{ row.snmp.label }}</a>
+            {% else %}
+              <span class="muted small">—</span>
+            {% endif %}
+          </td>
           <td class="services">
             {% if row.services %}
             {# A wrapper div, not the td itself: making a table cell a flex
@@ -383,6 +404,16 @@
     router, so those fall back to IP identity and will look like a new device if
     their lease changes.
   </p>
+  {% elif snmp_filter.value %}
+  <section class="card empty-state">
+    <h2>No devices match</h2>
+    <p class="muted">
+      {% if snmp_filter.value == 'on' %}No device{% if subnet_filter.selected %} on this subnet{% endif %} is polled over SNMP.
+        Add some in <a href="/settings#snmp">Settings</a>, or use <strong>Find SNMP devices</strong> there.
+      {% else %}Every device{% if subnet_filter.selected %} on this subnet{% endif %} is already polled over SNMP.{% endif %}
+      <a href="/devices">Show all</a>.
+    </p>
+  </section>
   {% elif subnet_filter.selected %}
   <section class="card empty-state">
     <h2>Nothing on this subnet</h2>
@@ -430,7 +461,8 @@
   // whenever a sweep finishes.
   document.addEventListener('change', function (event) {
     var el = event.target;
-    if (el && (el.id === 'subnet-filter' || el.id === 'page-size') && el.form) {
+    if (el && (el.id === 'subnet-filter' || el.id === 'page-size' ||
+               el.id === 'snmp-filter') && el.form) {
       el.form.submit();
     }
   });

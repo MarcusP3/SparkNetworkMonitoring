@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — find SNMP devices, and see which are polled (2026-09-24)
+
+SPARK polled only devices added by hand, and nothing on the Devices list said
+which those were — finding out meant opening each device.
+
+### Added
+
+- **Find SNMP devices** (Settings → SNMP, `snmp_discover.py`). Tries every
+  profile against every discovered device not already listed — one read-only
+  GET of name, object id and description, 1.5 s timeout, no retry, 50 at a
+  time — and lists the ones that answer with the profile that worked. **Add**
+  and **Add all** put them on the list; Find itself never adds anything.
+  Devices that refuse every profile (SNMPv3 authentication failures) are
+  listed separately. Runs in the background and the results swap in through
+  the page's existing event stream, no reload. Measured against a real agent:
+  5 devices × 2 profiles in 4.1 s.
+- It runs **only when pressed**. A v2c profile sends its community string in
+  clear text to every device tried; that should be a choice, not a timer.
+- **SNMP column on Devices** — `polling`, `no answer`, `paused` or `waiting`,
+  each a link to the device's charts. Status colours only for the two real
+  statuses (answering or not); paused and waiting are neutral.
+- **SNMP filter on Devices** — all, polled, or not polled. Kept across pages
+  and the live refresh, like the subnet filter.
+
+### Changed
+
+- The Devices table's name field is a set 9rem and the services column's floor
+  9rem (was the browser's 20-character default and 11rem), so the table,
+  with its new column, fits its card from 1280 px up instead of scrolling.
+
+### Tests
+
+14 new (`test_snmp_discover.py`): the column's wording; a stale "running" state
+cannot disable the button forever; the first profile that answers wins and
+the rest are not sent; listed and ignored devices are not tried; a crash is
+recorded and clears "running"; Find needs a profile; results are offered, not
+added, and Add all adds each with its own profile and skips devices ignored
+since; the filter and paging links; and a real agent found over v2c and
+reported as refusing a wrong v3 password. Eight deliberate breaks each caught.
+`pytest` 534 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — narrow windows no longer scroll sideways (2026-09-24)
 
 ### Fixed

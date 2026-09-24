@@ -10,6 +10,8 @@ failure that clears what you typed is a worse outcome than the typo.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import port_catalogue
 from .. import scheduler as scheduler_module
 from .. import snmp_config
+from .. import snmp_discover
 from .. import snmp_poll
 from .. import subnets as subnet_service
 from ..config import Config
@@ -106,6 +109,7 @@ async def _snmp(session: AsyncSession) -> dict:
         (await get_setting(session, "snmp")).get("poll_interval_seconds")
     )
     return {
+        "discovery": await _discovery(session, listed_ids, now),
         "profiles": [
             {
                 "profile": p,
@@ -131,6 +135,49 @@ async def _snmp(session: AsyncSession) -> dict:
         "auth_protocols": AUTH_PROTOCOLS,
         "priv_protocols": PRIV_PROTOCOLS,
         "min_key": snmp_config.MIN_V3_KEY,
+    }
+
+
+async def _discovery(session: AsyncSession, listed_ids: set[int], now) -> dict:  # type: ignore[no-untyped-def]
+    """The last "Find SNMP devices" run, as the card shows it.
+
+    Results are filtered against the database now, not trusted as saved: a
+    device added from the list since, removed, or ignored should drop out of
+    the suggestions without anyone pressing Find again.
+    """
+    state = await snmp_discover.load_state(session)
+    running = snmp_discover.is_running(state, now)
+    ids = {r.get("device_id") for r in state.get("found", []) + state.get("refused", [])}
+    devices = {
+        d.id: d
+        for d in (await session.execute(
+            select(Device).where(Device.id.in_(ids), Device.ignored.is_(False))
+        )).scalars()
+    } if ids else {}
+
+    def keep(rows):  # type: ignore[no-untyped-def]
+        return [
+            {**r, "device": devices[r["device_id"]]}
+            for r in rows
+            if r.get("device_id") in devices and r["device_id"] not in listed_ids
+        ]
+
+    finished = None
+    if state.get("finished_at"):
+        try:
+            finished = _ago(datetime.fromisoformat(state["finished_at"]), now)
+        except ValueError:
+            finished = None
+    return {
+        "running": running,
+        "ran": bool(state.get("finished_at")) and not running,
+        "finished_ago": finished,
+        "seconds": state.get("seconds"),
+        "tried": state.get("devices"),
+        "profiles": state.get("profiles"),
+        "error": state.get("error"),
+        "found": keep(state.get("found", [])),
+        "refused": keep(state.get("refused", [])),
     }
 
 
@@ -593,6 +640,55 @@ async def set_snmp_device_polling(
         row.enabled = _checked(enabled)
         await session.commit()
         await _apply_snmp_schedule(session, config)
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/discover")
+async def find_snmp_devices(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Queue a search for devices that answer one of the saved profiles.
+
+    Marked as running here, before the job starts, so the page this redirects
+    to already says "Searching" rather than showing the previous result for a
+    second and looking as if the button did nothing.
+    """
+    if not await snmp_config.list_profiles(session):
+        return await _render(request, session, config, user,
+                             snmp_error="Add a profile first -- that is what Find tries.",
+                             status_code=400)
+    state = await snmp_discover.load_state(session)
+    if not snmp_discover.is_running(state):
+        await save_setting(session, snmp_discover.STATE_KEY, {
+            **state, "running": True, "started_at": utcnow().isoformat(),
+        })
+        await session.commit()
+        scheduler_module.trigger_snmp_discovery(config)
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/discover/add-all")
+async def add_found_snmp_devices(
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Put every device the last search found on the list, each with the
+    profile it answered. Skips any that were listed, removed or ignored since."""
+    state = await snmp_discover.load_state(session)
+    for found in state.get("found", []):
+        try:
+            device = await session.get(Device, int(found["device_id"]))
+            if device is None or device.ignored:
+                continue
+            await snmp_config.add_device(session, device.id, int(found["profile_id"]))
+        except (snmp_config.ProfileError, KeyError, TypeError, ValueError):
+            continue
+    await session.commit()
+    await _apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 

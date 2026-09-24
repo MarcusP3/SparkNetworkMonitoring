@@ -24,7 +24,17 @@ from ..discovery.oui import is_locally_administered
 from ..discovery.ports import concern
 from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_port_scan, last_sweep
 from ..discovery.services import services_for
-from ..models import CheckType, Device, HealthStatus, Service, Target, User, utcnow
+from ..models import (
+    CheckType,
+    Device,
+    HealthStatus,
+    Service,
+    SnmpDevice,
+    SnmpPoll,
+    Target,
+    User,
+    utcnow,
+)
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -78,7 +88,28 @@ def _page_size(value: str) -> int:
     return DEFAULT_PAGE_SIZE
 
 
-def _query(subnet: str, per_page: int, page: int) -> str:
+# The SNMP filter's values. Anything else shows everything.
+SNMP_FILTERS = {"on": "Polled over SNMP", "off": "Not polled"}
+
+
+def snmp_state(row: SnmpDevice | None, poll: SnmpPoll | None) -> dict | None:
+    """How a device's SNMP polling reads in a list: a word and a pill kind.
+
+    Only the two real statuses get status colours -- answering, and not.
+    Paused and "not polled yet" are facts about SPARK, not the device.
+    """
+    if row is None:
+        return None
+    if not row.enabled:
+        return {"label": "paused", "kind": "neutral"}
+    if poll is None or poll.last_polled_at is None:
+        return {"label": "waiting", "kind": "neutral"}
+    if poll.last_error:
+        return {"label": "no answer", "kind": "bad"}
+    return {"label": "polling", "kind": "ok"}
+
+
+def _query(subnet: str, per_page: int, page: int, snmp: str = "") -> str:
     """The Devices URL for one combination of filter, page size and page.
 
     Defaults are left out rather than spelled out, so the plain `/devices` link
@@ -87,6 +118,8 @@ def _query(subnet: str, per_page: int, page: int) -> str:
     parts: list[tuple[str, str]] = []
     if subnet:
         parts.append(("subnet", subnet))
+    if snmp in SNMP_FILTERS:
+        parts.append(("snmp", snmp))
     if per_page != DEFAULT_PAGE_SIZE:
         parts.append(("per_page", str(per_page)))
     if page > 1:
@@ -94,7 +127,8 @@ def _query(subnet: str, per_page: int, page: int) -> str:
     return f"?{urlencode(parts)}" if parts else ""
 
 
-def _paginate(rows, subnet: str, per_page: int, page: int):  # type: ignore[no-untyped-def]
+def _paginate(rows, subnet: str, per_page: int, page: int,  # type: ignore[no-untyped-def]
+              snmp: str = ""):
     """Cut the list down to one page. Returns (paging, rows).
 
     Sliced in Python rather than with LIMIT/OFFSET because the subnet a device
@@ -134,8 +168,8 @@ def _paginate(rows, subnet: str, per_page: int, page: int):  # type: ignore[no-u
         "first": start + 1 if window else 0,
         "last": start + len(window),
         "total": total,
-        "prev_url": _query(subnet, per_page, page - 1) if page > 1 else None,
-        "next_url": _query(subnet, per_page, page + 1) if page < pages else None,
+        "prev_url": _query(subnet, per_page, page - 1, snmp) if page > 1 else None,
+        "next_url": _query(subnet, per_page, page + 1, snmp) if page < pages else None,
     }, window
 
 
@@ -219,6 +253,7 @@ async def list_devices(
     subnet: str = "",
     per_page: str = "",
     page: str = "",
+    snmp: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -251,6 +286,19 @@ async def list_devices(
 
     known_subnets = await subnet_service.list_subnets(session)
 
+    # SNMP status for every device in one query: which are on the SNMP list,
+    # and how their last poll went. It is what the SNMP column and filter
+    # show, so nobody has to open each device to find out.
+    snmp_rows = {
+        row.device_id: (row, poll)
+        for row, poll in (
+            await session.execute(
+                select(SnmpDevice, SnmpPoll)
+                .outerjoin(SnmpPoll, SnmpPoll.snmp_device_id == SnmpDevice.id)
+            )
+        ).all()
+    }
+
     now = utcnow()
     rows = []
     for device in devices:
@@ -266,6 +314,7 @@ async def list_devices(
                 # orphan its devices and adding one classifies what is already
                 # there.
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
+                "snmp": snmp_state(*snmp_rows.get(device.id, (None, None))),
                 "services": [],
             }
         )
@@ -274,6 +323,11 @@ async def list_devices(
     # count that shrinks as you narrow tells you nothing.
     total = len(rows)
     selected, rows = _apply_subnet_filter(rows, known_subnets, subnet)
+    snmp = snmp if snmp in SNMP_FILTERS else ""
+    if snmp == "on":
+        rows = [r for r in rows if r["snmp"] is not None]
+    elif snmp == "off":
+        rows = [r for r in rows if r["snmp"] is None]
 
     # Counted before paging, deliberately. "Mark all 12 reviewed" acts on every
     # unacknowledged device, so a number that shrank to what happens to be on
@@ -285,7 +339,7 @@ async def list_devices(
         wanted_page = int(page)
     except (TypeError, ValueError):
         wanted_page = 1
-    paging, rows = _paginate(rows, subnet, size, wanted_page)
+    paging, rows = _paginate(rows, subnet, size, wanted_page, snmp)
 
     # Services are fetched after paging rather than before: one query either
     # way, but for the devices actually being shown rather than for every
@@ -330,6 +384,12 @@ async def list_devices(
                 ) if subnet == UNASSIGNED else None,
             },
             "paging": paging,
+            "snmp_filter": {
+                "value": snmp,
+                "choices": SNMP_FILTERS,
+                "listed": len(snmp_rows),
+            },
+            "filtered": bool(selected) or bool(snmp),
             "sweep": sweep,
             "port_scan": port_scan,
             "scan": await _scan_schedule(

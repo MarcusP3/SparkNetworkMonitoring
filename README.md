@@ -287,6 +287,24 @@ press **Test**. SPARK asks each device a set of read-only questions and records
 which ones it can answer, so you can see what it will be able to collect before
 it collects anything. Most homelabs need exactly one profile.
 
+**SPARK does not look for SNMP devices on its own** — it polls the devices on
+the list, and only those. To find candidates, press **Find SNMP devices** on
+the same card. It sends one read-only question (the device's name) to every
+discovered device not already listed, trying each profile in turn, and lists
+the ones that answer with the profile that worked. **Add** or **Add all** puts
+them on the list; nothing is added until you do. About 250 devices take around
+ten seconds, and the results appear without reloading.
+
+It runs only when pressed, on purpose: with a v2c profile it sends the
+community string, in clear text, to every device it tries. A device with SNMP
+off or a wrong community gives no answer at all; only SNMPv3 agents say the
+credentials were wrong, and those are listed separately.
+
+**Which devices are polled** shows on the Devices list, in the **SNMP** column —
+`polling`, `no answer`, `paused` or `waiting` (added, first poll not yet run),
+each linking to the device's charts — and the **SNMP** filter narrows the list
+to polled or unpolled devices.
+
 Credentials are **encrypted in the database** under a key derived from
 `secret.key` in the data directory, and never shown again once saved — an edit
 form leaves a secret blank to keep it. A copied or backed-up database is useless
@@ -525,6 +543,7 @@ spark/
     snmp_config.py      SNMP credential profiles, devices, and Test
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
+    snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -571,6 +590,7 @@ spark/
     test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
     test_device_page.py history read back weighted and gap-true; charts; the page
     test_layout.py      every table scrolls inside its card
+    test_snmp_discover.py  Find suggests and never adds; the Devices SNMP column and filter
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3

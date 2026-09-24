@@ -502,6 +502,80 @@
         on this schedule, and the answers are kept as history.
       </span>
     </form>
+    {# Inside #live: a search finishes a few seconds after the button is
+       pressed, and the page's event stream swaps this region in when it does. #}
+    <div id="live">
+    {% set disc = snmp.discovery %}
+    <div class="snmp-find">
+      <div class="snmp-find-head">
+        <form method="post" action="/settings/snmp/discover">
+          <button type="submit" class="btn-quiet"
+                  {% if not snmp.profiles or disc.running %}disabled{% endif %}>
+            {{ 'Searching…' if disc.running else 'Find SNMP devices' }}
+          </button>
+        </form>
+        <span class="muted small">
+          {% if disc.running %}
+            Trying each profile on every discovered device not already listed. This takes a few seconds.
+          {% elif disc.error %}
+            The last search failed: {{ disc.error }}
+          {% elif disc.ran %}
+            Last search {{ disc.finished_ago }}: {{ disc.tried }} device(s) tried
+            with {{ disc.profiles }} profile(s) in {{ disc.seconds }}s.
+            {% if not disc.found and not disc.refused %}Nothing new answered.{% endif %}
+          {% else %}
+            Tries each profile on every discovered device and lists the ones
+            that answer. Read-only, and only when you press it.
+          {% endif %}
+        </span>
+      </div>
+
+      {% if disc.found and not disc.running %}
+      <div class="table-scroll">
+      <table class="table compact snmp-found">
+        <thead><tr><th>Device</th><th>Answered as</th><th>Profile</th><th></th></tr></thead>
+        <tbody>
+          {% for f in disc.found %}
+          <tr>
+            <td>
+              <strong>{{ f.device.display_name }}</strong>
+              <div class="muted small"><code>{{ f.address }}</code></div>
+            </td>
+            <td class="small">
+              {{ f.sys_name or '—' }}{% if f.vendor %} <span class="muted">· {{ f.vendor }}</span>{% endif %}
+              {% if f.sys_descr %}<div class="muted small snmp-descr">{{ f.sys_descr }}</div>{% endif %}
+            </td>
+            <td class="muted small">{{ f.profile }}</td>
+            <td class="actions">
+              <form method="post" action="/settings/snmp/devices">
+                <input type="hidden" name="device_id" value="{{ f.device_id }}">
+                <input type="hidden" name="profile_id" value="{{ f.profile_id }}">
+                <button type="submit" class="btn-quiet">Add</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% if disc.found | length > 1 %}
+      <form method="post" action="/settings/snmp/discover/add-all" class="snmp-add-all">
+        <button type="submit" class="btn-quiet">Add all {{ disc.found | length }}</button>
+        <span class="muted small">Each with the profile it answered.</span>
+      </form>
+      {% endif %}
+      {% endif %}
+
+      {% if disc.refused and not disc.running %}
+      <p class="muted small">
+        These answered but refused the credentials — they run SNMPv3 with a
+        different user or password than any profile here:
+        {% for r in disc.refused %}<strong>{{ r.device.display_name }}</strong> <code>{{ r.address }}</code>{{ ', ' if not loop.last }}{% endfor %}.
+      </p>
+      {% endif %}
+    </div>
+    </div>
+
     {% if not snmp.profiles %}
       <p class="muted small">Add a profile first; each device uses one.</p>
     {% elif not snmp.candidates and not snmp.devices %}
@@ -652,6 +726,17 @@
         SPARK has to be able to read the key. <strong>Back up
         <code>secret.key</code> with the database</strong> — without it every
         credential has to be entered again.
+      </dd>
+      <dt>What Find does</dt>
+      <dd>
+        Sends one read-only question (the device's name) to every discovered
+        device not already on the list, with each profile in turn, and lists
+        the ones that answer. It never adds anything by itself. With a v2c
+        profile this sends the community string to every device it tries — the
+        same clear-text exposure v2c always has, spread wider — which is why it
+        runs only when you press it. A device with SNMP off or a wrong
+        community simply does not answer; only v3 agents say the credentials
+        were wrong.
       </dd>
       <dt>What polling collects</dt>
       <dd>

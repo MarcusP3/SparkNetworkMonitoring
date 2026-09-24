@@ -421,6 +421,31 @@ def snmp_next_runs() -> dict[int, datetime]:
     return out
 
 
+def trigger_snmp_discovery(config) -> bool:  # type: ignore[no-untyped-def]
+    """Queue a "Find SNMP devices" run and return without waiting.
+
+    Same reasoning as trigger_discovery_now: it takes seconds, and the request
+    that asked for it holds the write slot. Not under the "snmp:" prefix, which
+    sync_snmp_jobs owns and would remove as a job for no device.
+    """
+    from .snmp_discover import JOB_ID, run_discovery
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run_discovery,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=1),
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        misfire_grace_time=120,
+        name="Find SNMP devices",
+    )
+    return True
+
+
 async def run_now(target_id: int) -> None:
     """Run a target's check immediately, outside its schedule.
 
