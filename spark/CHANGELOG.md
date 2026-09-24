@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — narrow windows no longer scroll sideways (2026-09-24)
+
+### Fixed
+
+- **Tables widened the page.** On Devices, Targets and the dashboard, a table
+  wider than the window ran on past its card while the card stayed the width
+  of the window, and the whole page scrolled sideways. Devices was the worst —
+  the Details button from stage 3 made its row wider still. Those tables now
+  scroll inside their card, as the Settings tables already did.
+  `tests/test_layout.py` fails if any template adds a table without the
+  wrapper; it fails on the previous commit for all three pages.
+- **The top bar widened the page between about 640 and 830 px.** Five links,
+  the user's name and role and Sign out did not fit, so every page scrolled
+  sideways in that range. Below 62rem the name and role are hidden (the avatar
+  stays), the not-yet-built Service map link is hidden, spacing tightens, and
+  if the links still do not fit they scroll within the bar.
+- Measured on every page at 1400, 1100, 900, 830, 760, 700, 641 and 390 px:
+  the page is never wider than the window.
+
+### Known, unfixed
+
+- Below 640 px the nav links are hidden altogether (unchanged; the brand links
+  to the dashboard). A phone menu is a design change, not a fix.
+
 ## Unreleased — SNMP, stage 3: device pages and charts (2026-09-24)
 
 Every device now has a page at `/devices/<id>`, linked as **Details** on the

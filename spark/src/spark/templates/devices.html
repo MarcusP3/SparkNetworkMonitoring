@@ -207,6 +207,7 @@
     </dl>
 
     {% if sweep.subnets %}
+    <div class="table-scroll">
     <table class="table compact">
       <thead>
         <tr><th>Subnet</th><th>Probed</th><th>Answered</th><th>With MAC</th><th></th></tr>
@@ -229,12 +230,14 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
   </section>
   {% endif %}
 
   {% if rows %}
   <section class="card">
+    <div class="table-scroll">
     <table class="table">
       <thead>
         <tr>
@@ -352,6 +355,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     {% if paging.limited %}
     {# Prev/next links rather than a numbered list: the order is "last seen

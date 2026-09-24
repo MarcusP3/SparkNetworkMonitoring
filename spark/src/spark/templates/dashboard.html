@@ -99,6 +99,7 @@
     </div>
 
     {% if subnets %}
+    <div class="table-scroll">
     <table class="table">
       <thead>
         <tr><th>Name</th><th>CIDR</th><th>VLAN</th><th>Reachability</th></tr>
@@ -124,6 +125,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     {% else %}
     <p class="muted">
       None yet. <a href="/settings">Add one in Settings</a>.
@@ -145,6 +147,7 @@
           <a class="btn-quiet" href="/targets/new">Add a target</a>
         </div>
       </div>
+      <div class="table-scroll">
       <table class="table">
         <thead>
           <tr><th>Status</th><th>Name</th><th>Address</th><th>Latency</th><th>Last result</th></tr>
@@ -161,6 +164,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
     {% else %}
     <section class="card empty-state">

@@ -565,6 +565,22 @@ a.stat:hover {
   .nav { display: none; }
 }
 
+/* Between phone and desktop the bar held its full width -- five links, the
+   name and role, Sign out -- and pushed the whole page sideways from about
+   830px down to 640. Drop the name and role first (the avatar still says who),
+   then let the links scroll inside the bar rather than widen the page. */
+@media (max-width: 62rem) {
+  .who { display: none; }
+  /* A link that goes nowhere yet is the first thing to give up its room. */
+  .nav a.disabled { display: none; }
+  .nav a { padding: .45rem .65rem; }
+  .topbar { gap: .75rem; padding: 0 1rem; }
+  .user-chip { padding-left: .75rem; }
+}
+.nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.brand, .user-chip { flex-shrink: 0; }
+
 /* ---- targets ---------------------------------------------------------- */
 
 /* The masthead every page but the dashboard wears: an icon tile, the name of

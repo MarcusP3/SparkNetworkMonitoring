@@ -570,6 +570,7 @@ spark/
     test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
     test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
     test_device_page.py history read back weighted and gap-true; charts; the page
+    test_layout.py      every table scrolls inside its card
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
@@ -579,7 +580,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Eight things that will bite you if you don't know them:
+Nine things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -593,6 +594,9 @@ Eight things that will bite you if you don't know them:
   or reorder an entry that has shipped.
 - **SNMP counters** use the `Counter64` column type. They run to 2^64 − 1 and a
   plain `Integer` raises `OverflowError` above 2^63 − 1.
+- **Every table sits in `<div class="table-scroll">`.** Without it, a table
+  wider than the window widens the whole page instead of scrolling inside its
+  card. `tests/test_layout.py` checks every template.
 - **No inline styles.** The CSP allows styles from `'self'` only, so a
   `style="…"` attribute is silently ignored. Position things with classes (the
   chart labels sit at fixed quarters for exactly this reason); a script may set
