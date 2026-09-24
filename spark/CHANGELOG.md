@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased — SNMP, stage 3: device pages and charts (2026-09-24)
+
+Every device now has a page at `/devices/<id>`, linked as **Details** on the
+Devices list and from each device's name on the SNMP card. No migration and no
+new dependency.
+
+### Added
+
+- **Health charts** — CPU (or load average where there is no percentage),
+  memory, and the hottest temperature sensor, over 1h, 24h, 7d or 30d. A
+  chart with nothing to show is left out rather than drawn empty.
+- **Interfaces** — status, current rate, peak in the range, errors, and a
+  sparkline per port; choose a port to chart its traffic, the busiest charted
+  first. Only `up` is coloured: an empty port reads `down` to SNMP, and a page
+  of red for unplugged ports would be a page of false alarms.
+- **Reading history across tables** (`snmp_history.py`). Each range has a
+  fixed bucket width (1 min, 5 min, 30 min, 2 h: 60-360 points), and every
+  bucket combines raw samples, five-minute and hourly rollups weighted by
+  sample count, peaks by maximum. The 7-day line where raw turns into rollups
+  does not show on a 30-day chart. Unanswered stretches are gaps, not zeros,
+  and the page reports what share of polls were answered.
+- **Charts drawn by SPARK** (`charts.py`): SVG stretched to its box with
+  non-scaling strokes, labels in HTML so they never stretch, gridlines at
+  quarters of a scale rounded so each quarter is readable. No chart library,
+  no CDN, nothing the CSP needs to be loosened for. `static/charts.js` shows
+  times in the browser's time zone and draws the hover readout; with it
+  blocked, charts still render and read in UTC.
+- Not-polled devices get the same page with sweep details, open services and
+  a pointer to the SNMP card.
+
+### Changed
+
+- The static asset cache key covers `charts.js` as well as `app.css`, so a
+  changed script is not served stale.
+- Links in running text (card and page descriptions, muted notes) are accent
+  instead of the browser's default blue and visited purple. There was no link
+  colour at all before.
+- README conventions: no inline styles (the CSP drops them silently), and
+  charts use cyan for the first series and grey for the second — status colours
+  never appear on a chart.
+
+### Tests
+
+45 new (`test_device_page.py`): window alignment; weighted combination of raw
+and rolled-up history, including in the same bucket; gaps kept as gaps; the
+window start and other devices' data excluded; per-interface traffic, errors
+and peaks; scale, gap-breaking paths, clamping, formatting, sparkline
+thinning; the page itself (busiest port first, choosing a port, empty ports
+neutral, the range picker, no inline style attributes, not-polled devices,
+unknown ids, links in); and the asset key following `charts.js`. Thirteen
+deliberate breaks each caught. `pytest` 510 passed with the agent,
+`smoke_test.py` 76 passed. Rendered against a real net-snmp agent polled over
+v3 authPriv, and against 30 days of synthetic history in both themes and at
+390 px.
+
+### Known, unfixed
+
+- **Big switches are slowest on long ranges.** Measured with 48 ports and 30
+  days of history: 1h 17 ms, 24h 0.23 s, 7d 0.9 s, 30d 1.1 s for the page's
+  queries. Fine for a homelab; a pre-aggregated series table would be the fix
+  if it ever is not.
+- The page does not refresh itself; reload for newer polls.
+- pysnmp 7.1 imports AES CFB from a `cryptography` module path that warns it
+  will move. Works on the pinned `cryptography` 50.0.1; an unpinned upgrade
+  could break SNMPv3 privacy until pysnmp follows.
+
 ## Unreleased — SNMP, stage 2: scheduled polling and history (2026-09-24)
 
 Devices on the SNMP list are now polled on a schedule and the answers kept.

@@ -19,6 +19,7 @@ from .web.deps import RedirectException
 from .web.hardening import Hardening
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
+from .web.routes_device_page import router as device_page_router
 from .web.routes_devices import router as devices_router
 from .web.routes_events import router as events_router
 from .web.routes_settings import router as settings_router
@@ -146,6 +147,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(targets_router)
     app.include_router(events_router)
     app.include_router(devices_router)
+    app.include_router(device_page_router)
     app.include_router(settings_router)
     return app
 

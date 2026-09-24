@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page device-page">
+  <div class="page-head">
+    <div class="page-title">
+      <span class="page-icon">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <rect x="3" y="4" width="18" height="7" rx="2"/>
+          <rect x="3" y="13" width="18" height="7" rx="2"/>
+          <path d="M7 7.5h.01M7 16.5h.01"/>
+        </svg>
+      </span>
+      <div>
+        <p class="crumb"><a href="/devices">Devices</a> /</p>
+        <h1>{{ device.display_name }}</h1>
+        <p class="page-sub">
+          <code>{{ device.primary_ip or 'no address' }}</code>
+          {% if device.mac %} · <code>{{ device.mac }}</code>{% endif %}
+          {% if device.vendor %} · {{ device.vendor }}{% endif %}
+        </p>
+      </div>
+    </div>
+    {% if snmp %}
+    <nav class="range-picker" aria-label="Time range">
+      {% for key, label in ranges %}
+        <a href="/devices/{{ device.id }}?range={{ key }}{% if port %}&amp;port={{ port }}{% endif %}"
+           class="{% if key == range %}active{% endif %}"
+           {% if key == range %}aria-current="true"{% endif %}>{{ key }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </div>
+
+  {% if snmp %}
+  {% set poll = snmp.poll %}
+  <section class="card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+      <div>
+        <h2>Health</h2>
+        <p class="card-sub">
+          {% if not snmp.row.enabled %}
+            <span class="pill neutral">paused</span> Polling is paused; history stops where it was paused.
+          {% elif not poll %}
+            Waiting for the first poll.
+          {% elif poll.last_error %}
+            <span class="pill bad dot">no answer</span>
+            {% if poll.last_ok_at %}Last answered {{ poll.last_ok_at.strftime('%b %-d, %H:%M') }} UTC.{% else %}Has not answered a poll yet.{% endif %}
+          {% else %}
+            <span class="pill ok dot">polling</span>
+            {% if snmp.uptime %}Up {{ snmp.uptime }} ·{% endif %}
+            polled {{ snmp.polled_ago }} with <strong>{{ snmp.profile.name }}</strong>
+          {% endif %}
+          {% if snmp.answered is not none and snmp.answered < 0.9995 %}
+            · answered {{ '%.1f' | format(snmp.answered * 100) }}% of polls in this range
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    {% if poll and poll.last_error %}
+      <p class="muted small snmp-error">{{ poll.last_error }}</p>
+    {% endif %}
+
+    {% if snmp.health_charts %}
+    <div class="chart-grid">
+      {% for c in snmp.health_charts %}
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>{{ c.label }}</span>
+          <span class="chart-figures"><span class="muted">now</span> {{ c.latest }}
+            <span class="muted">· peak</span> {{ c.peak }}</span>
+        </div>
+        {{ c.svg }}
+        {% if c.note %}<p class="muted small">{{ c.note }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+      <p class="muted small">
+        No health readings in this range yet.
+        {% if poll and not poll.last_error %}A net-snmp agent reports CPU and memory once it has run for about a minute.{% endif %}
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10v4M11 10v4M15 10v4"/></svg></span>
+      <div>
+        <h2>Interfaces</h2>
+        <p class="card-sub">
+          {{ snmp.up }} of {{ snmp.interfaces | length }} up.
+          Traffic is recorded for interfaces that are up; choose one to chart it.
+        </p>
+      </div>
+    </div>
+
+    {% if snmp.selected %}
+    {% set sel = snmp.selected %}
+    <div class="chart-card traffic-card">
+      <div class="chart-title">
+        <span>{{ sel.iface.label }}{% if sel.iface.speed_mbps %} <span class="muted small">· {{ sel.iface.speed_mbps }} Mbps link</span>{% endif %}</span>
+        <span class="legend-keys">
+          <span class="key primary">In</span>
+          <span class="key secondary">Out</span>
+        </span>
+      </div>
+      {% if snmp.selected_chart %}
+        {{ snmp.selected_chart }}
+        <p class="muted small">Averages per interval as solid lines; where an interval held several polls, the faint line is its busiest poll.</p>
+      {% else %}
+        <p class="muted small">No traffic recorded for this interface in this range.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if snmp.interfaces %}
+    <div class="table-scroll">
+    <table class="table compact interface-table">
+      <thead>
+        <tr>
+          <th>Interface</th><th>Status</th><th>Speed</th>
+          <th class="num">In now</th><th class="num">Out now</th>
+          <th class="num">Peak in / out</th><th class="num">Errors</th>
+          <th>{{ range }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in snmp.interfaces %}
+        {% set iface = e.iface %}
+        <tr class="{% if snmp.selected and snmp.selected.iface.id == iface.id %}is-selected{% endif %}{% if e.state != 'up' %} is-quiet{% endif %}">
+          <td>
+            {% if e.traffic and e.traffic.has_data %}
+              <a href="/devices/{{ device.id }}?range={{ range }}&amp;port={{ iface.id }}">{{ iface.label }}</a>
+            {% else %}
+              {{ iface.label }}
+            {% endif %}
+            {% if iface.alias and iface.name and iface.alias != iface.name %}
+              <div class="muted small">{{ iface.name }}</div>
+            {% endif %}
+          </td>
+          <td><span class="pill {{ e.kind }}">{{ e.state }}</span></td>
+          <td class="muted small">{{ (iface.speed_mbps ~ ' Mbps') if iface.speed_mbps else '—' }}</td>
+          <td class="num">{{ e.now_in }}</td>
+          <td class="num">{{ e.now_out }}</td>
+          <td class="num small">{{ e.peak_in }} / {{ e.peak_out }}</td>
+          <td class="num">{{ e.errors if e.errors else '—' }}</td>
+          <td class="spark-cell">{{ e.spark if e.spark else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">No interfaces reported yet.</p>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Not polled over SNMP</h2>
+        <p class="card-sub">
+          SPARK knows this device from the network sweep, but does not ask it
+          for health or traffic.
+          {% if has_profiles %}
+            Add it on the SNMP list in <a href="/settings#snmp">Settings</a>
+            to start collecting history.
+          {% else %}
+            Create an SNMP profile and add the device in
+            <a href="/settings#snmp">Settings</a> to start collecting history.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>On the network</h2>
+        <p class="card-sub">
+          First seen {{ device.first_seen.strftime('%b %-d, %Y') }}{% if device.last_seen %},
+          last seen {{ device.last_seen.strftime('%b %-d, %H:%M') }} UTC{% endif %}.
+          {% if watched %}Watched by {{ watched }} target{{ 's' if watched != 1 }}.{% endif %}
+        </p>
+      </div>
+    </div>
+    {% if services %}
+      <div class="service-list">
+        {% for service in services %}
+          <span class="pill neutral">{{ service.name or service.port }}<span class="muted"> :{{ service.port }}</span></span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted small">No open services found by the port scan.</p>
+    {% endif %}
+  </section>
+</div>
+
+<script src="/static/charts.js?v={{ asset_version }}" defer></script>
+{% endblock %}

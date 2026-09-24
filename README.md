@@ -33,7 +33,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
-| SNMP collection | ⚠️ profiles, per-device **Test**, and scheduled polling (health, interface status and traffic rates) stored with history. No device page or charts yet |
+| SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
 | Alerting (Discord) | ❌ not yet |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Service map, topology | ❌ not yet |
@@ -320,8 +320,36 @@ Model and serial are left to Test; they do not change minute to minute, and on
 a large chassis that walk is the heaviest one.
 
 The card shows the latest poll for each device — `polling` with the numbers,
-or `no answer` with the reason — and when the next one is due. Charts and a
-per-device page are the next stage.
+or `no answer` with the reason — and when the next one is due.
+
+### The device page
+
+**Devices → Details** (or a device's name on the SNMP card) opens
+`/devices/<id>`. For a device on the SNMP list:
+
+- **Health** — CPU (or load average), memory and the hottest temperature
+  sensor, each charted over **1h, 24h, 7d or 30d**. Charts that would be empty
+  are left out.
+- **Interfaces** — every port with its status, current rate in and out, the
+  peak in the range, errors, and a small trace of the range. Choose a port to
+  chart its traffic; the busiest one is charted to begin with.
+- The solid line is the average for each point on the chart; where a point
+  covers several polls, a faint line shows the busiest of them, so a
+  five-minute spike still shows on a 30-day chart. Hover for the reading.
+- Gaps are gaps. A stretch the device did not answer is a break in the line,
+  never a drop to zero, and the page says what share of polls were answered.
+
+Only `up` gets a status colour. An empty switch port reads `down` to SNMP, and
+a page of red for unplugged ports would be a page of alarms about nothing.
+
+Charts are drawn by SPARK itself as SVG — no chart library, no CDN — and times
+are shown in your browser's time zone. The page reads whichever history
+tables cover the range (raw, five-minute, hourly) and combines them weighted
+by sample count, so a 30-day chart is continuous across the 7-day boundary
+where raw samples turn into rollups.
+
+A device that is not polled gets the same page with its sweep details and open
+services, and a pointer to the SNMP card.
 
 **Traffic is stored as a rate per interval, and only for interfaces that are
 up.** Every interface's status is always recorded; an empty port just doesn't
@@ -496,6 +524,8 @@ spark/
     subnets.py          subnet CRUD, validation, and the one-shot YAML seed
     snmp_config.py      SNMP credential profiles, devices, and Test
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
+    snmp_history.py     SNMP history as chart-sized series, across raw and rollups
+    charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
     discovery/
@@ -515,9 +545,11 @@ spark/
       oids.py           numeric OID catalogue and capability probes
       snmp.py           the SNMP collector
     web/                routes and dependencies
+      routes_device_page.py  the per-device page
       hardening.py      security headers, CSP nonces, same-origin check on writes
     templates/          Jinja templates
     static/             hand-written CSS, no build step
+      charts.js         local times and hover readouts on charts
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
       brand/            favicon (SVG + ICO) and Apple touch icon
   tests/
@@ -537,6 +569,7 @@ spark/
     test_snmp_crypto.py SNMPv3 privacy actually works; failures are told apart
     test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
     test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
+    test_device_page.py history read back weighted and gap-true; charts; the page
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
@@ -546,7 +579,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Seven things that will bite you if you don't know them:
+Eight things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -560,13 +593,18 @@ Seven things that will bite you if you don't know them:
   or reorder an entry that has shipped.
 - **SNMP counters** use the `Counter64` column type. They run to 2^64 − 1 and a
   plain `Integer` raises `OverflowError` above 2^63 − 1.
+- **No inline styles.** The CSP allows styles from `'self'` only, so a
+  `style="…"` attribute is silently ignored. Position things with classes (the
+  chart labels sit at fixed quarters for exactly this reason); a script may set
+  `element.style`, which the policy allows.
 - **Retention cutoffs are aligned to the bucket width** (`retention._floor`).
   A new downsampled series must use the aligned cutoffs, or a bucket straddling
   the cutoff loses its later half the next night, silently.
 - **Cyan is the brand, never a status.** `--accent` is for SPARK itself and for
   things you can click. Up, degraded and down are green, amber and red; unknown
   and paused are grey. The reverse holds too: status colours appear only on
-  statuses. Icon tiles are cyan unless what they count is actually happening:
+  statuses, and never on charts: the first series on a chart is cyan, the
+  second neutral grey. Icon tiles are cyan unless what they count is actually happening:
   the Degraded, Down and Open incidents tiles turn amber or red only when their
   number is above zero, on the same condition as the number itself. A red that
   is always there is a red you learn to stop seeing. No blue "info" state — it
@@ -589,7 +627,7 @@ Seven things that will bite you if you don't know them:
 | 4b | Service discovery — TCP port scan, services on devices | ✅ done |
 | 4d | Docker inventory — read-only socket proxy | next |
 | 5 | Service map — tree and filterable list views | planned |
-| 6 | SNMP — credentials + Test ✅, polling + storage ✅, device pages | in progress |
+| 6 | SNMP — credentials, Test, polling, history, device pages | ✅ done |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
 

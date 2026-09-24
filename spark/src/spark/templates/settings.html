@@ -541,7 +541,7 @@
         {% set probe = entry.probe %}
         <tr>
           <td>
-            <strong>{{ entry.device.display_name }}</strong>
+            <a class="settings-device-link" href="/devices/{{ entry.device.id }}"><strong>{{ entry.device.display_name }}</strong></a>
             <div class="muted small"><code>{{ entry.device.primary_ip or '—' }}</code></div>
           </td>
           <td>

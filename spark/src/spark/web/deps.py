@@ -22,7 +22,7 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
 def _asset_version() -> str:
-    """A cache key that changes exactly when the stylesheet does.
+    """A cache key that changes exactly when a static asset does.
 
     Without this, /static/app.css is a stable URL and browsers keep serving
     the copy they already have. Templates are rendered per request so they
@@ -36,9 +36,13 @@ def _asset_version() -> str:
     try:
         # A cache key, not a checksum anyone relies on; MD5 is fine for that
         # and the flag says so, so a FIPS build does not refuse to start.
-        return hashlib.md5(
-            (STATIC_DIR / "app.css").read_bytes(), usedforsecurity=False
-        ).hexdigest()[:8]
+        # Every hand-written asset the templates version with it: the
+        # stylesheet and, since the device page, charts.js. One key for both,
+        # so a change to either reaches browsers on the next load.
+        digest = hashlib.md5(usedforsecurity=False)
+        for name in ("app.css", "charts.js"):
+            digest.update((STATIC_DIR / name).read_bytes())
+        return digest.hexdigest()[:8]
     except OSError:
         # A missing stylesheet is the static mount's problem, not ours.
         return "dev"
