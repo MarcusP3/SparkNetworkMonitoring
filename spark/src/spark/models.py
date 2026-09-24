@@ -573,6 +573,76 @@ class LoginAttempt(Base):
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class SnmpProfile(Base, TimestampMixin):
+    """A set of SNMP credentials, shared by the devices that use it.
+
+    A profile rather than credentials per device because a homelab has one
+    community string, or one v3 user, used everywhere -- and when it changes it
+    should change in one place, not on every row.
+
+    Secret columns hold ciphertext from `vault.py`, never the secret. The v3
+    username is not one of them: it travels in the clear in every v3 request
+    regardless, so encrypting it at rest would protect nothing.
+    """
+
+    __tablename__ = "snmp_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    version: Mapped[str] = mapped_column(String(8), default="v2c")  # "v2c" | "v3"
+
+    community_sealed: Mapped[str | None] = mapped_column(Text)
+
+    username: Mapped[str | None] = mapped_column(String(64))
+    auth_protocol: Mapped[str | None] = mapped_column(String(16))
+    auth_key_sealed: Mapped[str | None] = mapped_column(Text)
+    # None means authNoPriv: authenticated, but the payload crosses in clear.
+    priv_protocol: Mapped[str | None] = mapped_column(String(16))
+    priv_key_sealed: Mapped[str | None] = mapped_column(Text)
+
+    port: Mapped[int] = mapped_column(Integer, default=161)
+
+    devices = relationship("SnmpDevice", back_populates="profile")
+
+
+class SnmpDevice(Base, TimestampMixin):
+    """A discovered device SPARK is to collect SNMP from.
+
+    Keyed to the device row, not an address: the address is read from the
+    device at the moment it is needed, so a DHCP move is followed rather than
+    left pointing at whatever answers on the old address.
+
+    A table of its own rather than columns on `device`. SQLite adds a column
+    with a non-idempotent ALTER that has already taken startup down once in
+    this project; a new table is a `create` with `checkfirst`.
+    """
+
+    __tablename__ = "snmp_device"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("device.id", ondelete="CASCADE"), unique=True
+    )
+    # RESTRICT, not CASCADE or SET NULL: deleting a profile must not quietly
+    # delete devices or leave them with no credentials. The UI refuses first;
+    # this is the backstop.
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_profile.id", ondelete="RESTRICT")
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # The last Test: when, whether it answered, and what it said. `last_probe`
+    # is the capability report as JSON, so the Settings page can show what the
+    # device supports without asking it again.
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_probe: Mapped[dict | None] = mapped_column(JSON)
+
+    profile = relationship("SnmpProfile", back_populates="devices")
+    device = relationship("Device")
+
+
 class Setting(Base, TimestampMixin):
     """Runtime settings a user edits in the UI.
 

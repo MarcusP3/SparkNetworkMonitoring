@@ -124,18 +124,32 @@ class Config(BaseModel):
     network: NetworkConfig = Field(default_factory=NetworkConfig)
 
     def secret_key(self) -> str:
-        """Session-signing key, generated once and persisted.
+        """The install's root secret, generated once and persisted.
 
-        Kept in a file rather than the database so that restoring a database
-        backup onto a fresh install doesn't silently resurrect old sessions.
+        The key the stored SNMP credentials are encrypted under is derived from
+        this (see `vault.py`). Kept in a file rather than the database so that a
+        copied or restored database is useless on its own: it neither
+        resurrects old sessions nor decrypts a single credential.
+
+        Created with 0600 from the first byte. It used to be written with the
+        default mode and chmod-ed afterwards, leaving a window in which it sat
+        on disk world-readable -- harmless while nothing used the key, not once
+        it guards credentials. O_EXCL also means two processes starting at once
+        cannot each write a different key and leave one of them decrypting
+        garbage.
         """
         path = self.app.secret_key_path
         if path.exists():
             return path.read_text().strip()
         path.parent.mkdir(parents=True, exist_ok=True)
         key = secrets.token_urlsafe(48)
-        path.write_text(key)
-        path.chmod(0o600)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            # Lost the race to another process; its key is the key.
+            return path.read_text().strip()
+        with os.fdopen(fd, "w") as handle:
+            handle.write(key)
         return key
 
 

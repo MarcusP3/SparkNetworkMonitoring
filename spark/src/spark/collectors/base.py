@@ -193,3 +193,14 @@ class Unreachable(CollectorError):
 
 class AuthFailed(CollectorError):
     """Device answered but rejected the credentials."""
+
+
+class CipherUnavailable(CollectorError):
+    """SPARK itself cannot encrypt SNMPv3 traffic.
+
+    A fault on this side, not the device's. pysnmp needs the `cryptography`
+    package for v3 privacy and quietly disables encryption without it; every
+    authPriv request then fails before it leaves the box. It used to surface as
+    a timeout, which sends you checking the network, the firewall and the
+    credentials -- everything except the actual cause.
+    """

@@ -1,5 +1,83 @@
 # Changelog
 
+## Unreleased — SNMP, stage 1: credentials and Test (2026-09-24)
+
+The SNMP collector has existed since increment 2 and nothing called it. This is
+the first stage of wiring it in: somewhere to keep credentials, and a way to
+find out what each device will answer before anything is polled.
+
+### Fixed — SNMPv3 with encryption never worked
+
+pysnmp needs the `cryptography` package for AES and DES privacy, and it was not
+a dependency. pysnmp copes with that by quietly flagging encryption as
+unavailable instead of failing at import, so every **authPriv** request — the
+one v3 mode worth using — died locally with "Ciphering services not
+available". Nothing noticed because nothing tested it: the live agent only
+spoke v2c.
+
+Verified against a real net-snmp agent rather than inferred: authPriv SHA/AES
+fails as shipped, and works with `cryptography` installed. It is now declared,
+and the lock gains exactly one line (`cryptography==50.0.1`; hash-checked
+wheels confirmed for x86_64 and arm64 on the image's glibc).
+
+`cryptography` has scheduled the removal of a cipher mode pysnmp calls, so a
+future lock upgrade could break this again just as silently.
+`tests/test_snmp_crypto.py` drives pysnmp's own AES path with no agent needed,
+on every run; uninstalling `cryptography` fails it.
+
+### Fixed — every SNMP failure was reported as a timeout
+
+A device that was off, a wrong v3 password, and SPARK being unable to encrypt
+all surfaced as `TimeoutError`, so they looked identical and needed three
+different fixes. The collector already declared `Unreachable` and `AuthFailed`
+and never raised them. Failures are now classified by pysnmp's error *type* —
+its message text overlaps, "Ciphering services not available" meaning either a
+missing library or a wrong key — into `AuthFailed`, `Unreachable` or the new
+`CipherUnavailable`. Where the difference cannot be seen from outside (an agent
+silently drops a request it cannot authenticate), the message says credentials
+are a suspect rather than pretending to know.
+
+### Added
+
+- **Settings → SNMP.** Credential profiles (v2c, v3 authNoPriv, v3 authPriv),
+  devices assigned to a profile, and a **Test** button that runs the capability
+  probe and records what the device supports. It replaces the `spark-probe`
+  step for anyone who would rather not open a shell.
+- **Encrypted credential storage** (`vault.py`): Fernet under a key derived
+  with HKDF from `secret.key`. Checked by reading the raw bytes of the SQLite
+  file and its WAL — no secret appears in them. Secrets are never rendered back
+  into a page, including after a validation error, and the password fields ask
+  the browser not to autofill the SPARK login into them.
+- Migration 6 creates `snmp_profile` and `snmp_device` from model metadata.
+- `.pill.neutral` for information that is not a status; a security level is
+  shown neutral, since v2c is not *degraded*.
+- Disabled buttons now look disabled. There was no rule for it.
+
+### Also fixed
+
+- **`secret.key` was briefly world-readable when first created**: written with
+  the default mode, then chmod-ed. Now created 0600 with `O_EXCL`. Harmless
+  while nothing used the key; not once it guards credentials.
+- A failed profile edit could leave the profile half-changed. Validation now
+  finishes before anything is assigned.
+
+### Tests
+
+- 61 new: `test_snmp_crypto.py`, `test_vault.py`, `test_snmp_settings.py`.
+  `tests/local_agent.sh` now also answers v3 (authPriv and authNoPriv users),
+  so the six live SNMP tests that always skipped here now run.
+- Mutation-checked — nine deliberate breakages, all caught. Two tests needed
+  rewriting before they could fail: the key-file permission test checked only
+  the final mode, which the old write-then-chmod code also reached, so it
+  passed against the bug it was written for; and the secrets-in-the-page test
+  was confirmed to fail only once *both* layers of protection were removed.
+- Suite: 396 passed, **0 skipped** (was 329 passed, 6 skipped). `smoke_test.py`: 76.
+
+### Not yet
+
+Nothing is polled on a schedule and nothing is stored beyond the Test result.
+That is stage 2; the device page is stage 3.
+
 ## Unreleased — status tiles only colour when something is wrong (2026-09-23)
 
 "Let colour mean status" made the Degraded, Down and Open incidents icon tiles

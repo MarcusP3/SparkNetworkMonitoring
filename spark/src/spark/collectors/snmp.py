@@ -35,16 +35,66 @@ from pysnmp.hlapi.v3arch.asyncio import (
     get_cmd,
 )
 
+from pysnmp.proto import errind
+
 from . import oids as O
 from .base import (
+    AuthFailed,
     CapabilityResult,
+    CipherUnavailable,
+    CollectorError,
     DeviceHealth,
     InterfaceStat,
     ProbeReport,
     TemperatureReading,
+    Unreachable,
 )
 
 log = logging.getLogger(__name__)
+
+# The device answered and said no. Everything here is a report PDU or a check
+# that failed on a response that did arrive, so "unreachable" would be wrong.
+_REJECTED = (
+    errind.UnknownUserName,
+    errind.WrongDigest,
+    errind.AuthenticationFailure,
+    errind.AuthenticationError,
+    errind.DecryptionError,
+    errind.UnknownSecurityName,
+    errind.UnsupportedSecurityLevel,
+    errind.UnknownCommunityName,
+)
+
+
+def _classify(indication: Any) -> CollectorError:
+    """Turn a pysnmp error indication into the exception that says what happened.
+
+    Every one of these used to become a bare TimeoutError, which made three
+    different faults look identical: a device that is off, a v3 password that
+    is wrong, and SPARK being unable to encrypt at all. They need three
+    different fixes, so they get three different names.
+
+    Classified by type, not by message. pysnmp's own wording overlaps -- a
+    missing cipher library and a wrong privacy key both say "Ciphering services
+    not available" -- so the text cannot tell them apart and the class can.
+    pysnmp's text is kept at the end of each message for diagnosis.
+    """
+    text = str(indication)
+    if isinstance(indication, errind.RequestTimedOut):
+        return Unreachable(
+            "No response. The device may be down or have SNMP off -- or the "
+            "community or v3 credentials are wrong, since an agent drops a "
+            f"request it cannot authenticate rather than refusing it. ({text})"
+        )
+    if isinstance(indication, errind.EncryptionError):
+        return CipherUnavailable(
+            "SPARK cannot encrypt SNMPv3 traffic: pysnmp found no cipher "
+            "backend. This is SPARK's fault, not the device's -- the "
+            f"`cryptography` package is missing from this build. ({text})"
+        )
+    if isinstance(indication, _REJECTED):
+        return AuthFailed(f"The device rejected the credentials. ({text})")
+    return CollectorError(text)
 
 HR_STORAGE_TYPE = "1.3.6.1.2.1.25.2.3.1.2"
 HR_STORAGE_TYPE_RAM = "1.3.6.1.2.1.25.2.1.2"
@@ -259,7 +309,7 @@ class SnmpCollector:
             *[ObjectType(ObjectIdentity(oid)) for oid in oid_list],
         )
         if error_indication:
-            raise TimeoutError(str(error_indication))
+            raise _classify(error_indication)
         if error_status:
             raise RuntimeError(error_status.prettyPrint())
 
@@ -291,7 +341,7 @@ class SnmpCollector:
             lexicographicMode=False,
         ):
             if error_indication:
-                raise TimeoutError(str(error_indication))
+                raise _classify(error_indication)
             if error_status:
                 raise RuntimeError(error_status.prettyPrint())
             for name, value in var_binds:
@@ -320,7 +370,7 @@ class SnmpCollector:
             ObjectType(ObjectIdentity(base_oid)), lexicographicMode=False,
         ):
             if error_indication:
-                raise TimeoutError(str(error_indication))
+                raise _classify(error_indication)
             if error_status:
                 raise RuntimeError(error_status.prettyPrint())
             for name, value in var_binds:

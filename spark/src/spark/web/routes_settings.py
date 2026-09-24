@@ -16,11 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import port_catalogue
 from .. import scheduler as scheduler_module
+from .. import snmp_config
 from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
-from ..models import Device, User
+from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
+from ..models import Device, SnmpDevice, User
+from ..vault import vault_for
 from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -65,6 +68,65 @@ async def _port_catalogue(session: AsyncSession) -> dict:
     }
 
 
+async def _snmp(session: AsyncSession) -> dict:
+    """Everything the SNMP card needs. No secret ever leaves this function.
+
+    Profiles are described by what they protect, not by what they contain --
+    the page shows "v3 authPriv · SHA / AES" and whether a secret is set, never
+    the secret. Candidate devices are the discovered ones not already listed.
+    """
+    profiles = await snmp_config.list_profiles(session)
+    in_use = dict(
+        (
+            await session.execute(
+                select(SnmpDevice.profile_id, func.count(SnmpDevice.id))
+                .group_by(SnmpDevice.profile_id)
+            )
+        ).all()
+    )
+    listed = await snmp_config.list_devices(session)
+    listed_ids = {device.id for _, device, _ in listed}
+    candidates = [
+        d for d in (
+            await session.execute(
+                select(Device).where(Device.ignored.is_(False), Device.primary_ip.isnot(None))
+            )
+        ).scalars().all()
+        if d.id not in listed_ids
+    ]
+    candidates.sort(key=lambda d: _ip_sort_key(d.primary_ip))
+    return {
+        "profiles": [
+            {
+                "profile": p,
+                "level": snmp_config.security_level(p),
+                "devices": in_use.get(p.id, 0),
+                "has_community": bool(p.community_sealed),
+                "has_auth": bool(p.auth_key_sealed),
+                "has_priv": bool(p.priv_key_sealed),
+            }
+            for p in profiles
+        ],
+        "devices": [
+            {"row": row, "device": device, "profile": profile, "probe": row.last_probe or {}}
+            for row, device, profile in listed
+        ],
+        "candidates": candidates,
+        "auth_protocols": AUTH_PROTOCOLS,
+        "priv_protocols": PRIV_PROTOCOLS,
+        "min_key": snmp_config.MIN_V3_KEY,
+    }
+
+
+def _ip_sort_key(address: str | None) -> tuple:
+    import ipaddress
+
+    try:
+        return (0, int(ipaddress.ip_address(address or "")))
+    except ValueError:
+        return (1, address or "")
+
+
 def _checked(value: str) -> bool:
     """An unticked checkbox is not submitted at all, so absence means false."""
     return value == "1"
@@ -81,6 +143,8 @@ async def _render(
     status_code: int = 200,
     port_error: str | None = None,
     port_form: dict | None = None,
+    snmp_error: str | None = None,
+    snmp_form: dict | None = None,
 ):
     rows = await subnet_service.list_subnets(session)
     discovery = await get_setting(session, "discovery")
@@ -112,6 +176,9 @@ async def _render(
             "ports": await _port_catalogue(session),
             "port_error": port_error,
             "port_form": port_form or {},
+            "snmp": await _snmp(session),
+            "snmp_error": snmp_error,
+            "snmp_form": snmp_form or {},
         },
         status_code=status_code,
     )
@@ -300,3 +367,174 @@ async def set_builtin_ports(
     await port_catalogue.set_builtins(session, form.getlist("keep"))
     await session.commit()
     return redirect("/settings")
+
+
+# --------------------------------------------------------------------------
+# SNMP
+# --------------------------------------------------------------------------
+
+SNMP_ANCHOR = "/settings#snmp"
+
+
+def _profile_form(**fields: str) -> tuple[snmp_config.ProfileInput, dict]:
+    """The submitted profile, and the part of it safe to put back on a page.
+
+    The second value drops every secret. A form that fails validation comes
+    back with the name, version, user and protocols still filled in -- and the
+    community string and keys empty, like any password field. Echoing a secret
+    into HTML to save someone retyping it is the trade the other way round.
+    """
+    data = snmp_config.ProfileInput(**fields)
+    safe = {k: v for k, v in fields.items() if k not in ("community", "auth_key", "priv_key")}
+    return data, safe
+
+
+@router.post("/settings/snmp/profiles")
+async def add_snmp_profile(
+    request: Request,
+    name: str = Form(""),
+    version: str = Form("v2c"),
+    community: str = Form(""),
+    username: str = Form(""),
+    auth_protocol: str = Form("SHA"),
+    auth_key: str = Form(""),
+    priv_protocol: str = Form("AES"),
+    priv_key: str = Form(""),
+    port: str = Form("161"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    data, safe = _profile_form(
+        name=name, version=version, community=community, username=username,
+        auth_protocol=auth_protocol, auth_key=auth_key, priv_protocol=priv_protocol,
+        priv_key=priv_key, port=port,
+    )
+    try:
+        await snmp_config.save_profile(session, vault_for(config), data)
+    except snmp_config.ProfileError as exc:
+        return await _render(request, session, config, user, snmp_error=str(exc),
+                             snmp_form=safe, status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/profiles/{profile_id}")
+async def edit_snmp_profile(
+    request: Request,
+    profile_id: int,
+    name: str = Form(""),
+    version: str = Form("v2c"),
+    community: str = Form(""),
+    username: str = Form(""),
+    auth_protocol: str = Form("SHA"),
+    auth_key: str = Form(""),
+    priv_protocol: str = Form("AES"),
+    priv_key: str = Form(""),
+    port: str = Form("161"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    data, _safe = _profile_form(
+        name=name, version=version, community=community, username=username,
+        auth_protocol=auth_protocol, auth_key=auth_key, priv_protocol=priv_protocol,
+        priv_key=priv_key, port=port,
+    )
+    try:
+        await snmp_config.save_profile(session, vault_for(config), data, profile_id)
+    except snmp_config.ProfileError as exc:
+        return await _render(request, session, config, user, snmp_error=str(exc),
+                             status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/profiles/{profile_id}/delete")
+async def delete_snmp_profile(
+    request: Request,
+    profile_id: int,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    try:
+        await snmp_config.delete_profile(session, profile_id)
+    except snmp_config.ProfileError as exc:
+        return await _render(request, session, config, user, snmp_error=str(exc),
+                             status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/devices")
+async def add_snmp_device(
+    request: Request,
+    device_id: str = Form(""),
+    profile_id: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    try:
+        await snmp_config.add_device(session, int(device_id), int(profile_id))
+    except ValueError as exc:  # ProfileError, or int() of an empty select
+        message = str(exc) if isinstance(exc, snmp_config.ProfileError) else "Choose a device and a profile."
+        return await _render(request, session, config, user, snmp_error=message,
+                             status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/devices/{row_id}/profile")
+async def change_snmp_device_profile(
+    request: Request,
+    row_id: int,
+    profile_id: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    try:
+        await snmp_config.set_device_profile(session, row_id, int(profile_id))
+    except ValueError as exc:
+        message = str(exc) if isinstance(exc, snmp_config.ProfileError) else "Choose a profile."
+        return await _render(request, session, config, user, snmp_error=message,
+                             status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/devices/{row_id}/delete")
+async def remove_snmp_device(
+    row_id: int,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    await snmp_config.remove_device(session, row_id)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/devices/{row_id}/test")
+async def test_snmp_device(
+    request: Request,
+    row_id: int,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Ask the device what it supports, and record the answer.
+
+    Synchronous on purpose: it is an explicit button, the answer is what you
+    pressed it for, and a probe is bounded by the profile's timeout. The
+    service layer ends its transaction before touching the network, so the
+    request is not sitting on an open snapshot while it waits.
+    """
+    try:
+        await snmp_config.probe_device(session, vault_for(config), row_id)
+    except snmp_config.ProfileError as exc:
+        return await _render(request, session, config, user, snmp_error=str(exc),
+                             status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)

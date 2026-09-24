@@ -33,7 +33,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | History retention — nightly downsample and prune | ✅ working |
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
-| SNMP collection | ⚠️ library and `spark-probe` CLI only — nothing is polled on a schedule or persisted |
+| SNMP collection | ⚠️ credential profiles and a per-device **Test** in Settings; v2c and v3 authPriv both work. Not yet polled on a schedule or persisted |
 | Alerting (Discord) | ❌ not yet |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Service map, topology | ❌ not yet |
@@ -257,7 +257,30 @@ thirty.
 
 ## SNMP
 
-### Find out what your gear actually supports
+### Add a device and test it
+
+**Settings → SNMP.** Create a profile — a v2c community, or a v3 user with its
+authentication and privacy passwords — then add discovered devices to it and
+press **Test**. SPARK asks each device a set of read-only questions and records
+which ones it can answer, so you can see what it will be able to collect before
+it collects anything. Most homelabs need exactly one profile.
+
+Credentials are **encrypted in the database** under a key derived from
+`secret.key` in the data directory, and never shown again once saved — an edit
+form leaves a secret blank to keep it. A copied or backed-up database is useless
+on its own. The flip side: **back up `secret.key` with the database**, or every
+credential has to be entered again after a restore.
+
+A failed Test says which kind of failure it was, because they need different
+fixes:
+
+| Result | Means |
+|---|---|
+| `AuthFailed` | The device answered and rejected the credentials — wrong v3 user or auth password |
+| `Unreachable` | No answer at all. Down, SNMP off, *or* a wrong community or privacy password — an agent drops a request it cannot authenticate rather than refusing it, so from outside these look identical |
+| `CipherUnavailable` | SPARK cannot encrypt v3 traffic. SPARK's fault, not the device's |
+
+### Find out what your gear actually supports, from the command line
 
 Vendor SNMP documentation is unreliable, and prosumer switches frequently omit
 standard MIBs — temperature especially. So don't guess:
@@ -395,6 +418,8 @@ spark/
     events.py           in-process pub/sub for live page updates
     retention.py        nightly downsample and prune; never VACUUMs
     subnets.py          subnet CRUD, validation, and the one-shot YAML seed
+    snmp_config.py      SNMP credential profiles, devices, and Test
+    vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
     discovery/
       sweep.py          ICMP sweep, ARP table, reverse DNS
@@ -431,7 +456,10 @@ spark/
     test_paging.py      one device per page, exactly once, whatever the filter
     test_port_catalogue.py  the editable port list, and what it costs to scan
     test_snmp.py        pure-function tests, live tests that skip without an agent
-    local_agent.sh      starts a throwaway net-snmp agent on 127.0.0.1:11161
+    test_snmp_crypto.py SNMPv3 privacy actually works; failures are told apart
+    test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
+    test_vault.py       credential encryption, key derivation, the key file
+    local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
 ```
 
 No npm, no bundler, no Alembic. Clone it and read it top to bottom.
@@ -476,7 +504,7 @@ Five things that will bite you if you don't know them:
 | 4b | Service discovery — TCP port scan, services on devices | ✅ done |
 | 4d | Docker inventory — read-only socket proxy | next |
 | 5 | Service map — tree and filterable list views | planned |
-| 6 | SNMP metric storage + device pages | planned |
+| 6 | SNMP — credentials + Test ✅, polling + storage, device pages | in progress |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
 

@@ -8,6 +8,7 @@ implement the same interface, so nothing upstream needs to know the difference.
 from .base import (
     AuthFailed,
     CapabilityResult,
+    CipherUnavailable,
     Collector,
     CollectorError,
     DeviceHealth,
@@ -21,6 +22,7 @@ from .snmp import SnmpCollector, SnmpCredential, probe_host
 __all__ = [
     "AuthFailed",
     "CapabilityResult",
+    "CipherUnavailable",
     "Collector",
     "CollectorError",
     "DeviceHealth",

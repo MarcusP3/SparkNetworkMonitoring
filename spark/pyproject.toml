@@ -20,6 +20,10 @@ dependencies = [
     "pysnmp>=7.1",
     "icmplib>=3.0",
     "dnspython>=2.6",
+    # Two jobs. pysnmp needs it for SNMPv3 privacy (AES/DES) and silently
+    # disables encryption without it; SPARK uses it to encrypt the stored
+    # SNMP credentials. See tests/test_snmp_crypto.py for why it is tested.
+    "cryptography>=44",
 ]
 
 [project.scripts]

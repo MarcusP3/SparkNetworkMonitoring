@@ -337,6 +337,272 @@
       </dd>
     </dl>
   </section>
+
+  {# ---------------------------------------------------------------- SNMP #}
+  {% macro profile_fields(f, prefix, editing=False, has_community=False, has_auth=False, has_priv=False) %}
+    {# Secret fields are always rendered empty. On edit, blank means "keep what
+       is stored" -- the page never has the current value to show, by design.
+       autocomplete="new-password" stops the browser pre-filling your SPARK
+       login password into the first password box it sees, which on this form
+       would silently become a community string. #}
+    <div class="snmp-grid">
+      <label class="inline-field">
+        <span class="muted small">Name</span>
+        <input type="text" name="name" value="{{ f.name or '' }}" placeholder="homelab" required
+               maxlength="64" autocomplete="off">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Version</span>
+        <select name="version" class="snmp-version">
+          <option value="v2c" {% if (f.version or 'v2c') == 'v2c' %}selected{% endif %}>v2c</option>
+          <option value="v3" {% if f.version == 'v3' %}selected{% endif %}>v3</option>
+        </select>
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Port</span>
+        <input type="number" name="port" class="narrow" min="1" max="65535"
+               value="{{ f.port or 161 }}">
+      </label>
+
+      <label class="inline-field v2c-only">
+        <span class="muted small">Community string</span>
+        <input type="password" name="community" autocomplete="new-password"
+               placeholder="{{ '•••••••• — leave blank to keep' if editing and has_community else 'read-only community' }}">
+      </label>
+
+      <label class="inline-field v3-only">
+        <span class="muted small">User</span>
+        <input type="text" name="username" value="{{ f.username or '' }}" autocomplete="off"
+               maxlength="64" placeholder="spark">
+      </label>
+      <label class="inline-field v3-only">
+        <span class="muted small">Auth</span>
+        <select name="auth_protocol">
+          {% for proto in snmp.auth_protocols %}
+            <option value="{{ proto }}" {% if (f.auth_protocol or 'SHA') == proto %}selected{% endif %}>{{ proto }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="inline-field v3-only">
+        <span class="muted small">Auth password</span>
+        <input type="password" name="auth_key" autocomplete="new-password"
+               placeholder="{{ '•••••••• — leave blank to keep' if editing and has_auth else 'at least ' ~ snmp.min_key ~ ' characters' }}">
+      </label>
+      <label class="inline-field v3-only">
+        <span class="muted small">Privacy</span>
+        <select name="priv_protocol">
+          {% set priv = f.priv_protocol if f.priv_protocol is defined and f.priv_protocol is not none else ('AES' if not editing else 'none') %}
+          {% for proto in snmp.priv_protocols %}
+            <option value="{{ proto }}" {% if priv == proto %}selected{% endif %}>{{ proto }}</option>
+          {% endfor %}
+          <option value="none" {% if priv in ('none', '', None) %}selected{% endif %}>None — authNoPriv</option>
+        </select>
+      </label>
+      <label class="inline-field v3-only">
+        <span class="muted small">Privacy password</span>
+        <input type="password" name="priv_key" autocomplete="new-password"
+               placeholder="{{ '•••••••• — leave blank to keep' if editing and has_priv else 'at least ' ~ snmp.min_key ~ ' characters' }}">
+      </label>
+    </div>
+  {% endmacro %}
+
+  <section class="card" id="snmp">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01M11 8h6M11 16h6"/></svg></span>
+      <div>
+        <h2>SNMP</h2>
+        <p class="card-sub">
+          Credentials SPARK uses to read device health and interfaces. Stored
+          encrypted, and never shown again once saved.
+        </p>
+      </div>
+    </div>
+
+    {% if snmp_error %}<div class="alert error">{{ snmp_error }}</div>{% endif %}
+
+    <h3 class="sub-title">Profiles</h3>
+    <p class="muted small">
+      One set of credentials, shared by every device that uses it — usually
+      you need exactly one.
+    </p>
+
+    {% if snmp.profiles %}
+    <table class="table compact snmp-profiles">
+      <thead><tr><th>Name</th><th>Security</th><th>Devices</th><th></th></tr></thead>
+      <tbody>
+        {% for entry in snmp.profiles %}
+        {% set p = entry.profile %}
+        <tr>
+          <td><strong>{{ p.name }}</strong> <span class="muted small">:{{ p.port }}</span></td>
+          <td>
+            {# Neutral, on purpose. Status colours are for statuses, and a v2c
+               profile is not degraded -- amber here would teach that amber
+               can mean "configuration you might reconsider", which is the
+               dilution the dashboard tiles were just fixed for. The words
+               carry the warning. #}
+            <span class="pill neutral">{{ entry.level }}</span>
+          </td>
+          <td class="muted">{{ entry.devices }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/snmp/profiles/{{ p.id }}/delete">
+              <button type="submit" class="btn-quiet danger"
+                      {% if entry.devices %}disabled title="In use by {{ entry.devices }} device(s)"{% endif %}>Remove</button>
+            </form>
+          </td>
+        </tr>
+        <tr class="edit-row">
+          <td colspan="4">
+            <details>
+              <summary class="muted small">Edit {{ p.name }}</summary>
+              <form method="post" action="/settings/snmp/profiles/{{ p.id }}" class="snmp-form">
+                {{ profile_fields({"name": p.name, "version": p.version, "port": p.port,
+                                   "username": p.username, "auth_protocol": p.auth_protocol,
+                                   "priv_protocol": p.priv_protocol or "none"},
+                                  "edit", editing=True, has_community=entry.has_community,
+                                  has_auth=entry.has_auth, has_priv=entry.has_priv) }}
+                <button type="submit" class="btn-quiet">Save {{ p.name }}</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <details class="add-profile" {% if not snmp.profiles or snmp_form %}open{% endif %}>
+      <summary class="sub-title">Add a profile</summary>
+      <form method="post" action="/settings/snmp/profiles" class="snmp-form">
+        {{ profile_fields(snmp_form, "add") }}
+        <button type="submit" class="btn-primary">Add profile</button>
+      </form>
+    </details>
+
+    <h3 class="sub-title">Devices</h3>
+    {% if not snmp.profiles %}
+      <p class="muted small">Add a profile first; each device uses one.</p>
+    {% elif not snmp.candidates and not snmp.devices %}
+      <p class="muted small">Nothing discovered yet. Devices appear here once a sweep has found them.</p>
+    {% else %}
+      {% if snmp.candidates %}
+      <form method="post" action="/settings/snmp/devices" class="row-form add-snmp-device">
+        <label class="inline-field">
+          <span class="muted small">Device</span>
+          <select name="device_id" required>
+            <option value="">Choose a device…</option>
+            {% for d in snmp.candidates %}
+              <option value="{{ d.id }}">{{ d.display_name }} — {{ d.primary_ip }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="inline-field">
+          <span class="muted small">Profile</span>
+          <select name="profile_id" required>
+            {% for entry in snmp.profiles %}
+              <option value="{{ entry.profile.id }}">{{ entry.profile.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="btn-quiet">Add device</button>
+      </form>
+      {% endif %}
+    {% endif %}
+
+    {% if snmp.devices %}
+    <table class="table snmp-devices">
+      <thead><tr><th>Device</th><th>Profile</th><th>Last test</th><th></th></tr></thead>
+      <tbody>
+        {% for entry in snmp.devices %}
+        {% set row = entry.row %}
+        {% set probe = entry.probe %}
+        <tr>
+          <td>
+            <strong>{{ entry.device.display_name }}</strong>
+            <div class="muted small"><code>{{ entry.device.primary_ip or '—' }}</code></div>
+          </td>
+          <td>
+            <form method="post" action="/settings/snmp/devices/{{ row.id }}/profile" class="inline-select">
+              <select name="profile_id" class="auto-submit" aria-label="Profile for {{ entry.device.display_name }}">
+                {% for p in snmp.profiles %}
+                  <option value="{{ p.profile.id }}" {% if p.profile.id == row.profile_id %}selected{% endif %}>{{ p.profile.name }}</option>
+                {% endfor %}
+              </select>
+              <noscript><button type="submit" class="btn-quiet">Set</button></noscript>
+            </form>
+          </td>
+          <td class="snmp-result">
+            {% if not row.last_checked_at %}
+              <span class="muted small">Not tested yet.</span>
+            {% elif probe.reachable %}
+              {% set supported = probe.capabilities | selectattr('supported') | list %}
+              <span class="pill ok dot">answering</span>
+              <span class="small">{{ probe.sys_name or '—' }}{% if probe.vendor %} · {{ probe.vendor }}{% endif %}{% if probe.uptime %} · up {{ probe.uptime }}{% endif %}</span>
+              <details class="capabilities">
+                <summary class="muted small">Supports {{ supported | length }} of {{ probe.capabilities | length }}</summary>
+                <ul>
+                  {% for c in probe.capabilities %}
+                  <li class="{{ 'yes' if c.supported else 'no' }}">
+                    <span aria-hidden="true">{{ '✓' if c.supported else '—' }}</span>
+                    {{ c.label }}{% if c.notes %} <span class="muted small">· {{ c.notes }}</span>{% endif %}
+                  </li>
+                  {% endfor %}
+                </ul>
+              </details>
+            {% else %}
+              <span class="pill bad dot">no answer</span>
+              <div class="muted small snmp-error">{{ row.last_error }}</div>
+            {% endif %}
+            {% if row.last_checked_at %}
+              <div class="muted small">{{ row.last_checked_at.strftime('%b %-d, %H:%M') }}</div>
+            {% endif %}
+          </td>
+          <td class="actions">
+            <form method="post" action="/settings/snmp/devices/{{ row.id }}/test">
+              <button type="submit" class="btn-quiet">Test</button>
+            </form>
+            <form method="post" action="/settings/snmp/devices/{{ row.id }}/delete">
+              <button type="submit" class="btn-quiet danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <dl class="legend">
+      <dt>v2c or v3</dt>
+      <dd>
+        v2c sends the community string in clear text in every request — anyone
+        who can see the traffic can read it and query the device. Fine on a
+        management VLAN you trust; use a read-only community, and never reuse a
+        real password as one.
+      </dd>
+      <dd>
+        v3 <strong>authPriv</strong> authenticates and encrypts. <strong>authNoPriv</strong>
+        authenticates but sends the replies in clear — better than v2c, not
+        private. Use authPriv wherever the device offers it.
+      </dd>
+      <dt>Where the credentials live</dt>
+      <dd>
+        Encrypted in the database under a key derived from
+        <code>secret.key</code> in SPARK's data directory. A copied or backed-up
+        database is useless on its own; the VM itself is not protected, since
+        SPARK has to be able to read the key. <strong>Back up
+        <code>secret.key</code> with the database</strong> — without it every
+        credential has to be entered again.
+      </dd>
+      <dt>What Test does</dt>
+      <dd>
+        Asks the device a set of read-only questions and records which ones it
+        can answer, so you can see what SPARK will be able to collect before it
+        collects anything. It does not change the device. A device that does
+        not answer may be down, have SNMP off, or be refusing the credentials —
+        an agent drops a request it cannot authenticate rather than rejecting
+        it, so from outside those look the same.
+      </dd>
+    </dl>
+  </section>
 </div>
 
 <script>
@@ -349,6 +615,25 @@
     function sync() { field.classList.toggle('dimmed', !box.checked); }
     box.addEventListener('change', sync);
     sync();
+  })();
+
+  // Show only the fields for the chosen SNMP version. Hidden with a class on
+  // <html>, so with JS off both sets simply show and the server ignores the
+  // ones that do not apply.
+  (function () {
+    document.documentElement.classList.add('js-snmp');
+    function sync(form) {
+      var select = form.querySelector('.snmp-version');
+      if (!select) return;
+      form.classList.toggle('is-v3', select.value === 'v3');
+    }
+    document.querySelectorAll('.snmp-form').forEach(sync);
+    document.addEventListener('change', function (event) {
+      var el = event.target;
+      if (el.classList.contains('snmp-version')) sync(el.form);
+      // A device's profile select saves itself.
+      if (el.classList.contains('auto-submit') && el.form) el.form.submit();
+    });
   })();
 </script>
 {% endblock %}

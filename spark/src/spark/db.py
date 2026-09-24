@@ -22,7 +22,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .config import Config
-from .models import DEFAULT_SETTINGS, Base, CheckRollup, Setting, Subnet
+from .models import (
+    DEFAULT_SETTINGS,
+    Base,
+    CheckRollup,
+    Setting,
+    SnmpDevice,
+    SnmpProfile,
+    Subnet,
+)
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +183,21 @@ async def _close_overlapping_incidents(session: AsyncSession) -> None:
     )
 
 
-CURRENT_VERSION = 5
+
+@migration(6, "add SNMP credential profiles and the devices that use them")
+async def _add_snmp_tables(session: AsyncSession) -> None:
+    """Create snmp_profile and snmp_device on databases that predate them.
+
+    From model metadata with `checkfirst`, like migrations 2 and 3, so the
+    result cannot drift from a fresh install's `create_all`. Profile first:
+    snmp_device holds a foreign key to it.
+    """
+    connection = await session.connection()
+    await connection.run_sync(SnmpProfile.__table__.create, checkfirst=True)
+    await connection.run_sync(SnmpDevice.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 6
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

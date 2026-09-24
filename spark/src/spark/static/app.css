@@ -514,6 +514,9 @@ a.stat:hover {
      VLAN column squeezed the Name column. */
   white-space: nowrap;
 }
+/* Neutral: information, not a status. Same surface as unknown/paused, so it
+   reads as a label and never as good or bad news. */
+.pill.neutral { background: var(--surface-3); color: var(--text-muted); border-color: var(--border); }
 .pill.ok   { background: var(--ok-bg);   color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
 .pill.warn { background: var(--warn-bg); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
 .pill.bad  { background: var(--bad-bg);  color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 28%, transparent); }
@@ -1089,6 +1092,61 @@ input.narrow { max-width: 5.5rem; }
    interesting ones to think about, not a recommendation either way -- plenty
    of homelabs have a reason to run them. */
 .port-choice.noteworthy span { color: var(--warn); }
+
+/* A disabled button has to look disabled. There was no rule for it at all, so
+   one that could not be pressed -- Remove on a profile still in use -- looked
+   exactly like one that could, and the only feedback for pressing it was that
+   nothing happened. Dimmed, with the not-allowed cursor; the title attribute
+   on the button says why. */
+.btn-quiet:disabled, .btn-primary:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: auto;  /* keep the tooltip that explains why */
+}
+.btn-quiet:disabled:hover { background: transparent; color: inherit; }
+
+/* ---- settings: SNMP ------------------------------------------------------ */
+
+/* Profile fields in a wrapping grid: nine fields at most, and a row of nine
+   inputs does not fit anywhere but a very wide screen. */
+.snmp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: .75rem 1rem;
+  margin: .75rem 0 1rem;
+}
+.snmp-grid .inline-field { flex-direction: column; align-items: stretch; gap: .2rem; }
+.snmp-grid input, .snmp-grid select { width: 100%; }
+
+/* Only the chosen version's fields. Keyed off a class JS puts on <html>, so
+   with JS off every field shows and the server ignores the irrelevant ones --
+   nothing is ever hidden that cannot be reached. */
+html.js-snmp .snmp-form .v3-only { display: none; }
+html.js-snmp .snmp-form.is-v3 .v3-only { display: flex; }
+html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
+
+.add-profile { margin: 1rem 0 1.5rem; }
+.add-profile > summary { cursor: pointer; display: list-item; }
+
+/* The edit form lives in its own full-width row under the profile, so opening
+   it does not squeeze the columns above. */
+.snmp-profiles tr.edit-row td { padding-top: 0; }
+.snmp-profiles tr.edit-row:hover { background: none; }
+.snmp-profiles summary { cursor: pointer; }
+
+.add-snmp-device { margin: .5rem 0 1rem; }
+
+.snmp-devices td { vertical-align: top; }
+.snmp-result .pill { margin-right: .35rem; }
+.snmp-error { max-width: 42rem; margin-top: .25rem; overflow-wrap: anywhere; }
+.inline-select select { width: auto; min-width: 9rem; padding: .3rem .5rem; font-size: .875rem; }
+
+.capabilities { margin-top: .35rem; }
+.capabilities summary { cursor: pointer; }
+.capabilities ul { list-style: none; margin: .4rem 0 0; padding: 0; font-size: .8125rem; }
+.capabilities li { display: flex; gap: .45rem; padding: .1rem 0; }
+.capabilities li.yes > span:first-child { color: var(--ok); }
+.capabilities li.no { color: var(--text-muted); }
 
 /* ---- devices: pager ---------------------------------------------------- */
 
