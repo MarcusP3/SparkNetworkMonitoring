@@ -406,3 +406,15 @@ def test_the_asset_version_follows_charts_js(tmp_path, monkeypatch):
     first = deps._asset_version()
     (tmp_path / "charts.js").write_text("// two")
     assert deps._asset_version() != first, "a changed script would be served stale"
+
+
+def test_mac_and_vendor_live_on_the_device_page_not_the_list(site):
+    """The list lost its MAC and Vendor columns; the device page keeps both,
+    and the randomised-MAC warning that used to sit in the list moved with them."""
+    listing = site.get("/devices").text
+    assert "<th>MAC</th>" not in listing and "<th>Vendor</th>" not in listing
+    assert "aa:bb:cc:00:00:01" not in listing
+    page = site.get("/devices/1").text
+    assert "aa:bb:cc:00:00:01" in page
+    # 0xaa has the locally-administered bit set: a randomised address.
+    assert "random MAC" in page

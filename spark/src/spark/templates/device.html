@@ -17,7 +17,12 @@
         <h1>{{ device.display_name }}</h1>
         <p class="page-sub">
           <code>{{ device.primary_ip or 'no address' }}</code>
-          {% if device.mac %} · <code>{{ device.mac }}</code>{% endif %}
+          {% if device.mac %} · <code>{{ device.mac }}</code>
+            {%- if randomised %} <span class="pill warn" title="Locally administered address — most
+                  likely a phone randomising its MAC, so it will not come back
+                  under this address">random MAC</span>{% endif %}
+          {% else %} · <span title="No MAC: this subnet is routed, so ARP
+                cannot reach it. Identity falls back to IP.">IP identity</span>{% endif %}
           {% if device.vendor %} · {{ device.vendor }}{% endif %}
         </p>
       </div>

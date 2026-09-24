@@ -256,8 +256,6 @@
           <th>Name</th>
           <th>Address</th>
           <th>VLAN</th>
-          <th>MAC</th>
-          <th>Vendor</th>
           <th>SNMP</th>
           <th>Services</th>
           <th>Last seen</th>
@@ -307,20 +305,6 @@
             {% if row.subnet and row.subnet.vlan is not none %}{{ row.subnet.vlan }}
             {% else %}—{% endif %}
           </td>
-          <td>
-            {% if device.mac %}
-              <code class="small">{{ device.mac }}</code>
-              {% if row.randomised %}
-                <span class="pill warn" title="Locally administered address — most
-                      likely a phone randomising its MAC, so it will not come back
-                      under this address">random</span>
-              {% endif %}
-            {% else %}
-              <span class="muted small" title="No MAC: this subnet is routed, so ARP
-                    cannot reach it. Identity falls back to IP.">IP identity</span>
-            {% endif %}
-          </td>
-          <td class="muted">{{ device.vendor or '—' }}</td>
           <td>
             {% if row.snmp %}
               <a href="/devices/{{ device.id }}" class="pill {{ row.snmp.kind }}{% if row.snmp.kind != 'neutral' %} dot{% endif %}"

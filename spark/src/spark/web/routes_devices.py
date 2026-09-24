@@ -20,7 +20,6 @@ from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
-from ..discovery.oui import is_locally_administered
 from ..discovery.ports import concern
 from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_port_scan, last_sweep
 from ..discovery.services import services_for
@@ -307,7 +306,6 @@ async def list_devices(
             {
                 "device": device,
                 "age_seconds": age,
-                "randomised": is_locally_administered(device.mac),
                 "watched": device.id in watched_ids,
                 # Worked out from the address rather than read from the label
                 # recorded at discovery time, so renaming a subnet does not

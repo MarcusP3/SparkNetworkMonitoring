@@ -802,10 +802,10 @@ tr.just-changed td {
 }
 
 .inline-name input {
-  /* A set width rather than the browser's 20-character default: the SNMP
-     column needed the room, and at the default the table no longer fit its
-     card even on a wide screen. Long names scroll inside the field. */
-  width: 9rem;
+  /* A set width rather than the browser's 20-character default, which is
+     wider than the column needs. MAC and Vendor moved to the device page,
+     which gave some of the room back. Long names scroll inside the field. */
+  width: 11rem;
   min-width: 6rem;      /* the Name column is narrower since VLAN arrived */
   padding: .3rem .45rem;
   font-size: .875rem;

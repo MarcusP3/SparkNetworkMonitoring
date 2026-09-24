@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import charts
 from .. import snmp_history as history
+from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
     Device,
@@ -268,6 +269,7 @@ async def device_page(
             "user": user,
             "title": device.display_name,
             "device": device,
+            "randomised": is_locally_administered(device.mac),
             "services": services,
             "watched": watched or 0,
             "snmp": snmp,

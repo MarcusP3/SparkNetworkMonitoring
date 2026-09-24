@@ -249,7 +249,11 @@ def main() -> int:
 
                 r = client.get("/devices")
                 check("a discovered device is listed", "10.1.10.77" in r.text)
-                check("its vendor came from the MAC prefix", "Raspberry Pi" in r.text)
+                # Vendor moved off the list onto the device's own page.
+                import re as _re
+                link = _re.search(r'href="(/devices/\d+)"', r.text)
+                detail = client.get(link.group(1)).text if link else ""
+                check("its vendor came from the MAC prefix", "Raspberry Pi" in detail)
                 check("it is offered for watching", "/watch" in r.text)
 
                 dev_id = int(re.search(r"/devices/(\d+)/watch", r.text).group(1))

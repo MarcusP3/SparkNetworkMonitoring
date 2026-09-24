@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — a quieter Devices list (2026-09-24)
+
+### Changed
+
+- **MAC and Vendor are off the Devices list** and on each device's page
+  (Details), next to the address. The list had grown to nine columns. The
+  "random" MAC warning and the "IP identity" note moved with them, as
+  "random MAC" and "IP identity" in the device page's header. The name field
+  on the list is 11rem again, using some of the room freed; the table fits its
+  card from 1100 px up.
+- `smoke_test.py` checks the vendor on the device's page instead of the list.
+
 ## Unreleased — find SNMP devices, and see which are polled (2026-09-24)
 
 SPARK polled only devices added by hand, and nothing on the Devices list said
