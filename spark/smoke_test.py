@@ -19,6 +19,14 @@ from fastapi.testclient import TestClient
 from spark.config import AuthConfig, Config, ProxyAuthConfig
 from spark.main import create_app
 
+# The alert dispatcher runs on a timer inside the app. Point it nowhere, so a
+# slow run cannot post to discord.com with the made-up webhook used below.
+import httpx as _httpx  # noqa: E402
+from spark import alerts as _alerts  # noqa: E402
+
+_alerts._new_client = lambda: _httpx.AsyncClient(transport=_httpx.MockTransport(
+    lambda request: _httpx.Response(599)))
+
 PASSED: list[str] = []
 FAILED: list[str] = []
 
@@ -84,7 +92,9 @@ def main() -> int:
                 "username": "admin",
                 "password": "correct horse battery",
                 "password_confirm": "correct horse battery",
-                "discord_webhook_url": "https://discord.com/api/webhooks/test"})
+                # Shaped like a real one: setup now refuses anything that is
+                # not a Discord webhook URL (id and token).
+                "discord_webhook_url": "https://discord.com/api/webhooks/1234567890/smoke-test-token"})
             check("setup succeeds and redirects to dashboard",
                   r.status_code == 303 and r.headers["location"] == "/",
                   f"got {r.status_code}")

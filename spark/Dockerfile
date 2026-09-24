@@ -19,9 +19,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 # iputils-ping is a fallback for environments where raw sockets aren't granted.
 # libcap2-bin is for the setcap below and nothing else.
+# tzdata so quiet hours can be kept in a named time zone (zoneinfo reads the
+# system database; the slim image does not promise one).
 # Later increments add the Ookla speedtest CLI and openssh-client here.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends iputils-ping ca-certificates libcap2-bin \
+    && apt-get install -y --no-install-recommends iputils-ping ca-certificates libcap2-bin tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # SPARK does not run as root. It holds a map of the network, every credential

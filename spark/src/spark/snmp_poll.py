@@ -43,6 +43,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import alerts
 from .collectors import SnmpCollector
 from .collectors.base import DeviceHealth, InterfaceStat
 from .db import get_setting, session_scope
@@ -241,6 +242,20 @@ async def record_poll(
         session.add(poll)
 
     previous_ok = poll.last_ok_at
+    was_failing = poll.last_error is not None
+
+    # Decided before the row changes, from what it said last time, and in this
+    # transaction so the alert commits with the poll that caused it.
+    row = await session.get(SnmpDevice, row_id)
+    device = await session.get(Device, row.device_id) if row else None
+    if device is not None:
+        await alerts.on_snmp_poll(
+            session, row_id=row_id, device_id=device.id, device_name=device.display_name,
+            address=device.primary_ip, answered=health.reachable,
+            previous_ok=previous_ok, was_failing=was_failing, now=now,
+            interval=interval, error=health.error,
+        )
+
     poll.last_polled_at = now
     poll.duration_ms = duration_ms
 

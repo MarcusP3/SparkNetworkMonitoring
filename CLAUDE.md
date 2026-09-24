@@ -78,14 +78,20 @@ Two things that look like details and are not:
 - **Retention cutoffs are aligned to bucket width.** Any new downsampled series
   folds with the aligned cutoffs from `run_retention`, or the bucket straddling
   the cutoff loses its later half the following night.
+- **Alerts are decided in the transaction that makes the change** -- call
+  `alerts.enqueue` (or an `on_*` helper) from the same session, never send
+  from a check or a request. The dispatcher sends; nothing else posts to
+  Discord except the Settings test button.
 - **Checks never raise.** They return a `CheckOutcome` carrying a reason. A
   poller that throws when the thing it polls is broken has failed at its job.
   The state machine interprets sequences of outcomes; individual checks do not.
 - **Migrations** are a numbered list in `db.py`, not Alembic. Append only —
   never edit or reorder an entry that has shipped. The runner has not yet
   executed a real migration, so the first one needs care and a test.
-- **Secrets** are files or env vars. The database stores references, not secret
-  material. (The Discord webhook URL currently violates this; see CHANGELOG.)
+- **Secrets** are files or env vars, or -- when they are entered in the UI and
+  must be recovered to be used (SNMP credentials, the Discord webhook) --
+  sealed with `vault.py` before they touch the database. Never plaintext in a
+  table or a setting, and never rendered back into a page.
 - **No new dependency without a reason that survives the question "what does
   this do that the standard library does not".** Every package in the closure
   is code that runs in a container holding `NET_RAW` on someone's

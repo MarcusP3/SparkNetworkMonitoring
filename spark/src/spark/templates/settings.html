@@ -763,9 +763,143 @@
       </dd>
     </dl>
   </section>
+
+  <section class="card" id="alerts">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+      <div>
+        <h2>Alerts</h2>
+        <p class="card-sub">
+          Messages to a Discord channel when something goes down, comes back,
+          or joins the network. Only changes are sent — never a reminder that
+          something is still down.
+        </p>
+      </div>
+    </div>
+
+    {% if alert_error %}<div class="alert error">{{ alert_error }}</div>{% endif %}
+    {% if alert_notice %}<div class="alert ok">{{ alert_notice }}</div>{% endif %}
+    {% set a = alerts.settings %}
+
+    <form method="post" action="/settings/alerts" class="alerts-form" id="alerts-form">
+      <input type="hidden" name="timezone" value="{{ alerts.timezone }}" id="alerts-timezone">
+
+      <label class="stack-field">
+        <span class="muted small">Discord webhook</span>
+        <input type="password" name="webhook" autocomplete="new-password" spellcheck="false"
+               placeholder="{{ 'Saved — paste a new one to replace it' if alerts.has_webhook else 'https://discord.com/api/webhooks/…' }}">
+        <span class="muted small">
+          In Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+          Stored encrypted, and never shown again.
+        </span>
+      </label>
+
+      <fieldset class="alert-toggles">
+        <label class="checkbox"><input type="checkbox" name="enabled" value="1" {% if a.enabled %}checked{% endif %}>
+          <span>Send alerts</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_recovery" value="1" {% if a.notify_on_recovery %}checked{% endif %}>
+          <span>When something comes back</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_snmp" value="1" {% if a.notify_on_snmp %}checked{% endif %}>
+          <span>When an SNMP device stops answering</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_new_device" value="1" {% if a.notify_on_new_device %}checked{% endif %}>
+          <span>When a new device joins the network</span></label>
+      </fieldset>
+
+      <div class="row-form quiet-hours">
+        <span class="muted small">Quiet hours</span>
+        <input type="time" name="quiet_start" value="{{ a.quiet_hours_start }}" aria-label="Quiet hours start">
+        <span class="muted small">to</span>
+        <input type="time" name="quiet_end" value="{{ a.quiet_hours_end }}" aria-label="Quiet hours end">
+        <span class="muted small">
+          {{ alerts.timezone }}{% if alerts.quiet_now %} · <strong>quiet now</strong>{% endif %}.
+          Leave both empty for none.
+        </span>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save alerts</button>
+      </div>
+    </form>
+
+    {% if alerts.has_webhook %}
+    <div class="row-form alert-webhook-actions">
+      <form method="post" action="/settings/alerts/test">
+        <button type="submit" class="btn-quiet">Send a test</button>
+      </form>
+      <form method="post" action="/settings/alerts/webhook/delete">
+        <button type="submit" class="btn-quiet danger">Remove webhook</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <h3 class="sub-title">Recent</h3>
+    {% if alerts.recent %}
+    <div class="table-scroll">
+    <table class="table compact alert-log">
+      <thead><tr><th>When</th><th>Alert</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for entry in alerts.recent %}
+        {% set n = entry.row %}
+        <tr>
+          <td class="muted small" title="{{ entry.local }} {{ alerts.timezone }}">{{ entry.ago }}</td>
+          <td>{{ n.subject }}</td>
+          <td>
+            {# Only a failure is a status worth a colour: the one case where
+               you were not told something you should have been. #}
+            <span class="pill {{ 'bad' if n.status == 'failed' else 'neutral' }}">{{ n.status }}</span>
+            {% if n.error and n.status != 'sent' %}<div class="muted small snmp-error">{{ n.error }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+
+    <dl class="legend">
+      <dt>What is sent</dt>
+      <dd>
+        A target going down (after its failure threshold) and coming back, with
+        how long it was down. An SNMP device silent for three polls (at least
+        three minutes) and answering again. New devices found by a sweep, in
+        one message per sweep.
+      </dd>
+      <dt>What is not</dt>
+      <dd>
+        A target whose failure is explained by one it depends on being down —
+        the switch goes, you get one message, not thirty. Degraded, which is a
+        warning on the page rather than a page for you. SNMP silence on a device
+        a target already reports down. The devices from the very first sweep,
+        which are all new and none of them news.
+      </dd>
+      <dt>Quiet hours</dt>
+      <dd>
+        Alerts that happen in the window are held, and arrive as one summary when
+        it ends. Times are in the time zone of the browser that last saved this
+        card.
+      </dd>
+      <dt>If Discord is down</dt>
+      <dd>
+        Alerts wait and retry — after 30 seconds, 2, 10 and 30 minutes — and
+        are marked failed after that. A webhook Discord says does not exist is
+        marked failed straight away. A burst of four or more goes as one message.
+      </dd>
+    </dl>
+  </section>
 </div>
 
 <script nonce="{{ request.state.csp_nonce }}">
+  // Quiet hours are kept in the time zone of the browser saving them.
+  (function () {
+    var field = document.getElementById('alerts-timezone');
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (field && tz) field.value = tz;
+    } catch (e) { /* keep the saved zone */ }
+  })();
+
   // Grey the interval when the box is unticked. Appearance only -- the select
   // stays enabled so it is still submitted, same as the sweep schedule.
   (function () {

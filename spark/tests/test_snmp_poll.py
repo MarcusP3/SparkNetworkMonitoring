@@ -631,6 +631,6 @@ def test_migration_7_builds_what_a_fresh_install_has():
 
     fresh, fresh_version = asyncio.run(build(False))
     migrated, migrated_version = asyncio.run(build(True))
-    assert migrated_version == fresh_version == D.CURRENT_VERSION == 7
+    assert migrated_version == fresh_version == D.CURRENT_VERSION >= 7
     assert migrated == fresh
     assert fresh["snmp_interface_sample"]["fks"] == [(("interface_id",), "snmp_interface", "CASCADE")]

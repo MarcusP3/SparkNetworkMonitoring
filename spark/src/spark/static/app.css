@@ -399,6 +399,7 @@ button { font: inherit; cursor: pointer; }
 }
 .alert.error { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .alert.warn  { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.alert.ok    { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 
 /* ---------- Stats ---------- */
 
@@ -1451,3 +1452,15 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 /* A pill that is also a link (the SNMP column on Devices). */
 a.pill { text-decoration: none; }
 a.pill:hover { filter: brightness(1.12); }
+
+/* ---- alerts ------------------------------------------------------------ */
+
+.alerts-form { display: flex; flex-direction: column; gap: 1rem; margin-bottom: .75rem; }
+.stack-field { display: flex; flex-direction: column; gap: .3rem; max-width: 40rem; }
+.stack-field input { width: 100%; }
+.alert-toggles { border: 0; padding: 0; margin: 0; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .5rem 1.25rem; }
+.quiet-hours { flex-wrap: wrap; gap: .5rem; align-items: center; }
+.quiet-hours input[type="time"] { width: auto; }
+.alert-webhook-actions { gap: .5rem; margin-bottom: 1rem; }
+.alert-webhook-actions form { margin: 0; }

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import alerts as alert_service
 from .. import port_catalogue
 from .. import scheduler as scheduler_module
 from .. import snmp_config
@@ -138,6 +139,25 @@ async def _snmp(session: AsyncSession) -> dict:
     }
 
 
+async def _alerts(session: AsyncSession) -> dict:
+    """What the Alerts card shows. The webhook itself never leaves this function
+    -- only whether one is saved."""
+    settings = await alert_service.load(session)
+    now = utcnow()
+    tz = alert_service.zone(settings)
+    return {
+        "settings": settings,
+        "has_webhook": bool(settings.get("discord_webhook_sealed")),
+        "quiet_now": alert_service.in_quiet_hours(settings, now),
+        "timezone": settings.get("timezone") or "UTC",
+        "recent": [
+            {"row": row, "ago": _ago(row.created_at, now),
+             "local": row.created_at.astimezone(tz).strftime("%b %-d, %H:%M")}
+            for row in await alert_service.recent(session)
+        ],
+    }
+
+
 async def _discovery(session: AsyncSession, listed_ids: set[int], now) -> dict:  # type: ignore[no-untyped-def]
     """The last "Find SNMP devices" run, as the card shows it.
 
@@ -228,6 +248,8 @@ async def _render(
     port_form: dict | None = None,
     snmp_error: str | None = None,
     snmp_form: dict | None = None,
+    alert_error: str | None = None,
+    alert_notice: str | None = None,
 ):
     rows = await subnet_service.list_subnets(session)
     discovery = await get_setting(session, "discovery")
@@ -262,6 +284,9 @@ async def _render(
             "snmp": await _snmp(session),
             "snmp_error": snmp_error,
             "snmp_form": snmp_form or {},
+            "alerts": await _alerts(session),
+            "alert_error": alert_error,
+            "alert_notice": alert_notice,
         },
         status_code=status_code,
     )
@@ -690,6 +715,109 @@ async def add_found_snmp_devices(
     await session.commit()
     await _apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
+
+
+ALERTS_ANCHOR = "/settings#alerts"
+
+
+def _hhmm_or_blank(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        hours, minutes = value.split(":")[:2]
+        if not (0 <= int(hours) < 24 and 0 <= int(minutes) < 60):
+            raise ValueError
+    except ValueError:
+        raise alert_service.AlertError(f"{value!r} is not a time of day.") from None
+    return f"{int(hours):02d}:{int(minutes):02d}"
+
+
+@router.post("/settings/alerts")
+async def save_alerts(
+    request: Request,
+    webhook: str = Form(""),
+    enabled: str = Form(""),
+    notify_on_recovery: str = Form(""),
+    notify_on_new_device: str = Form(""),
+    notify_on_snmp: str = Form(""),
+    quiet_start: str = Form(""),
+    quiet_end: str = Form(""),
+    timezone_name: str = Form("", alias="timezone"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Save the Alerts card. Validates everything before changing anything.
+
+    A blank webhook keeps the saved one: the field is never filled in on the
+    page, so blank is the only honest thing it can send back.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        start, end = _hhmm_or_blank(quiet_start), _hhmm_or_blank(quiet_end)
+        if bool(start) != bool(end):
+            raise alert_service.AlertError(
+                "Quiet hours need both a start and an end, or neither.")
+        new_webhook = alert_service.validate_webhook(webhook) if webhook.strip() else None
+    except alert_service.AlertError as exc:
+        return await _render(request, session, config, user, alert_error=str(exc),
+                             status_code=400)
+
+    settings = await alert_service.load(session)
+    tz = (timezone_name or "").strip()
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = settings.get("timezone") or "UTC"
+    settings.update(
+        enabled=_checked(enabled),
+        notify_on_recovery=_checked(notify_on_recovery),
+        notify_on_new_device=_checked(notify_on_new_device),
+        notify_on_snmp=_checked(notify_on_snmp),
+        quiet_hours_start=start,
+        quiet_hours_end=end,
+        timezone=tz,
+    )
+    settings.pop("discord_webhook_url", None)
+    if new_webhook:
+        settings["discord_webhook_sealed"] = vault_for(config).seal(new_webhook)
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return redirect(ALERTS_ANCHOR)
+
+
+@router.post("/settings/alerts/webhook/delete")
+async def remove_webhook(
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    await alert_service.set_webhook(session, vault_for(config), None)
+    await session.commit()
+    return redirect(ALERTS_ANCHOR)
+
+
+@router.post("/settings/alerts/test")
+async def test_alert(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Send a test message now and say what Discord answered.
+
+    Synchronous, like SNMP Test: the answer is what the button is for.
+    """
+    result = await alert_service.send_test(session, vault_for(config))
+    await session.commit()
+    if result.ok:
+        return await _render(request, session, config, user,
+                             alert_notice="Test alert sent. Check the channel.")
+    return await _render(request, session, config, user,
+                         alert_error=f"The test did not arrive: {result.error}",
+                         status_code=400)
 
 
 @router.post("/settings/snmp/polling")

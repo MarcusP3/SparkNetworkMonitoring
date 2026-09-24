@@ -13,7 +13,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import events
+from .. import alerts, events
 from ..checks.base import CheckOutcome, CheckSpec
 from ..checks.net import run_check
 from ..db import session_scope
@@ -36,6 +36,10 @@ async def check_target(session: AsyncSession, target: Target) -> tuple[CheckOutc
     check_type = getattr(target.check_type, "value", str(target.check_type))
     outcome = await run_check(check_type, spec_for(target))
     transition = await apply_outcome(session, target, outcome)
+    if transition.changed:
+        # Same transaction as the state change: the alert and the change it
+        # reports commit together or not at all.
+        await alerts.on_target_transition(session, target, transition, outcome.detail)
     return outcome, transition
 
 

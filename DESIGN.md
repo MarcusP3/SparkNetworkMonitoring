@@ -195,7 +195,7 @@ The monitor is a separate VM, so container inventory comes over the network. Thr
 
 **Never plain TCP 2375.** That is an unauthenticated remote root shell on the host, full stop.
 
-Secrets (SSH keys, client certs, Discord webhook URL) are mounted as files or passed as env vars; the database stores only references, never the secret material. **SNMP credentials are the exception, and deliberately:** a community string or v3 key has to be recovered to be sent, and they are entered in the UI, so they are stored *encrypted* — Fernet, under a key derived with HKDF from `secret.key` in the data directory (`vault.py`). That protects a copied or backed-up database, not a compromised VM, since SPARK must be able to read the key. The Discord webhook still does not meet either standard; it is stored in plaintext (open review item).
+Secrets (SSH keys, client certs, Discord webhook URL) are mounted as files or passed as env vars; the database stores only references, never the secret material. **SNMP credentials are the exception, and deliberately:** a community string or v3 key has to be recovered to be sent, and they are entered in the UI, so they are stored *encrypted* — Fernet, under a key derived with HKDF from `secret.key` in the data directory (`vault.py`). That protects a copied or backed-up database, not a compromised VM, since SPARK must be able to read the key. The Discord webhook is treated the same way since increment 8: entered in the UI, sealed with the same vault, and moved out of plaintext automatically on the first start after upgrading.
 
 ### Deployment notes
 

@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from .. import events
+from .. import alerts, events
 from .. import port_catalogue
 from ..db import get_setting, save_setting, session_scope
 from ..models import Device, utcnow
@@ -94,7 +94,11 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
         report = await sweep_all(plan)
 
         async with session_scope() as session:
+            # Before this sweep's summary replaces it: no earlier sweep means
+            # everything found is "new", and none of it is news.
+            first_sweep = not (await last_sweep(session)).get("finished_at")
             seen, new = await record_all(session, report.observations)
+            await alerts.on_new_devices(session, new, first_sweep=first_sweep)
             # Read the names inside the session, before it closes.
             new_names = [device.display_name for device in new]
             summary = report.as_dict()

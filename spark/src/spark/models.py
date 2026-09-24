@@ -545,20 +545,56 @@ class SpeedtestResult(Base):
     detail: Mapped[str | None] = mapped_column(Text)
 
 
+class NotificationStatus(enum.StrEnum):
+    PENDING = "pending"    # waiting for the dispatcher
+    HELD = "held"          # arrived during quiet hours; goes out in the digest
+    SENT = "sent"
+    FAILED = "failed"      # gave up after the last retry
+    DROPPED = "dropped"    # alerting was switched off, or no webhook, when due
+
+
 class Notification(Base):
-    """Outbound log. Prevents duplicate sends and gives an audit trail."""
+    """One alert, from the moment it is decided until it is delivered or given up.
+
+    An outbox. The decision to alert is written in the same transaction as the
+    state change that caused it -- a target going down, a device answering
+    again -- so an alert can be neither lost to a crash between the two nor
+    sent for a change that rolled back. A separate dispatcher sends what is due,
+    outside any transaction, and records how it went. Discord being slow or
+    down delays alerts; it never blocks a check or a poll.
+
+    `dedupe_key` is unique where set, so the same event cannot be queued
+    twice: "incident:41:down", or an SNMP outage keyed by when the device last
+    answered.
+
+    Replaces an earlier `notification` table of the same name that nothing ever
+    wrote to (migration 8).
+    """
 
     __tablename__ = "notification"
+    __table_args__ = (
+        Index("ix_notification_status_due", "status", "next_attempt_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
-    channel: Mapped[str] = mapped_column(String(32), default="discord")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    subject: Mapped[str] = mapped_column(String(512))
+    body: Mapped[str | None] = mapped_column(Text)
+    # "bad" / "ok" / "info": which colour the message carries in Discord.
+    tone: Mapped[str] = mapped_column(String(8), default="info")
+
     incident_id: Mapped[int | None] = mapped_column(
         ForeignKey("incident.id", ondelete="SET NULL")
     )
-    subject: Mapped[str | None] = mapped_column(String(512))
-    body: Mapped[str | None] = mapped_column(Text)
-    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    dedupe_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+
+    status: Mapped[NotificationStatus] = enum_column(
+        NotificationStatus, default=NotificationStatus.PENDING
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -919,12 +955,18 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "suppress_alerts_during_test": True,
     },
     "alerting": {
-        "discord_webhook_url": "",
+        # Ciphertext from vault.py, never the URL. A webhook URL is a bearer
+        # credential: anyone holding it can post to the channel.
+        "discord_webhook_sealed": "",
         "enabled": True,
+        # "HH:MM" in `timezone`; both empty means no quiet hours.
         "quiet_hours_start": "",
         "quiet_hours_end": "",
+        # IANA name, taken from the browser that saved the settings.
+        "timezone": "UTC",
         "notify_on_recovery": True,
         "notify_on_new_device": True,
+        "notify_on_snmp": True,
     },
     "snmp": {
         "poll_interval_seconds": 60,

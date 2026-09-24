@@ -89,6 +89,12 @@ def create_app(config: Config | None = None) -> FastAPI:
             # upgrading, then never again. See subnets.seed_from_config.
             await seed_from_config(session, config)
             subnet_count = await count_enabled(session)
+            # Earlier versions stored the Discord webhook in plaintext; seal it.
+            from .alerts import seal_plaintext_webhook
+            from .vault import vault_for
+
+            if await seal_plaintext_webhook(session, vault_for(config)):
+                log.info("Moved the Discord webhook into encrypted storage")
 
         scheduler_module.start()
         scheduled = await scheduler_module.sync_jobs()
@@ -101,6 +107,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         await scheduler_module.schedule_port_scan(first_run_delay=120)
         scheduler_module.schedule_retention()
         snmp_polled = await scheduler_module.sync_snmp_jobs(config)
+        scheduler_module.schedule_alerts(config)
 
         log.info(
             "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "

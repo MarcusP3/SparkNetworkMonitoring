@@ -421,6 +421,30 @@ def snmp_next_runs() -> dict[int, datetime]:
     return out
 
 
+def schedule_alerts(config) -> bool:  # type: ignore[no-untyped-def]
+    """The alert dispatcher: sends whatever the outbox has due, every 15 s.
+
+    Polling an outbox rather than sending from the check that decided: the
+    check's transaction commits first, so a message can never describe a
+    change that rolled back, and a slow Discord never holds up a check.
+    """
+    from .alerts import DISPATCH_SECONDS, JOB_ID, dispatch
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        dispatch,
+        "interval",
+        seconds=DISPATCH_SECONDS,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        name="Send alerts",
+    )
+    return True
+
+
 def trigger_snmp_discovery(config) -> bool:  # type: ignore[no-untyped-def]
     """Queue a "Find SNMP devices" run and return without waiting.
 

@@ -1,5 +1,84 @@
 # Changelog
 
+## Unreleased — alerting (increment 8, 2026-09-24)
+
+SPARK now tells you, in Discord, when something goes down and when it comes
+back. **Migration 8** runs by itself on start. **Rebuild the image**
+(`docker compose up -d --build`): the Dockerfile gains `tzdata`, for quiet
+hours in a named time zone. No new Python dependency.
+
+### Added
+
+- **Alerts** (`alerts.py`, Settings → Alerts): a target down and back up (with
+  how long); an SNMP device silent for three polls and at least three minutes,
+  and answering again; new devices found by a sweep, one message per sweep.
+  Toggles for recovery, SNMP and new-device alerts, and for alerts as a whole.
+- **Not sent, on purpose:** a failure explained by the target it depends on
+  (the incident is still recorded, flagged, as before); a recovery whose
+  outage was never alerted; degraded; SNMP silence on a device a target
+  already reports down, or on one that has never answered; the first sweep's
+  devices; anything for a target with `muted_until` in the future.
+- **An outbox.** The decision is written in the same transaction as the change
+  that caused it (`notification` table), and a job every 15 s sends what is
+  due holding no database connection. A crash cannot lose an alert or send
+  one for a change that rolled back; a slow Discord never delays a check.
+  Each event has a dedupe key, so the same outage cannot be queued twice.
+- **Delivery:** retries after 30 s, 2, 10 and 30 min, then failed; a 4xx other
+  than 429 (a deleted webhook) fails at once; 429 `retry_after` is honoured
+  for everything queued behind it; four or more due at once go as one message.
+  `allowed_mentions` is empty, so a device named `@everyone` pings nobody.
+- **Quiet hours** hold alerts and send one summary when the window ends. The
+  window is kept in the IANA time zone of the browser that saved it.
+- **Send a test** reports what Discord answered. **Recent** lists the last 15
+  alerts and their fate (sent, held, pending with the error, failed, dropped).
+- The dashboard warns when there is no webhook, and when alerts are off.
+
+### Security
+
+- **The Discord webhook is encrypted at rest** with the same vault as SNMP
+  credentials, and never rendered back into a page. A webhook stored in
+  plaintext by an earlier version is sealed on the first start after
+  upgrading, and the plaintext removed. Closes the review item open since
+  increment 2 (#9). Back up `secret.key` with the database — without it the
+  webhook has to be pasted in again.
+- Only `https://discord.com` (and `discordapp.com`, `ptb.`, `canary.`) webhook
+  URLs are accepted, in Settings and at first-run setup. SPARK fetches this
+  URL itself, so any other host would make the field a way to send requests
+  into the LAN.
+
+### Changed
+
+- Migration 8 drops the old `notification` table, which nothing had ever
+  written to, and creates the outbox in its place.
+- README: alerting moved ahead of increments 4d, 5 and 7 on the roadmap.
+- Tests and `smoke_test.py` can no longer reach Discord: `tests/conftest.py`
+  replaces the HTTP client the dispatcher uses by default, because the app's
+  dispatcher runs on a timer during any test that starts it and the test
+  webhooks are shaped like real ones. The smoke test's setup webhook is now a
+  valid-looking URL, since setup refuses anything else.
+
+### Tests
+
+53 new (`test_alerts.py`), with Discord faked by httpx's `MockTransport`:
+webhook validation (ten hostile URLs), plaintext sealing at start; quiet hours
+overnight, daytime, in a named zone, unset; targets through the real check
+runner (threshold, flapping, a second outage, dependency, recovery without a
+down, recovery off, muted, degraded); SNMP silence, never-answered, covered by
+a target, switched off; new devices through the real sweep runner (first
+sweep is a baseline); dispatch (sent once, backoff, give-up, 404, 429,
+batching, no webhook, quiet hours then digest, and that nothing holds the
+database while Discord answers); the Settings card and setup; migration 8.
+Twenty-two deliberate breaks each caught. `pytest` 588 passed with the agent,
+`smoke_test.py` 76 passed. End to end: a real target going down produced a
+dispatched alert 9 s after the first failed check.
+
+### Known, unfixed
+
+- No per-target mute or maintenance window in the UI yet; `muted_until` is
+  honoured but only settable in the database.
+- Speed-test window suppression (DESIGN §1a) waits for the speed test itself.
+- One webhook, one channel. No email, no second destination.
+
 ## Unreleased — a quieter Devices list (2026-09-24)
 
 ### Changed

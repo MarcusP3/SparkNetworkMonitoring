@@ -34,12 +34,12 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
-| Alerting (Discord) | ❌ not yet |
+| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Service map, topology | ❌ not yet |
 
-In practice: SPARK can tell you something is down, but it cannot yet tell *you*
-— you have to look at the page. That is the next increment.
+SPARK tells you when something goes down, in Discord, and when it comes back —
+see [Alerts](#alerts).
 
 ---
 
@@ -48,6 +48,7 @@ In practice: SPARK can tell you something is down, but it cannot yet tell *you*
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Monitoring](#monitoring)
+- [Alerts](#alerts)
 - [SNMP](#snmp)
 - [Authentication](#authentication)
 - [Development](#development)
@@ -116,7 +117,7 @@ Two layers, deliberately:
 | Where | What lives there |
 |---|---|
 | `config/spark.yaml` | Things needed *before the database exists*: bind address, data directory, auth mode. Its `network.subnets` block seeds the database once and is then ignored |
-| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, and later the alert webhook and retention |
+| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, the Discord webhook and alert settings, and later retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
 underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
@@ -276,6 +277,49 @@ history — but flagged as symptoms, so alerting can send one message instead of
 thirty.
 
 ---
+
+## Alerts
+
+**Settings → Alerts.** Paste a Discord webhook (in Discord: Server Settings →
+Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and press
+**Send a test**. The URL is stored encrypted, like SNMP credentials, and never
+shown again; only Discord's own hosts over https are accepted.
+
+What is sent — changes only, never a reminder that something is still down:
+
+| Event | When |
+|---|---|
+| A target is down | After its failure threshold (consecutive failed checks) |
+| A target is back up | After its recovery threshold, with how long it was down |
+| An SNMP device stopped answering | Three missed polls, and at least three minutes |
+| An SNMP device is answering again | The next poll that answers, with how long it was silent |
+| New devices on the network | One message per sweep that found any |
+
+What is deliberately not sent:
+
+- a target whose failure is explained by one it **depends on** being down
+  (set on the target) — the switch goes, you get one message, not thirty;
+- a recovery for an outage that was never alerted (it went down while alerts
+  were off, or its dependency explained it);
+- **degraded** — a warning on the page, not a page for you;
+- SNMP silence on a device a target already reports down, or on a device that
+  has never answered (that is a configuration problem, shown on the SNMP card);
+- the devices from the very first sweep, which are all new and none of them news.
+
+**Quiet hours** hold alerts and send one summary when the window ends. The
+window is kept in the time zone of the browser that saved it.
+
+**If Discord is unreachable** alerts wait and retry after 30 s, 2, 10 and 30
+minutes, then are marked failed; a webhook Discord says does not exist fails at
+once. Discord's rate limit is honoured, and a burst of four or more alerts is
+sent as one message. The **Recent** list on the card shows every alert and
+what happened to it.
+
+How it works: the decision to alert is written in the same database
+transaction as the change that caused it (an outbox, the `notification`
+table), and a job every 15 seconds sends what is due without holding the
+database. A crash cannot lose an alert or send one for a change that never
+committed, and a slow Discord never delays a check.
 
 ## SNMP
 
@@ -544,6 +588,7 @@ spark/
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
+    alerts.py           deciding what to alert on; the Discord outbox and dispatcher
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -591,6 +636,7 @@ spark/
     test_device_page.py history read back weighted and gap-true; charts; the page
     test_layout.py      every table scrolls inside its card
     test_snmp_discover.py  Find suggests and never adds; the Devices SNMP column and filter
+    test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
@@ -653,7 +699,7 @@ Nine things that will bite you if you don't know them:
 | 5 | Service map — tree and filterable list views | planned |
 | 6 | SNMP — credentials, Test, polling, history, device pages | ✅ done |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
-| 8 | Alerting — Discord, dependency suppression, quiet hours | planned |
+| 8 | Alerting — Discord, dependency suppression, quiet hours | ✅ done (ahead of 4d, 5, 7) |
 
 Reordered twice. After increment 2 the check engine moved ahead of SNMP
 storage, because a monitor that cannot tell you anything is down is not yet a
@@ -661,11 +707,9 @@ monitor. After increment 3, alerting moved to last: the inventory and map work
 is the substance, and the live-updating pages cover "is anything wrong" well
 enough to watch while the rest is built.
 
-The trade-off that buys is real and worth stating plainly — until increment 8,
-SPARK only tells you about an outage while someone is looking at it. The
-dependency suppression and incident records the notifier will need are already
-built and tested, so the last increment is the notifier itself, not the
-thinking behind it.
+Then reordered back: once SNMP polling and device history existed there was
+enough watching going on that "only while someone is looking at the page" had
+become the biggest gap, so alerting (8) was built before 4d, 5 and 7.
 
 ---
 

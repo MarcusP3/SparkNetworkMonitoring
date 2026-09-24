@@ -19,7 +19,8 @@ from ..auth import (
     setup_required,
 )
 from ..config import Config
-from ..db import get_setting, save_setting
+from ..alerts import AlertError, set_webhook, validate_webhook
+from ..vault import vault_for
 from .deps import current_user, get_config, get_session, redirect, templates
 
 router = APIRouter()
@@ -100,9 +101,15 @@ async def setup_submit(
         return redirect("/login")
 
     error: str | None = None
+    webhook = discord_webhook_url.strip()
     if password != password_confirm:
         error = "The two passwords do not match."
-    else:
+    elif webhook:
+        try:
+            validate_webhook(webhook)
+        except AlertError as exc:
+            error = str(exc)
+    if error is None:
         try:
             user = await create_admin(session, username, password)
         except AuthError as exc:
@@ -116,10 +123,8 @@ async def setup_submit(
             status_code=400,
         )
 
-    if discord_webhook_url.strip():
-        alerting = await get_setting(session, "alerting")
-        alerting["discord_webhook_url"] = discord_webhook_url.strip()
-        await save_setting(session, "alerting", alerting)
+    if webhook:
+        await set_webhook(session, vault_for(config), webhook)
 
     token = await create_session(
         session,

@@ -26,6 +26,7 @@ from .models import (
     DEFAULT_SETTINGS,
     Base,
     CheckRollup,
+    Notification,
     Setting,
     SnmpDevice,
     SnmpHealthRollup,
@@ -218,7 +219,22 @@ async def _add_snmp_polling_tables(session: AsyncSession) -> None:
         await connection.run_sync(model.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 7
+@migration(8, "rebuild the notification table as the alert outbox")
+async def _rebuild_notification_outbox(session: AsyncSession) -> None:
+    """Drop the old `notification` table and create the outbox in its place.
+
+    Dropping is safe because nothing ever wrote to the old table: it was part
+    of the up-front schema, and the notifier that would have used it is this
+    increment. Its shape (an `ok` flag, no status, no retry, no dedupe key) is
+    not what a notifier with retries needs, and altering five columns into a
+    SQLite table is more risk than recreating an empty one.
+    """
+    await session.execute(text("DROP TABLE IF EXISTS notification"))
+    connection = await session.connection()
+    await connection.run_sync(Notification.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 8
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:
