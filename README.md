@@ -69,6 +69,19 @@ git clone https://github.com/MarcusP3/SparkNetworkMonitoring.git
 cd SparkNetworkMonitoring/spark
 cp config/spark.yaml config/spark.yaml.orig   # keep a pristine copy
 $EDITOR config/spark.yaml                     # set your first subnet (seed only)
+mkdir -p data && sudo chown 9700:9700 data    # the container runs as uid 9700, not root
+docker compose up -d --build
+```
+
+Create `data/` yourself, before the first `up`: if Docker creates it for the
+bind mount it belongs to root, and SPARK refuses to start (with this same
+command in the message) rather than run as root.
+
+**Upgrading an install from before the non-root container:**
+
+```bash
+cd spark && git pull
+sudo chown -R 9700:9700 data
 docker compose up -d --build
 ```
 
