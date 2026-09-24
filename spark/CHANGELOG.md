@@ -76,6 +76,11 @@ not writable. Nothing else about the deployment changes.
 - `bandit`'s one real hit: the CSS cache-buster's MD5 is marked
   `usedforsecurity=False`, so a FIPS-mode Python does not refuse to start.
 
+- **The base image is pinned by digest**, as the Dockerfile's comment and
+  CLAUDE.md always said it was. `python:3.12-slim@sha256:2f17fc04…`, taken
+  from `docker inspect` on the VM on 2026-09-24. Rebuilds now reproduce the
+  same base until someone changes that line on purpose.
+
 ### Fixed
 
 - **A bad target form was a 500, not a 400.** An unknown `check_type` raised
@@ -111,11 +116,6 @@ not writable. Nothing else about the deployment changes.
 
 ### Known, unfixed
 
-- The base image is still pinned by tag, not digest, despite the Dockerfile's
-  own comment. Neither machine used for this pass could reach Docker Hub. On
-  the VM: `docker pull python:3.12-slim && docker inspect
-  --format='{{index .RepoDigests 0}}' python:3.12-slim`, then put the result
-  in the `FROM` line.
 - `app.host: 0.0.0.0` with host networking binds every interface. The VM has
   one NIC, so there is nothing else to bind to today; set `SPARK__APP__HOST`
   if that changes.
