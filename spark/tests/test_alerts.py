@@ -575,7 +575,7 @@ class TestSettingsCard:
         settings = saved(config)
         assert settings["timezone"] == "America/Chicago"
         assert alerts.webhook_url(settings, vault_for(config)) == HOOK
-        page = client.get("/settings").text
+        page = client.get("/settings/alerts").text
         assert "abcDEF-secret-token" not in page and "123456789012345678" not in page
         assert "Saved — paste a new one" in page
 
@@ -634,7 +634,7 @@ class TestSettingsCard:
         client.post("/settings/alerts", data={**FORM, "webhook": HOOK})
         client.post("/settings/alerts/webhook/delete")
         assert not saved(config).get("discord_webhook_sealed")
-        assert "Send a test" not in client.get("/settings").text
+        assert "Send a test" not in client.get("/settings/alerts").text
 
     def test_the_dashboard_says_when_nothing_can_alert(self, site):
         client, _ = site

@@ -1,8 +1,11 @@
-"""Settings, which for now means the subnets SPARK discovers on.
+"""Settings: subnets, port scanning, SNMP and alerts, a page each.
 
-One page with sections rather than a page per setting: retention, discovery and
-alerting all belong here eventually, and a nav that grows an entry per option is
-how a homelab tool starts feeling like an enterprise console.
+It began as one page with sections, on the theory that a menu entry per option
+is how a homelab tool starts feeling like an enterprise console. Four sections
+later the page was long enough that finding the one you wanted meant
+scrolling past the other three, so each is now its own page under one small
+menu -- still inside Settings, not in the main nav. /settings is the first
+page (Subnets), so every link from before the split still lands.
 
 Errors come back on the page with the values still in the form. A validation
 failure that clears what you typed is a worse outcome than the typo.
@@ -235,12 +238,65 @@ def _checked(value: str) -> bool:
     return value == "1"
 
 
+# The Settings sub-pages, in menu order: (slug, label, URL). Subnets is the
+# bare /settings, so every link and bookmark from before the split still lands
+# somewhere sensible.
+SECTIONS = (
+    ("subnets", "Subnets", "/settings"),
+    ("ports", "Port scanning", "/settings/ports"),
+    ("snmp", "SNMP", "/settings/snmp"),
+    ("alerts", "Alerts", "/settings/alerts"),
+)
+SECTION_URLS = {slug: url for slug, _, url in SECTIONS}
+PORTS_URL = SECTION_URLS["ports"]
+
+
+async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
+    """The sub-menu, each entry with one line of state beside its name.
+
+    So the menu answers "is anything set up here" without opening each page:
+    two subnets, scanning on, three devices polled, alerts with no webhook.
+    """
+    discovery = await get_setting(session, "discovery")
+    polled = await session.scalar(select(func.count(SnmpDevice.id))) or 0
+    alerting = await alert_service.load(session)
+    if not alerting.get("discord_webhook_sealed"):
+        alert_hint = "no webhook"
+    elif not alerting.get("enabled", True):
+        alert_hint = "off"
+    else:
+        alert_hint = "on"
+    hints = {
+        "subnets": f"{subnet_count}",
+        "ports": "on" if discovery.get("port_scan_enabled", True) else "off",
+        "snmp": f"{polled}",
+        "alerts": alert_hint,
+    }
+    return [{"slug": slug, "label": label, "url": url, "hint": hints[slug]}
+            for slug, label, url in SECTIONS]
+
+
+def _section_of(section, *, port_error, port_form, snmp_error, snmp_form,  # type: ignore[no-untyped-def]
+                alert_error, alert_notice) -> str:
+    """Which sub-page a render belongs to. An error goes back to its own page."""
+    if section:
+        return section
+    if port_error or port_form:
+        return "ports"
+    if snmp_error or snmp_form:
+        return "snmp"
+    if alert_error or alert_notice:
+        return "alerts"
+    return "subnets"
+
+
 async def _render(
     request: Request,
     session: AsyncSession,
     config: Config,
     user: User,
     *,
+    section: str | None = None,
     error: str | None = None,
     form: dict | None = None,
     status_code: int = 200,
@@ -251,15 +307,22 @@ async def _render(
     alert_error: str | None = None,
     alert_notice: str | None = None,
 ):
+    section = _section_of(section, port_error=port_error, port_form=port_form,
+                          snmp_error=snmp_error, snmp_form=snmp_form,
+                          alert_error=alert_error, alert_notice=alert_notice)
     rows = await subnet_service.list_subnets(session)
     discovery = await get_setting(session, "discovery")
+    # Only the open page's data. Each of these is a handful of queries, and
+    # the point of splitting the page was not to do all of them every time.
     return templates.TemplateResponse(
         request,
         "settings.html",
         {
             "config": config,
             "user": user,
-            "title": "Settings",
+            "title": f"Settings · {dict((s, l) for s, l, _ in SECTIONS)[section]}",
+            "section": section,
+            "menu": await _menu(session, len(rows)),
             "subnets": [
                 {
                     "subnet": subnet,
@@ -278,13 +341,13 @@ async def _render(
                 ),
                 "choices": PORT_SCAN_INTERVAL_CHOICES,
             },
-            "ports": await _port_catalogue(session),
+            "ports": await _port_catalogue(session) if section == "ports" else None,
             "port_error": port_error,
             "port_form": port_form or {},
-            "snmp": await _snmp(session),
+            "snmp": await _snmp(session) if section == "snmp" else None,
             "snmp_error": snmp_error,
             "snmp_form": snmp_form or {},
-            "alerts": await _alerts(session),
+            "alerts": await _alerts(session) if section == "alerts" else None,
             "alert_error": alert_error,
             "alert_notice": alert_notice,
         },
@@ -312,7 +375,21 @@ async def settings_page(
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
-    return await _render(request, session, config, user)
+    return await _render(request, session, config, user, section="subnets")
+
+
+@router.get("/settings/{section}")
+async def settings_section(
+    request: Request,
+    section: str,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """One Settings sub-page. An unknown name goes to the first one."""
+    if section not in SECTION_URLS or section == "subnets":
+        return redirect("/settings")
+    return await _render(request, session, config, user, section=section)
 
 
 @router.post("/settings/subnets")
@@ -414,7 +491,7 @@ async def set_port_scan(
 
     # Settings handed straight in: this request may still hold the write lock.
     await scheduler_module.schedule_port_scan(settings)
-    return redirect("/settings")
+    return redirect(PORTS_URL)
 
 
 @router.post("/settings/ports")
@@ -440,7 +517,7 @@ async def add_custom_port(
             status_code=400,
         )
     await session.commit()
-    return redirect("/settings")
+    return redirect(PORTS_URL)
 
 
 @router.post("/settings/ports/{port}/delete")
@@ -451,7 +528,7 @@ async def remove_custom_port(
 ):
     await port_catalogue.remove_custom(session, port)
     await session.commit()
-    return redirect("/settings")
+    return redirect(PORTS_URL)
 
 
 @router.post("/settings/ports/builtins")
@@ -474,14 +551,14 @@ async def set_builtin_ports(
     form = await request.form()
     await port_catalogue.set_builtins(session, form.getlist("keep"))
     await session.commit()
-    return redirect("/settings")
+    return redirect(PORTS_URL)
 
 
 # --------------------------------------------------------------------------
 # SNMP
 # --------------------------------------------------------------------------
 
-SNMP_ANCHOR = "/settings#snmp"
+SNMP_ANCHOR = "/settings/snmp"
 
 # Offered on the card. Anything else posted is refused rather than rounded, so
 # the page never shows an interval nobody chose.
@@ -717,7 +794,7 @@ async def add_found_snmp_devices(
     return redirect(SNMP_ANCHOR)
 
 
-ALERTS_ANCHOR = "/settings#alerts"
+ALERTS_ANCHOR = "/settings/alerts"
 
 
 def _hhmm_or_blank(value: str) -> str:

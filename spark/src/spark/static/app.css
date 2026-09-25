@@ -1464,3 +1464,55 @@ a.pill:hover { filter: brightness(1.12); }
 .quiet-hours input[type="time"] { width: auto; }
 .alert-webhook-actions { gap: .5rem; margin-bottom: 1rem; }
 .alert-webhook-actions form { margin: 0; }
+
+/* ---- settings: sub-menu ------------------------------------------------ */
+
+/* A column beside the page on a wide screen; a wrapped row of tabs above it
+   on a narrow one. The active entry is the same filled pill as the main nav, so
+   "where am I" reads the same way at both levels. */
+.settings-layout { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.settings-body { min-width: 0; display: flex; flex-direction: column; gap: 1.25rem; }
+.settings-body > .card { margin: 0; }
+
+.subnav {
+  position: sticky;
+  top: calc(64px + 1rem);   /* below the sticky top bar */
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+.subnav a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .75rem;
+  padding: .55rem .8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: .9rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.subnav a:hover { background: var(--surface-2); color: var(--text); }
+.subnav a.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--text);
+  font-weight: 600;
+}
+.subnav-hint { font-size: .75rem; font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.subnav-hint.warn { color: var(--warn); }
+
+@media (max-width: 62rem) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  /* Wrapped rather than scrolled: four entries fit in two rows on a phone,
+     and a scrolled row hid the page you were on off the right-hand edge. */
+  .subnav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .subnav a { flex: 0 0 auto; gap: .45rem; }
+}

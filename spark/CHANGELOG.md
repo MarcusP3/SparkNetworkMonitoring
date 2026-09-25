@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — Settings split into pages (2026-09-25)
+
+### Changed
+
+- **Settings is four pages with a menu** instead of one long page:
+  **Subnets** (`/settings`), **Port scanning** (`/settings/ports`), **SNMP**
+  (`/settings/snmp`) and **Alerts** (`/settings/alerts`). The menu is a column
+  beside the page on a wide screen and a wrapped row of tabs on a narrow one,
+  and each entry carries one line of state — how many subnets, scanning on or
+  off, how many devices SNMP polls, and whether alerts are on, off or have no
+  webhook (the last in amber, since nothing can alert you).
+- Every form returns to the page it was on, including with an error; only the
+  open page's data is loaded.
+- Old links to `/settings#snmp` and `/settings#alerts` are forwarded to the
+  new pages. Links from the Devices list and device pages point at
+  `/settings/snmp` directly.
+
+### Tests
+
+13 new (`test_settings_menu.py`): each page shows only its own card and marks
+itself in the menu; unknown pages go to the first; each kind of form returns
+to its own page; errors render on their own page; the menu's state hints; old
+links are forwarded. Five deliberate breaks each caught. Existing tests now
+load the page they test. `pytest` 601 passed with the agent, `smoke_test.py`
+76 passed. No page is wider than the window at 1400, 900 or 390 px.
+
 ## Unreleased — alerting (increment 8, 2026-09-24)
 
 SPARK now tells you, in Discord, when something goes down and when it comes

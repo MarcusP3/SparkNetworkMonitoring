@@ -384,7 +384,7 @@ class TestDevicePage:
 
     def test_a_device_that_is_not_polled_says_how_to_start(self, site):
         page = site.get("/devices/2").text
-        assert "Not polled over SNMP" in page and 'href="/settings#snmp"' in page
+        assert "Not polled over SNMP" in page and 'href="/settings/snmp"' in page
         assert "<figure" not in page
 
     def test_an_unknown_device_goes_back_to_the_list(self, site):
@@ -394,7 +394,7 @@ class TestDevicePage:
 
     def test_the_devices_list_and_settings_link_here(self, site):
         assert 'href="/devices/1"' in site.get("/devices").text
-        assert 'href="/devices/1"' in site.get("/settings").text
+        assert 'href="/devices/1"' in site.get("/settings/snmp").text
 
 
 def test_the_asset_version_follows_charts_js(tmp_path, monkeypatch):

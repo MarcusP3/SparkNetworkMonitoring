@@ -393,7 +393,7 @@
     <h2>No devices match</h2>
     <p class="muted">
       {% if snmp_filter.value == 'on' %}No device{% if subnet_filter.selected %} on this subnet{% endif %} is polled over SNMP.
-        Add some in <a href="/settings#snmp">Settings</a>, or use <strong>Find SNMP devices</strong> there.
+        Add some in <a href="/settings/snmp">Settings</a>, or use <strong>Find SNMP devices</strong> there.
       {% else %}Every device{% if subnet_filter.selected %} on this subnet{% endif %} is already polled over SNMP.{% endif %}
       <a href="/devices">Show all</a>.
     </p>

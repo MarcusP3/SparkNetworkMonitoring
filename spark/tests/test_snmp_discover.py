@@ -245,11 +245,11 @@ class TestFindButton:
     def test_found_devices_are_offered_and_add_all_adds_them_with_their_profile(self, site):
         client, config = site
         assert client.post("/settings/snmp/discover").status_code == 303
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         assert "Searching" in page  # marked running before the job starts
 
         asyncio.run(snmp_discover.run_discovery(config))
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         assert "lab-switch" in page and "Add all" not in page  # one found: no "all"
         assert '<input type="hidden" name="device_id" value="1">' in page
         # The device that refuses every profile (127.0.0.3) is already on the
@@ -259,7 +259,7 @@ class TestFindButton:
         client.post("/settings/snmp/discover/add-all")
         listed = {(r.device_id, r.profile_id) for r in _rows(SnmpDevice)}
         assert (1, 1) in listed
-        assert "lab-switch" not in client.get("/settings").text, "added: no longer suggested"
+        assert "lab-switch" not in client.get("/settings/snmp").text, "added: no longer suggested"
 
     def test_add_all_skips_a_device_ignored_since(self, site):
         client, config = site

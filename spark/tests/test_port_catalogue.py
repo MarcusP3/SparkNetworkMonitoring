@@ -396,18 +396,18 @@ def budget(page: str) -> str:
 class TestSettingsPage:
     def test_a_port_can_be_added_and_named(self, client):
         client.post("/settings/ports", data={"port": "8112", "name": "deluge"})
-        page = client.get("/settings").text
+        page = client.get("/settings/ports").text
         assert "8112" in custom_rows(page)
         assert "deluge" in page
 
     def test_a_port_can_be_added_without_a_name(self, client):
         client.post("/settings/ports", data={"port": "1880", "name": ""})
-        assert "1880" in custom_rows(client.get("/settings").text)
+        assert "1880" in custom_rows(client.get("/settings/ports").text)
 
     def test_a_port_can_be_removed(self, client):
         client.post("/settings/ports", data={"port": "8112", "name": "deluge"})
         client.post("/settings/ports/8112/delete")
-        assert custom_rows(client.get("/settings").text) == []
+        assert custom_rows(client.get("/settings/ports").text) == []
 
     def test_a_bad_port_comes_back_with_the_typing_intact(self, client):
         response = client.post("/settings/ports",
@@ -439,36 +439,36 @@ class TestSettingsPage:
         # raw body and posts no fields at all, which looks exactly like
         # unticking everything and made this test pass for the wrong reason.
         client.post("/settings/ports/builtins", data={"keep": keep})
-        page = client.get("/settings").text
+        page = client.get("/settings/ports").text
         assert f"{len(P.WELL_KNOWN) - 4} of {len(P.WELL_KNOWN)} built-in" in budget(page)
 
     def test_switching_them_all_off_is_allowed_and_says_so(self, client):
         # Perverse but legitimate -- it is how you scan only your own ports.
         client.post("/settings/ports", data={"port": "8112"})
         client.post("/settings/ports/builtins", data={})
-        page = client.get("/settings").text
+        page = client.get("/settings/ports").text
         assert "Scanning 1 port(s)" in budget(page)
 
     def test_the_budget_counts_the_merged_list_not_the_two_lists(self, client):
         # A custom entry on a built-in's port renames it rather than adding to
         # the scan, so the total must come from the merged set.
         client.post("/settings/ports", data={"port": "3000", "name": "my app"})
-        assert f"Scanning {len(P.WELL_KNOWN)} port(s)" in budget(client.get("/settings").text)
+        assert f"Scanning {len(P.WELL_KNOWN)} port(s)" in budget(client.get("/settings/ports").text)
 
     def test_the_budget_mentions_the_devices_it_is_based_on(self, client):
-        assert "1 device(s)" in budget(client.get("/settings").text)
+        assert "1 device(s)" in budget(client.get("/settings/ports").text)
 
     def test_the_checkboxes_are_not_disabled(self, client):
         # An unticked box submits nothing, and a disabled one submits nothing
         # either -- so a disabled box reads to the server as "switch this off".
-        page = client.get("/settings").text
+        page = client.get("/settings/ports").text
         grid = re.search(r'<div class="port-grid">.*?</div>', page, re.S)
         assert grid and "disabled" not in grid.group(0)
 
     def test_the_page_needs_a_login(self, client):
         client.post("/logout")
         assert client.post("/settings/ports", data={"port": "8112"}).status_code == 303
-        assert custom_rows(client.get("/settings").text) == []
+        assert custom_rows(client.get("/settings/ports").text) == []
 
 
 # --------------------------------------------------------------------------

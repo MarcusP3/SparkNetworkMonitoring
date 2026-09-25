@@ -11,8 +11,24 @@
     </div>
   </div>
 
+  {# The Settings pages, one per kind of thing. A column on a wide screen,
+     a row of tabs that scrolls sideways on a narrow one. Each is a real URL,
+     so a form posts back to the page it was on and a page can be bookmarked. #}
+  <div class="settings-layout">
+  <nav class="subnav" aria-label="Settings sections">
+    {% for m in menu %}
+      <a href="{{ m.url }}" class="{% if m.slug == section %}active{% endif %}"
+         {% if m.slug == section %}aria-current="page"{% endif %}>
+        <span>{{ m.label }}</span>
+        <span class="subnav-hint{% if m.hint == 'no webhook' %} warn{% endif %}">{{ m.hint }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+  <div class="settings-body">
+
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
 
+  {% if section == 'subnets' %}
   <section class="card">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1.5"/><rect x="2.5" y="16" width="6" height="5" rx="1.5"/><rect x="15.5" y="16" width="6" height="5" rx="1.5"/><path d="M12 8v3.5M5.5 16v-2a1.5 1.5 0 0 1 1.5-1.5h10a1.5 1.5 0 0 1 1.5 1.5v2"/></svg></span>
@@ -168,7 +184,9 @@
       </dd>
     </dl>
   </section>
+  {% endif %}
 
+  {% if section == 'ports' %}
   <section class="card">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12 19 6.5"/></svg></span>
@@ -341,6 +359,7 @@
       </dd>
     </dl>
   </section>
+  {% endif %}
 
   {# ---------------------------------------------------------------- SNMP #}
   {% macro profile_fields(f, prefix, editing=False, has_community=False, has_auth=False, has_priv=False) %}
@@ -410,6 +429,7 @@
     </div>
   {% endmacro %}
 
+  {% if section == 'snmp' %}
   <section class="card" id="snmp">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01M7 16h.01M11 8h6M11 16h6"/></svg></span>
@@ -763,7 +783,9 @@
       </dd>
     </dl>
   </section>
+  {% endif %}
 
+  {% if section == 'alerts' %}
   <section class="card" id="alerts">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
@@ -888,9 +910,21 @@
       </dd>
     </dl>
   </section>
+  {% endif %}
+  </div>
+  </div>
 </div>
 
 <script nonce="{{ request.state.csp_nonce }}">
+  // Links from before Settings was split pointed at /settings#snmp and
+  // /settings#alerts. Send them to the page that section now lives on.
+  (function () {
+    var moved = { '#snmp': '/settings/snmp', '#alerts': '/settings/alerts' };
+    if (location.pathname === '/settings' && moved[location.hash]) {
+      location.replace(moved[location.hash]);
+    }
+  })();
+
   // Quiet hours are kept in the time zone of the browser saving them.
   (function () {
     var field = document.getElementById('alerts-timezone');

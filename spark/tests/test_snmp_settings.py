@@ -130,7 +130,7 @@ class TestSecretsStayPut:
         client, _ = env
         client.post("/settings/snmp/profiles", data=v2c())
         client.post("/settings/snmp/profiles", data=v3())
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         for secret in SECRETS:
             assert secret not in page
 
@@ -159,7 +159,7 @@ class TestSecretsStayPut:
         # a page. On this form that would silently save the SPARK admin
         # password as a community string.
         client, _ = env
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         for field in ("community", "auth_key", "priv_key"):
             assert f'name="{field}" autocomplete="new-password"' in page, field
 
@@ -222,7 +222,7 @@ class TestProfiles:
                            data=v3(priv_protocol="none", priv_key="")).status_code == 303
         profile = rows(cfg, SnmpProfile)[0]
         assert profile.priv_protocol is None and profile.priv_key_sealed is None
-        assert "authNoPriv" in client.get("/settings").text
+        assert "authNoPriv" in client.get("/settings/snmp").text
 
     @pytest.mark.parametrize("data,message", [
         (v2c(name=""), "Give the profile a name"),
@@ -279,7 +279,7 @@ class TestDevices:
         client, cfg = env
         client.post("/settings/snmp/profiles", data=v2c())
         client.post("/settings/snmp/devices", data={"device_id": "1", "profile_id": "1"})
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         assert len(rows(cfg, SnmpDevice)) == 1
         assert '<option value="1">lab-switch' not in page, "still offered after being added"
         assert '<option value="2">spare' in page
@@ -375,7 +375,7 @@ class TestTheTestButton:
         row = rows(cfg, SnmpDevice)[0]
         assert row.last_ok_at is not None and row.last_error is None
         assert row.last_probe["sys_name"] == "test-switch-01"
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         assert "answering" in page and "test-switch-01" in page
         assert "Supports" in page
 
@@ -398,7 +398,7 @@ class TestTheTestButton:
         row = rows(cfg, SnmpDevice)[0]
         assert row.last_ok_at is None
         assert "AuthFailed" in row.last_error and "rejected" in row.last_error
-        assert "no answer" in client.get("/settings").text
+        assert "no answer" in client.get("/settings/snmp").text
 
     def test_an_undecryptable_credential_says_what_to_do(self, env):
         client, cfg = env
@@ -500,7 +500,7 @@ class TestPollingControls:
 
     def test_the_interval_is_saved_and_only_offered_values_are_accepted(self, env):
         client, cfg = env
-        assert "Poll every" in client.get("/settings").text
+        assert "Poll every" in client.get("/settings/snmp").text
         assert client.post("/settings/snmp/polling",
                            data={"interval_seconds": "300"}).status_code == 303
 
@@ -519,7 +519,7 @@ class TestPollingControls:
         self._listed(client)
         client.post("/settings/snmp/devices/1/polling", data={})
         assert rows(cfg, SnmpDevice)[0].enabled is False
-        assert "paused" in client.get("/settings").text
+        assert "paused" in client.get("/settings/snmp").text
         client.post("/settings/snmp/devices/1/polling", data={"enabled": "1"})
         assert rows(cfg, SnmpDevice)[0].enabled is True
 
@@ -543,7 +543,7 @@ class TestPollingControls:
                                last_ok_at=utcnow(), cpu_percent=12.6, memory_percent=40.2,
                                interfaces_total=26, interfaces_up=4))
         asyncio.run(seed())
-        page = client.get("/settings").text
+        page = client.get("/settings/snmp").text
         assert "CPU 13%" in page and "Memory 40%" in page
         assert "4 of 26 interfaces up" in page
         assert "Polled " in page
