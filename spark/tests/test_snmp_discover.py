@@ -8,13 +8,15 @@ for every device, whether SPARK polls it, without opening each one.
 from __future__ import annotations
 
 import asyncio
+import html
+import re
 import tempfile
 from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from spark import db as D
 from spark import snmp_discover
@@ -271,6 +273,136 @@ class TestFindButton:
         asyncio.run(ignore())
         client.post("/settings/snmp/discover/add-all")
         assert 1 not in {r.device_id for r in _rows(SnmpDevice)}
+
+
+class TestFindFromDevices:
+    """The same search, started from the Devices page, answered in its SNMP column."""
+
+    def test_the_button_is_on_the_devices_page(self, site):
+        client, _ = site
+        page = client.get("/devices?per_page=25").text
+        assert '<form method="post" action="/devices/find-snmp">' in page
+        assert '<input type="hidden" name="back" value="/devices?per_page=25">' in page
+
+    def test_without_a_profile_it_offers_to_set_one_up(self, site):
+        client, config = site
+        _drop_profiles(config)
+        page = client.get("/devices").text
+        assert 'action="/devices/find-snmp"' not in page
+        assert '<a href="/settings/snmp" class="btn-quiet"' in page and "Set up SNMP" in page
+        assert client.post("/devices/find-snmp").headers["location"] == "/settings/snmp"
+
+    def test_pressing_it_says_searching_and_returns_to_the_same_view(self, site):
+        client, _ = site
+        response = client.post("/devices/find-snmp", data={"back": "/devices?per_page=25"})
+        assert response.status_code == 303
+        assert response.headers["location"] == "/devices?per_page=25"
+        assert "Looking for SNMP" in client.get("/devices").text
+
+    @pytest.mark.parametrize("back", ["https://evil.example/", "//evil.example",
+                                      "/settings", "/devicesX"])
+    def test_it_only_ever_returns_to_devices(self, site, back):
+        client, _ = site
+        assert client.post("/devices/find-snmp", data={"back": back}) \
+            .headers["location"] == "/devices"
+
+    def test_a_device_that_answered_gets_an_add_button_and_nothing_is_added(self, site):
+        client, config = site
+        asyncio.run(snmp_discover.run_discovery(config))
+        page = client.get("/devices").text
+        body = _table(page)
+        assert body.count('class="snmp-add"') == 1
+        assert 'action="/devices/1/snmp"' in body and 'name="profile_id" value="1"' in body
+        assert "answers · lab" in body and "as lab-switch" in body
+        assert "<strong>1 device</strong> answered SNMP and isn't polled yet." in _flat(page)
+        assert '<a href="/devices?snmp=found">Show it</a>' in page
+        assert "Add all" not in page, "one found: no 'all'"
+        assert 1 not in {r.device_id for r in _rows(SnmpDevice)}, "Find suggests; it never adds"
+
+    def test_add_puts_it_on_the_list_with_the_profile_it_answered(self, site, monkeypatch):
+        client, config = site
+        from spark import scheduler as scheduler_module
+        scheduled: list[list[int]] = []
+
+        async def sync(config, *, interval=None, row_ids=None):  # type: ignore[no-untyped-def]
+            scheduled.append(sorted(row_ids or []))
+            return len(row_ids or [])
+        monkeypatch.setattr(scheduler_module, "sync_snmp_jobs", sync)
+        asyncio.run(snmp_discover.run_discovery(config))
+        response = client.post("/devices/1/snmp",
+                               data={"profile_id": "1", "back": "/devices?per_page=25"})
+        assert response.headers["location"] == "/devices?per_page=25"
+        assert (1, 1) in {(r.device_id, r.profile_id) for r in _rows(SnmpDevice)}
+        new_row = next(r.id for r in _rows(SnmpDevice) if r.device_id == 1)
+        assert scheduled and new_row in scheduled[-1], "polling starts without a restart"
+        page = client.get("/devices").text
+        assert 'class="snmp-add"' not in page and "answered SNMP" not in page
+        assert re.search(r'href="/devices/1" class="pill neutral"\s+title="[^"]*">waiting</a>',
+                         _table(page))
+        # A second press (a stale page) changes nothing and does not error.
+        assert client.post("/devices/1/snmp", data={"profile_id": "1"}).status_code == 303
+        assert len([r for r in _rows(SnmpDevice) if r.device_id == 1]) == 1
+
+    def test_the_filter_shows_only_what_answered(self, site):
+        client, config = site
+        asyncio.run(snmp_discover.run_discovery(config))
+        body = _table(client.get("/devices?snmp=found").text)
+        assert "dev1" in body and "dev2" not in body and "dev3" not in body
+
+    def test_add_all_comes_back_without_the_now_empty_filter(self, site):
+        client, config = site
+        asyncio.run(snmp_discover.run_discovery(config))
+        response = client.post("/devices/find-snmp/add-all",
+                               data={"back": "/devices?snmp=found&per_page=25"})
+        assert response.headers["location"] == "/devices?per_page=25"
+        assert 1 in {r.device_id for r in _rows(SnmpDevice)}
+
+    def test_nothing_new_says_so(self, site):
+        client, config = site
+
+        async def list_dev1():
+            async with D.session_scope() as s:
+                s.add(SnmpDevice(device_id=1, profile_id=1, enabled=True))
+        asyncio.run(list_dev1())
+        asyncio.run(snmp_discover.run_discovery(config))
+        page = client.get("/devices").text
+        assert "SNMP search done: 1 device tried, nothing new answered." in _flat(page)
+        assert 'class="snmp-add"' not in page
+
+    def test_everything_found_added_is_not_nothing_new(self, site):
+        client, config = site
+        asyncio.run(snmp_discover.run_discovery(config))
+        client.post("/devices/1/snmp", data={"profile_id": "1"})
+        page = client.get("/devices").text
+        assert "nothing new answered" not in page and "answered SNMP" not in page
+
+    def test_a_device_that_refused_the_credentials_says_so(self, site):
+        client, config = site
+
+        async def unlist_dev3():
+            async with D.session_scope() as s:
+                await s.execute(delete(SnmpPoll))
+                await s.execute(delete(SnmpDevice).where(SnmpDevice.device_id == 3))
+        asyncio.run(unlist_dev3())
+        asyncio.run(snmp_discover.run_discovery(config))
+        page = client.get("/devices").text
+        assert "1 more answered but refused the credentials." in _flat(page)
+        assert "refused every profile's credentials (lab)" in _flat(_table(page))
+
+
+def _flat(page: str) -> str:
+    """Text as read: entities decoded, runs of whitespace as one space."""
+    return re.sub(r"\s+", " ", html.unescape(page))
+
+
+def _drop_profiles(config) -> None:  # type: ignore[no-untyped-def]
+    async def drop():
+        from spark.models import SnmpProfile
+        async with D.session_scope() as s:
+            await s.execute(delete(SnmpPoll))
+            await s.execute(delete(SnmpDevice))
+            await s.execute(delete(SnmpProfile))
+    asyncio.run(drop())
 
 
 # --------------------------------------------------------------------------

@@ -32,7 +32,7 @@ from .collectors import AuthFailed, SnmpCollector
 from .collectors import oids as O
 from .db import get_setting, save_setting, session_scope
 from .models import Device, SnmpDevice, SnmpProfile, utcnow
-from .snmp_config import credential_for
+from .snmp_config import ProfileError, add_device, credential_for
 from .vault import SecretUnavailable, vault_for
 
 log = logging.getLogger(__name__)
@@ -61,6 +61,63 @@ def is_running(state: dict, now: datetime | None = None) -> bool:
 
 async def load_state(session) -> dict:  # type: ignore[no-untyped-def]
     return await get_setting(session, STATE_KEY)
+
+
+async def mark_started(session) -> bool:  # type: ignore[no-untyped-def]
+    """Record a search as running, before its job starts. False if one is.
+
+    Done by the request that pressed the button, so the page it redirects to
+    already says "Searching" rather than showing the previous result for a
+    second and looking as if the button did nothing. The caller commits and
+    then queues the job (scheduler.trigger_snmp_discovery).
+    """
+    state = await load_state(session)
+    if is_running(state):
+        return False
+    await save_setting(session, STATE_KEY, {
+        **state, "running": True, "started_at": utcnow().isoformat(),
+    })
+    return True
+
+
+async def waiting(session, state: dict) -> tuple[dict[int, dict], dict[int, dict]]:  # type: ignore[no-untyped-def]
+    """The last search's answers that still need someone: (found, refused).
+
+    Keyed by device id, and filtered against the database now rather than
+    trusted as saved -- a device added, removed or ignored since drops out
+    without anyone pressing Find again.
+    """
+    rows = state.get("found", []) + state.get("refused", [])
+    ids = {r.get("device_id") for r in rows}
+    if not ids:
+        return {}, {}
+    listed = set((await session.execute(
+        select(SnmpDevice.device_id).where(SnmpDevice.device_id.in_(ids))
+    )).scalars())
+    present = set((await session.execute(
+        select(Device.id).where(Device.id.in_(ids), Device.ignored.is_(False))
+    )).scalars())
+    keep = present - listed
+
+    def by_id(entries: list[dict]) -> dict[int, dict]:
+        return {e["device_id"]: e for e in entries if e.get("device_id") in keep}
+
+    return by_id(state.get("found", [])), by_id(state.get("refused", []))
+
+
+async def add_all_found(session) -> int:  # type: ignore[no-untyped-def]
+    """Put every device the last search found on the SNMP list, each with the
+    profile it answered. Skips any listed, removed or ignored since. Returns
+    how many were added; the caller commits and reschedules polling."""
+    found, _ = await waiting(session, await load_state(session))
+    added = 0
+    for device_id, entry in found.items():
+        try:
+            await add_device(session, device_id, int(entry["profile_id"]))
+        except (ProfileError, KeyError, TypeError, ValueError):
+            continue
+        added += 1
+    return added
 
 
 async def _ask(address: str, credential) -> tuple[str, dict | None]:  # type: ignore[no-untyped-def]

@@ -349,12 +349,16 @@ read-write community, SPARK never writes, and v2c would send it in clear text
 — to every device, when **Find SNMP devices** is pressed.
 
 **SPARK does not look for SNMP devices on its own** — it polls the devices on
-the list, and only those. To find candidates, press **Find SNMP devices** on
-the same card. It sends one read-only question (the device's name) to every
+the list, and only those. To find candidates, press **Find SNMP** at the top
+of the Devices page, or **Find SNMP devices** on the same card. It sends one read-only question (the device's name) to every
 discovered device not already listed, trying each profile in turn, and lists
 the ones that answer with the profile that worked. **Add** or **Add all** puts
 them on the list; nothing is added until you do. About 250 devices take around
-ten seconds, and the results appear without reloading.
+ten seconds, and the results appear without reloading. On the Devices page,
+each device that answered gets an **Add** button in its SNMP column (with the
+profile it answered), one that refused the credentials says `refused`, and the
+filter's **Answered Find, not polled** shows just those. Without a profile the
+button reads **Set up SNMP** and goes to the SNMP settings.
 
 It runs only when pressed, on purpose: with a v2c profile it sends the
 community string, in clear text, to every device it tries. A device with SNMP
@@ -662,7 +666,7 @@ spark/
     test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
     test_device_page.py history read back weighted and gap-true; charts; the page
     test_layout.py      every table scrolls inside its card
-    test_snmp_discover.py  Find suggests and never adds; the Devices SNMP column and filter
+    test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in

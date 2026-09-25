@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — Find SNMP on the Devices page (2026-09-25)
+
+### Added
+
+- **Find SNMP** at the top of the Devices page, beside Scan ports: the same
+  read-only search as Settings → SNMP, started from where the devices are.
+  While it runs the page says so; when it finishes (a few seconds, no reload)
+  each device that answered gets an **Add** button in its SNMP column, with
+  the profile it answered, and a line at the top counts them, with **Show
+  them** and **Add all**. A device that refused the credentials says
+  `refused`, with the profiles it refused on hover.
+- The SNMP filter gains **Answered Find, not polled**.
+- Without a profile the button reads **Set up SNMP** and opens Settings → SNMP.
+- Every button returns to the page as it was, filters and paging included,
+  and only ever to `/devices`.
+
+### Changed
+
+- Starting a search and "add everything it found" moved into
+  `snmp_discover` (`mark_started`, `add_all_found`), shared by both pages.
+
+### Tests
+
+14 new in `test_snmp_discover.py`: the button and its no-profile form;
+searching is shown at once; return address confined to `/devices`; a device
+that answered gets Add and nothing is added until it is pressed; Add lists it
+with its profile and starts polling; a second Add is harmless; the filter;
+Add all drops the emptied filter and keeps the rest; "nothing new" versus
+"all added"; refused. Nine deliberate breaks each caught. A browser run
+presses Find SNMP and sees the Add buttons arrive by live refresh, then adds
+one. `pytest` 655 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — sign-in timeout (2026-09-25)
 
 ### Added

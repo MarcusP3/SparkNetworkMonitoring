@@ -571,7 +571,7 @@ SNMP_ANCHOR = "/settings/snmp"
 POLL_INTERVAL_CHOICES = (30, 60, 120, 300, 600, 900, 1800, 3600)
 
 
-async def _apply_snmp_schedule(
+async def apply_snmp_schedule(
     session: AsyncSession, config: Config, *, interval: int | None = None
 ) -> None:
     """Make the running poll jobs match the SNMP list that was just saved.
@@ -715,7 +715,7 @@ async def add_snmp_device(
         return await _render(request, session, config, user, snmp_error=message,
                              status_code=400)
     await session.commit()
-    await _apply_snmp_schedule(session, config)
+    await apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 
@@ -747,7 +747,7 @@ async def remove_snmp_device(
 ):
     await snmp_config.remove_device(session, row_id)
     await session.commit()
-    await _apply_snmp_schedule(session, config)
+    await apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 
@@ -764,7 +764,7 @@ async def set_snmp_device_polling(
     if row is not None:
         row.enabled = _checked(enabled)
         await session.commit()
-        await _apply_snmp_schedule(session, config)
+        await apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 
@@ -777,19 +777,13 @@ async def find_snmp_devices(
 ):
     """Queue a search for devices that answer one of the saved profiles.
 
-    Marked as running here, before the job starts, so the page this redirects
-    to already says "Searching" rather than showing the previous result for a
-    second and looking as if the button did nothing.
+    The Devices page has the same button (routes_devices.find_snmp).
     """
     if not await snmp_config.list_profiles(session):
         return await _render(request, session, config, user,
                              snmp_error="Add a profile first -- that is what Find tries.",
                              status_code=400)
-    state = await snmp_discover.load_state(session)
-    if not snmp_discover.is_running(state):
-        await save_setting(session, snmp_discover.STATE_KEY, {
-            **state, "running": True, "started_at": utcnow().isoformat(),
-        })
+    if await snmp_discover.mark_started(session):
         await session.commit()
         scheduler_module.trigger_snmp_discovery(config)
     return redirect(SNMP_ANCHOR)
@@ -803,17 +797,9 @@ async def add_found_snmp_devices(
 ):
     """Put every device the last search found on the list, each with the
     profile it answered. Skips any that were listed, removed or ignored since."""
-    state = await snmp_discover.load_state(session)
-    for found in state.get("found", []):
-        try:
-            device = await session.get(Device, int(found["device_id"]))
-            if device is None or device.ignored:
-                continue
-            await snmp_config.add_device(session, device.id, int(found["profile_id"]))
-        except (snmp_config.ProfileError, KeyError, TypeError, ValueError):
-            continue
+    await snmp_discover.add_all_found(session)
     await session.commit()
-    await _apply_snmp_schedule(session, config)
+    await apply_snmp_schedule(session, config)
     return redirect(SNMP_ANCHOR)
 
 
@@ -931,7 +917,7 @@ async def set_snmp_polling(
     settings["poll_interval_seconds"] = interval
     await save_setting(session, "snmp", settings)
     await session.commit()
-    await _apply_snmp_schedule(session, config, interval=interval)
+    await apply_snmp_schedule(session, config, interval=interval)
     return redirect(SNMP_ANCHOR)
 
 

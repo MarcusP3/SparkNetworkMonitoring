@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import events
+from .. import events, snmp_config, snmp_discover
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
@@ -35,6 +35,8 @@ from ..models import (
     utcnow,
 )
 from .deps import get_config, get_session, redirect, require_user, templates
+from .routes_auth import _safe_next
+from .routes_settings import apply_snmp_schedule
 
 router = APIRouter()
 
@@ -88,7 +90,16 @@ def _page_size(value: str) -> int:
 
 
 # The SNMP filter's values. Anything else shows everything.
-SNMP_FILTERS = {"on": "Polled over SNMP", "off": "Not polled"}
+SNMP_FILTERS = {
+    "on": "Polled over SNMP",
+    "off": "Not polled",
+    "found": "Answered Find, not polled",
+}
+
+# How long a finished Find SNMP says so at the top of the page. Found devices
+# stay marked in the SNMP column until they are added; this is only the
+# "nothing new answered" kind of news, which is stale after a few minutes.
+FIND_NEWS_SECONDS = 600
 
 
 def snmp_state(row: SnmpDevice | None, poll: SnmpPoll | None) -> dict | None:
@@ -298,6 +309,11 @@ async def list_devices(
         ).all()
     }
 
+    # The last Find SNMP: devices that answered, or refused the credentials,
+    # and are not on the SNMP list yet.
+    find_state = await snmp_discover.load_state(session)
+    found, refused = await snmp_discover.waiting(session, find_state)
+
     now = utcnow()
     rows = []
     for device in devices:
@@ -313,6 +329,8 @@ async def list_devices(
                 # there.
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
                 "snmp": snmp_state(*snmp_rows.get(device.id, (None, None))),
+                "snmp_found": found.get(device.id),
+                "snmp_refused": refused.get(device.id),
                 "services": [],
             }
         )
@@ -326,6 +344,8 @@ async def list_devices(
         rows = [r for r in rows if r["snmp"] is not None]
     elif snmp == "off":
         rows = [r for r in rows if r["snmp"] is None]
+    elif snmp == "found":
+        rows = [r for r in rows if r["snmp_found"]]
 
     # Counted before paging, deliberately. "Mark all 12 reviewed" acts on every
     # unacknowledged device, so a number that shrank to what happens to be on
@@ -385,8 +405,9 @@ async def list_devices(
             "snmp_filter": {
                 "value": snmp,
                 "choices": SNMP_FILTERS,
-                "listed": len(snmp_rows),
+                "listed": len(snmp_rows) + len(found),
             },
+            "snmp_find": await _find_summary(session, find_state, found, refused, now),
             "filtered": bool(selected) or bool(snmp),
             "sweep": sweep,
             "port_scan": port_scan,
@@ -431,6 +452,98 @@ async def set_scan_schedule(
     # write lock, and a second session reading it is how the page hung before.
     await scheduler_module.schedule_discovery(config, settings)
     return redirect("/devices")
+
+
+async def _find_summary(session: AsyncSession, state: dict, found: dict, refused: dict,  # type: ignore[no-untyped-def]
+                        now) -> dict:
+    """What the top of the page says about Find SNMP."""
+    finished_ago = None
+    try:
+        finished_ago = (now - datetime.fromisoformat(state["finished_at"])).total_seconds()
+    except (KeyError, TypeError, ValueError):
+        pass
+    return {
+        "profiles": bool(await snmp_config.list_profiles(session)),
+        "running": snmp_discover.is_running(state, now),
+        "found": len(found),
+        # Answered at all, added since or not: tells "nothing new answered"
+        # apart from "everything it found has been added".
+        "answered": len(state.get("found", [])),
+        "refused": len(refused),
+        "tried": state.get("devices"),
+        "error": state.get("error"),
+        # Recent enough to still be news: "nothing new answered", an error.
+        "recent": finished_ago is not None and finished_ago < FIND_NEWS_SECONDS,
+    }
+
+
+def _back(value: str) -> str:
+    """Where a button on this page returns to: the page as it was, filters
+    and all, and never anywhere but /devices."""
+    target = _safe_next(value)
+    return target if target == "/devices" or target.startswith("/devices?") else "/devices"
+
+
+@router.post("/devices/find-snmp")
+async def find_snmp(
+    back: str = Form("/devices"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Find SNMP, from here: the same search as Settings → SNMP → Find.
+
+    Answers show up in the SNMP column with an Add button when it finishes;
+    the search publishes an event and the page refreshes itself.
+    """
+    if not await snmp_config.list_profiles(session):
+        return redirect("/settings/snmp")
+    if await snmp_discover.mark_started(session):
+        await session.commit()
+        scheduler_module.trigger_snmp_discovery(config)
+    return redirect(_back(back))
+
+
+@router.post("/devices/find-snmp/add-all")
+async def add_all_snmp_found(
+    back: str = Form("/devices"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Every device the last search found onto the SNMP list, each with the
+    profile it answered."""
+    if await snmp_discover.add_all_found(session):
+        await session.commit()
+        await apply_snmp_schedule(session, config)
+    # Filtered to "answered Find", which is now empty: drop that filter and
+    # keep the rest, so the page shows the devices just added.
+    path, _, query = _back(back).partition("?")
+    kept = [(k, v) for k, v in parse_qsl(query) if (k, v) != ("snmp", "found")]
+    return redirect(path + (f"?{urlencode(kept)}" if kept else ""))
+
+
+@router.post("/devices/{device_id}/snmp")
+async def add_snmp_found(
+    device_id: int,
+    profile_id: int = Form(...),
+    back: str = Form("/devices"),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """One device onto the SNMP list, with the profile it answered Find with."""
+    device = await session.get(Device, device_id)
+    if device is not None and not device.ignored:
+        try:
+            await snmp_config.add_device(session, device_id, profile_id)
+        except snmp_config.ProfileError:
+            # Already listed (a second click), or the profile was deleted
+            # since the search. Either way the page shows the truth on return.
+            return redirect(_back(back))
+        await session.commit()
+        await apply_snmp_schedule(session, config)
+    return redirect(_back(back))
 
 
 @router.post("/devices/scan-ports")

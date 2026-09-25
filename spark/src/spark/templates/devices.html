@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+{# This page as it is now, filters and all: where its buttons come back to. #}
+{% set here = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
 <div class="page">
   <div class="page-head">
     <div class="page-title">
@@ -25,6 +27,16 @@
           Mark all {{ unreviewed }} reviewed
         </button>
       </form>
+      {% endif %}
+      {% if snmp_find.profiles %}
+      <form method="post" action="/devices/find-snmp">
+        <input type="hidden" name="back" value="{{ here }}">
+        <button type="submit" class="btn-quiet"
+                title="Try your SNMP profiles on every device not already polled. Only suggests; adds nothing.">Find SNMP</button>
+      </form>
+      {% else %}
+      <a href="/settings/snmp" class="btn-quiet"
+         title="Find SNMP needs a profile to try: a community string or a v3 user">Set up SNMP</a>
       {% endif %}
       <form method="post" action="/devices/scan-ports">
         <button type="submit" class="btn-quiet"
@@ -74,6 +86,43 @@
   </section>
 
   <div id="live">
+
+  {# Find SNMP's progress and result. Inside #live: the search finishes a few
+     seconds after the button is pressed and the page refreshes itself. #}
+  {% set find = snmp_find %}
+  {% if find.running %}
+  <section class="card find-bar">
+    <span class="muted">Looking for SNMP{% if find.tried %} on {{ find.tried }} device{{ 's' if find.tried != 1 }}{% endif %}…
+      Anything that answers gets an Add button in the SNMP column.</span>
+  </section>
+  {% elif find.found %}
+  <section class="card find-bar">
+    <span>
+      <strong>{{ find.found }} device{{ 's' if find.found != 1 }}</strong> answered SNMP and
+      {{ "isn't" if find.found == 1 else "aren't" }} polled yet.
+      {% if find.refused %}<span class="muted">{{ find.refused }} more answered but refused the credentials.</span>{% endif %}
+    </span>
+    {% if snmp_filter.value != 'found' %}
+      <a href="/devices?snmp=found">Show {{ 'it' if find.found == 1 else 'them' }}</a>
+    {% endif %}
+    {% if find.found > 1 %}
+    <form method="post" action="/devices/find-snmp/add-all">
+      <input type="hidden" name="back" value="{{ here }}">
+      <button type="submit" class="btn-quiet"
+              title="Each with the profile it answered">Add all {{ find.found }}</button>
+    </form>
+    {% endif %}
+  </section>
+  {% elif find.recent and (find.error or not find.answered) %}
+  <section class="card find-bar">
+    <span class="muted">
+      {% if find.error %}The SNMP search failed: {{ find.error }}
+      {% else %}SNMP search done: {{ find.tried }} device{{ 's' if find.tried != 1 }} tried, nothing new answered.
+        {% if find.refused %}{{ find.refused }} answered but refused the credentials.{% endif %}
+      {% endif %}
+    </span>
+  </section>
+  {% endif %}
 
   {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value %}
   <section class="card filter-bar">
@@ -309,6 +358,18 @@
             {% if row.snmp %}
               <a href="/devices/{{ device.id }}" class="pill {{ row.snmp.kind }}{% if row.snmp.kind != 'neutral' %} dot{% endif %}"
                  title="SNMP polling — open this device's charts">{{ row.snmp.label }}</a>
+            {% elif row.snmp_found %}
+              {% set f = row.snmp_found %}
+              <form method="post" action="/devices/{{ device.id }}/snmp" class="snmp-add">
+                <input type="hidden" name="profile_id" value="{{ f.profile_id }}">
+                <input type="hidden" name="back" value="{{ here }}">
+                <button type="submit" class="btn-quiet"
+                        title="Answered Find SNMP{% if f.sys_name %} as {{ f.sys_name }}{% endif %} with profile {{ f.profile }}. Add it to the SNMP list to poll it.">Add</button>
+                <span class="muted small">answers · {{ f.profile }}</span>
+              </form>
+            {% elif row.snmp_refused %}
+              <span class="muted small"
+                    title="Answered SNMP but refused every profile's credentials ({{ row.snmp_refused.profiles | join(', ') }}). Add a profile with the right SNMPv3 user in Settings → SNMP.">refused</span>
             {% else %}
               <span class="muted small">—</span>
             {% endif %}
@@ -393,7 +454,9 @@
     <h2>No devices match</h2>
     <p class="muted">
       {% if snmp_filter.value == 'on' %}No device{% if subnet_filter.selected %} on this subnet{% endif %} is polled over SNMP.
-        Add some in <a href="/settings/snmp">Settings</a>, or use <strong>Find SNMP devices</strong> there.
+        Press <strong>Find SNMP</strong> above, or add some in <a href="/settings/snmp">Settings</a>.
+      {% elif snmp_filter.value == 'found' %}Nothing{% if subnet_filter.selected %} on this subnet{% endif %} from the last
+        SNMP search is waiting to be added.
       {% else %}Every device{% if subnet_filter.selected %} on this subnet{% endif %} is already polled over SNMP.{% endif %}
       <a href="/devices">Show all</a>.
     </p>
