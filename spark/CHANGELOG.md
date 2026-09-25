@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — no sideways jolt between pages (2026-09-25)
+
+### Fixed
+
+- **The layout jumped sideways when moving between some pages.** Where
+  scrollbars take up space (Windows, Linux, macOS with a mouse attached), a
+  page short enough to fit the window had no scrollbar and a longer one did,
+  so the centred layout moved by half a scrollbar's width on every click
+  between them — most noticeably Settings → Port scanning and SNMP on a tall
+  window. The scrollbar's space is now always reserved (`scrollbar-gutter:
+  stable`, with `overflow-y: scroll` for browsers without it). Reproduced in a
+  headed Chromium at 1400×1150: the page header moved between x=64 and x=57;
+  after the fix it is at 57 on every page, at 1150 and 800 px tall.
+
 ## Unreleased — one-click "public" SNMP profile (2026-09-25)
 
 ### Added

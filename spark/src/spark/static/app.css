@@ -125,6 +125,18 @@
 
 * { box-sizing: border-box; }
 
+/* Always leave room for the vertical scrollbar. Where scrollbars take space
+   (Windows, Linux, macOS with a mouse attached), a page short enough to fit
+   has none and a long one has one, so moving between them re-centred the
+   whole layout by half a scrollbar -- a visible sideways jolt on every click
+   between, say, Port scanning and SNMP. `scrollbar-gutter` reserves the space
+   without drawing an empty track; the `overflow-y` fallback is for browsers
+   without it, and draws the track instead. */
+html { overflow-y: scroll; }
+@supports (scrollbar-gutter: stable) {
+  html { overflow-y: auto; scrollbar-gutter: stable; }
+}
+
 body {
   margin: 0;
   font-family: var(--font);
