@@ -412,6 +412,8 @@ button { font: inherit; cursor: pointer; }
 .alert.error { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
 .alert.warn  { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 .alert.ok    { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+/* Information, not a status: neutral, per the brand rule. */
+.alert.info  { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 
 /* ---------- Stats ---------- */
 

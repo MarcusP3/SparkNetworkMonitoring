@@ -79,14 +79,6 @@ Create `data/` yourself, before the first `up`: if Docker creates it for the
 bind mount it belongs to root, and SPARK refuses to start (with this same
 command in the message) rather than run as root.
 
-**Upgrading an install from before the non-root container:**
-
-```bash
-cd spark && git pull
-sudo chown -R 9700:9700 data
-docker compose up -d --build
-```
-
 Open `http://<host>:9700` and create the admin account when prompted. The
 password minimum is 12 characters.
 
@@ -286,7 +278,16 @@ SPARK is shown in — page timestamps, chart axes and hover readouts — and the
 zone quiet hours are kept in. It is chosen first at setup (the browser's own
 zone is preselected), and Preferences offers the browser's zone whenever it
 differs from the saved one. Times are stored in UTC regardless; only how they
-read changes. One setting for the instance, since SPARK has one account.
+read changes.
+
+**Sign-in timeout** is how long SPARK stays signed in without being used:
+30 minutes unless changed, with choices from 15 minutes to 24 hours and no
+"never". Clicking, typing and opening pages count as use; a page updating
+itself does not, so a dashboard left open still times out, and the tab goes
+back to the sign-in page on its own. Sign in again and you land where you
+were. In proxy mode the proxy decides instead, and the card says so.
+
+Both are settings for the instance, since SPARK has one account.
 
 ## Alerts
 
@@ -519,6 +520,15 @@ The cookie carries an opaque token and is not itself signed — a database leak
 hands over no usable sessions, and revocation is a row update. It is marked
 `Secure` when the login itself arrived over HTTPS.
 
+A session ends after 30 minutes without use (changeable under
+[Preferences](#preferences)), and in any case after `auth.session_days` (30
+days). The timeout is enforced by the server against the session's last-seen
+time, which is written at most once a minute, so a session can end up to a
+minute early but never late. Requests a page makes by itself — the live
+refresh, the event stream, the timeout check — send `X-Requested-With: fetch`
+and do not count as use. Raising the timeout does not revive sessions that
+had already timed out: they are deleted when it is saved.
+
 Every response carries a Content-Security-Policy that allows only SPARK's own
 origin (inline scripts run on a per-request nonce), `frame-ancestors 'none'`,
 `nosniff`, and `no-store` on pages. Every POST is checked against its `Origin`
@@ -604,7 +614,7 @@ spark/
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
-    prefs.py            the time zone preference; the `local` template filter's formatting
+    prefs.py            preferences: time zone (the `local` filter's formatting), sign-in timeout
     alerts.py           deciding what to alert on; the Discord outbox and dispatcher
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
@@ -655,6 +665,7 @@ spark/
     test_snmp_discover.py  Find suggests and never adds; the Devices SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
+    test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3

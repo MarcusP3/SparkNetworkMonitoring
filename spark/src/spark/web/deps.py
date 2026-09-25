@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import Depends, Request
@@ -116,11 +117,27 @@ async def current_user(
     config: Config = Depends(get_config),
 ) -> User | None:
     if config.auth.mode == "proxy":
+        # The proxy owns sign-in, and so when it ends.
         return await resolve_proxy_user(session, request, config.auth)
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
-    return await resolve_session(session, token)
+    minutes = await prefs.get_idle_minutes(session)
+    # For the page's timeout timer (base.html).
+    request.state.idle_seconds = minutes * 60
+    return await resolve_session(
+        session, token, idle=timedelta(minutes=minutes), touch=not background(request)
+    )
+
+
+def background(request: Request) -> bool:
+    """A request the page made by itself, not one a person did.
+
+    The live refresh and the timeout check send this header. They must not
+    count as activity, or a dashboard left open would never time out. Anyone
+    can send it -- the only effect is not extending their own session.
+    """
+    return request.headers.get("x-requested-with") == "fetch"
 
 
 async def require_user(
@@ -137,9 +154,15 @@ async def require_user(
         return user
     if await setup_required(session):
         raise RedirectException("/setup")
+    params = []
     nxt = request.url.path
-    suffix = f"?next={nxt}" if nxt and nxt != "/" else ""
-    raise RedirectException(f"/login{suffix}")
+    if nxt and nxt != "/":
+        params.append(f"next={nxt}")
+    # A cookie that no longer works is, in practice, a session that timed
+    # out: signing out and changing the password both replace the cookie.
+    if request.cookies.get(SESSION_COOKIE):
+        params.append("expired=1")
+    raise RedirectException("/login" + ("?" + "&".join(params) if params else ""))
 
 
 def redirect(location: str, status_code: int = 303) -> RedirectResponse:

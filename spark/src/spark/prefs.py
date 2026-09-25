@@ -1,11 +1,14 @@
-"""Preferences: for now, the time zone SPARK shows times in.
+"""Preferences: the time zone SPARK shows times in, and the sign-in timeout.
 
-One setting for the instance rather than one per user. SPARK has a single
-admin account, and the time zone is also what quiet hours are kept in -- which
-must be one answer, not one per browser.
+Settings for the instance rather than per user. SPARK has a single admin
+account, and the time zone is also what quiet hours are kept in -- which must
+be one answer, not one per browser.
 
 Every stored time stays UTC. The zone is applied only when a time is shown:
 the `local` template filter, chart labels, and quiet hours.
+
+The timeout is how long a signed-in session may sit unused before it ends.
+auth.resolve_session enforces it; this module only stores it.
 """
 
 from __future__ import annotations
@@ -20,6 +23,12 @@ from .db import get_setting, save_setting
 
 SETTING = "preferences"
 DEFAULT_TIMEZONE = "UTC"
+
+# Minutes of inactivity before a session ends. A fixed list, not a free number:
+# nobody needs 37 minutes, and a list cannot be set to 0 or to a year.
+# No "never" on purpose -- SPARK holds a map of the network.
+IDLE_CHOICES = (15, 30, 60, 120, 240, 480, 1440)
+DEFAULT_IDLE_MINUTES = 30
 
 
 @lru_cache(maxsize=1)
@@ -75,6 +84,35 @@ async def set_timezone(session: AsyncSession, name: str) -> None:
     settings = await get_setting(session, SETTING)
     settings["timezone"] = name
     await save_setting(session, SETTING, settings)
+
+
+def idle_label(minutes: int) -> str:
+    """ "15 minutes", "1 hour", "24 hours"."""
+    if minutes % 60:
+        return f"{minutes} minutes"
+    hours = minutes // 60
+    return f"{hours} hour{'' if hours == 1 else 's'}"
+
+
+async def get_idle_minutes(session: AsyncSession) -> int:
+    """Minutes of inactivity a session is allowed. 30 unless changed."""
+    saved = (await get_setting(session, SETTING)).get("idle_minutes")
+    return saved if saved in IDLE_CHOICES else DEFAULT_IDLE_MINUTES
+
+
+async def set_idle_minutes(session: AsyncSession, value: str | int) -> int:
+    """Save the timeout; returns the previous one. ValueError if not a choice."""
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        minutes = -1
+    if minutes not in IDLE_CHOICES:
+        raise ValueError(f"{value!r} is not one of the timeout choices.")
+    previous = await get_idle_minutes(session)
+    settings = await get_setting(session, SETTING)
+    settings["idle_minutes"] = minutes
+    await save_setting(session, SETTING, settings)
+    return previous
 
 
 def local(when: datetime | None, tz, fmt: str) -> str:  # type: ignore[no-untyped-def]

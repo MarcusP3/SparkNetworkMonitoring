@@ -971,10 +971,12 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     "snmp": {
         "poll_interval_seconds": 60,
     },
-    # Display preferences. Empty time zone means "not chosen yet": prefs.py
-    # falls back to the zone quiet hours used before this existed, then UTC.
+    # Preferences. Empty time zone means "not chosen yet": prefs.py falls
+    # back to the zone quiet hours used before this existed, then UTC.
+    # idle_minutes is the sign-in timeout (prefs.IDLE_CHOICES).
     "preferences": {
         "timezone": "",
+        "idle_minutes": 30,
     },
     "retention": {
         "raw_days": 7,

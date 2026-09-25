@@ -8,6 +8,7 @@
   </div>
 
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+  {% if notice and not error %}<div class="alert info">{{ notice }}</div>{% endif %}
 
   {% if not proxy_mode %}
   <form method="post" action="/login" class="form">

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import (
@@ -15,7 +17,9 @@ from ..auth import (
     client_ip,
     create_admin,
     create_session,
+    resolve_session,
     revoke_session,
+    seconds_left,
     setup_required,
 )
 from ..config import Config
@@ -157,6 +161,7 @@ async def setup_submit(
 async def login_form(
     request: Request,
     next: str = "/",
+    expired: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
@@ -175,8 +180,14 @@ async def login_form(
             },
             status_code=401,
         )
+    notice = None
+    if expired:
+        minutes = await prefs.get_idle_minutes(session)
+        notice = (f"You were signed out after {prefs.idle_label(minutes)} without "
+                  "activity. Sign in to carry on where you were.")
     return templates.TemplateResponse(
-        request, "login.html", {"config": config, "title": "Sign in", "next": next}
+        request, "login.html",
+        {"config": config, "title": "Sign in", "next": next, "notice": notice},
     )
 
 
@@ -245,3 +256,42 @@ async def logout(
     response = redirect("/login")
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
+
+
+# --------------------------------------------------------------------------
+# Idle timeout
+# --------------------------------------------------------------------------
+
+
+async def _session_answer(session: AsyncSession, request: Request, *, touch: bool):  # type: ignore[no-untyped-def]
+    config = request.app.state.config
+    if config.auth.mode == "proxy":
+        # No timeout of ours to report: the proxy decides.
+        return JSONResponse({"remaining": None}, status_code=404)
+    token = request.cookies.get(SESSION_COOKIE)
+    idle = timedelta(minutes=await prefs.get_idle_minutes(session))
+    if token and touch:
+        await resolve_session(session, token, idle=idle, touch=True)
+    left = await seconds_left(session, token, idle) if token else 0
+    return JSONResponse({"remaining": left}, status_code=200 if left else 401,
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.get("/session")
+async def session_status(request: Request, session: AsyncSession = Depends(get_session)):
+    """Seconds until this session times out. Does not count as activity.
+
+    Asked by the page's timer (base.html) when it thinks time is up, since
+    another tab may have kept the session going in the meantime.
+    """
+    return await _session_answer(session, request, touch=False)
+
+
+@router.post("/session")
+async def session_touch(request: Request, session: AsyncSession = Depends(get_session)):
+    """Typing or clicking on a page: counts as activity, like a page load.
+
+    Without it, filling in a long form without saving would time out under
+    you. The page sends it at most once a minute.
+    """
+    return await _session_answer(session, request, touch=True)

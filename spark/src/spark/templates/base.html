@@ -9,7 +9,7 @@
   <link rel="icon" href="/static/brand/favicon.svg?v={{ asset_version }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png?v={{ asset_version }}">
 </head>
-<body>
+<body{% if user and request.state.idle_seconds is defined %} data-idle="{{ request.state.idle_seconds }}"{% endif %}>
 {% if user %}
 <header class="topbar">
   <a class="brand" href="/">
@@ -101,7 +101,14 @@
       // quietly reset the filter every time a sweep finished.
       fetch(window.location.pathname + window.location.search,
             { headers: { 'X-Requested-With': 'fetch' } })
-        .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+        .then(function (r) {
+          // Timed out: the fetch followed the redirect to the sign-in page.
+          if (r.redirected && new URL(r.url).pathname === '/login') {
+            window.location.href = r.url;
+            return Promise.reject('signed out');
+          }
+          return r.ok ? r.text() : Promise.reject(r.status);
+        })
         .then(function (html) {
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var next = doc.getElementById('live');
@@ -131,5 +138,69 @@
     source.addEventListener('change', refresh);
   })();
 </script>
+{% if user %}
+<script nonce="{{ request.state.csp_nonce }}">
+  // Sign-in timeout. The server ends a session after the time set under
+  // Preferences with no activity; this takes the tab to the sign-in page when
+  // that happens, rather than leaving the network on screen until someone
+  // clicks. The server is the authority -- this only asks it:
+  //  - when the local countdown runs out, GET /session. Another tab may have
+  //    kept the session going, so "time's up here" is only a reason to ask.
+  //  - on typing or clicking, POST /session (at most once a minute), so a
+  //    long form being filled in counts as use.
+  (function () {
+    var idle = parseInt(document.body.getAttribute('data-idle'), 10);
+    if (!idle || !window.fetch) return;
+
+    var timer = null;
+    var deadline = 0;
+    var lastTouch = Date.now();          // loading this page was activity
+
+    function toLogin() {
+      var here = window.location.pathname + window.location.search;
+      window.location.href = '/login?expired=1' +
+        (here !== '/' ? '&next=' + encodeURIComponent(here) : '');
+    }
+
+    function arm(seconds) {
+      deadline = Date.now() + seconds * 1000;
+      clearTimeout(timer);
+      // A second past the deadline, so the server agrees it has passed.
+      timer = setTimeout(check, seconds * 1000 + 1000);
+    }
+
+    function answer(r) {
+      if (r.status === 401) return { remaining: 0 };
+      return r.ok ? r.json() : Promise.reject(r.status);
+    }
+
+    function check() {
+      fetch('/session', { headers: { 'X-Requested-With': 'fetch' }, cache: 'no-store' })
+        .then(answer)
+        .then(function (d) { if (d.remaining > 0) arm(d.remaining); else toLogin(); })
+        // SPARK restarting or unreachable: ask again shortly.
+        .catch(function () { arm(30); });
+    }
+
+    function touched() {
+      if (Date.now() - lastTouch < 60000) return;
+      lastTouch = Date.now();
+      fetch('/session', { method: 'POST', headers: { 'X-Requested-With': 'fetch' } })
+        .then(answer)
+        .then(function (d) { if (d.remaining > 0) arm(d.remaining); })
+        .catch(function () { /* the countdown still stands */ });
+    }
+
+    document.addEventListener('keydown', touched, true);
+    document.addEventListener('pointerdown', touched, true);
+    // Timers are paused in hidden tabs and while a laptop sleeps; catch up
+    // the moment the tab is looked at again.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && Date.now() >= deadline) check();
+    });
+    arm(idle);
+  })();
+</script>
+{% endif %}
 </body>
 </html>

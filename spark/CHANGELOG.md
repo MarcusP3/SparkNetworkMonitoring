@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — sign-in timeout (2026-09-25)
+
+### Added
+
+- **Sign-in timeout** under Preferences: a session ends after 30 minutes
+  without use, adjustable to 15 minutes, 1, 2, 4, 8 or 24 hours (no "never").
+  Clicking, typing and opening pages count as use. The live refresh, the event
+  stream and the timeout check send `X-Requested-With: fetch` and do not, so
+  a dashboard left open still times out.
+- An open tab goes to the sign-in page by itself when the session ends, with
+  a note saying why, and signing in returns to the same page. The page's
+  timer asks `GET /session` before acting, since another tab may have kept
+  the session going. Typing or clicking sends `POST /session` at most once a
+  minute, so filling in a long form counts as use.
+- Raising the timeout deletes sessions that had already timed out, so none
+  come back to life. `auth.session_days` (30 days) still caps every session.
+- Proxy mode: no timeout of SPARK's own; the card says the proxy decides.
+
+### Removed
+
+- README: the "Upgrading an install from before the non-root container" block
+  in Quick start. SPARK's startup error already prints the `chown` command,
+  and "Docker settings that are not optional" covers it.
+
+### Tests
+
+22 new (`test_idle_timeout.py`): the timeout is enforced on pages and on the
+event stream; page loads and `POST /session` count as use, background
+refreshes and `GET /session` do not; changes apply at once; only the listed
+choices are accepted; raising it revives nothing; proxy mode has none. Nine
+deliberate breaks each caught. A browser run with a fake clock covers the
+tab going to sign-in on its own, not doing so while another tab keeps the
+session going, the once-a-minute click ping, and landing back on the same
+page. `pytest` 641 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — no routed-subnet banner (2026-09-25)
 
 ### Removed

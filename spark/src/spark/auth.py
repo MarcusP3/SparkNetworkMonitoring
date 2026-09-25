@@ -222,7 +222,10 @@ async def create_session(
     return token
 
 
-async def resolve_session(session: AsyncSession, token: str) -> User | None:
+async def _live(
+    session: AsyncSession, token: str, idle: timedelta | None
+) -> tuple[UserSession, User] | None:
+    """The session row and its user, if the token is still good."""
     # One round trip, not two: the session row and its user together. This
     # runs on every authenticated request, so it is the query that matters.
     row = (
@@ -237,18 +240,68 @@ async def resolve_session(session: AsyncSession, token: str) -> User | None:
     record, user = row
     if record.revoked:
         return None
-
-    if record.expires_at < utcnow():
+    now = utcnow()
+    if record.expires_at < now:
         return None
+    # Idle timeout. last_seen_at is written at most once a minute (below), so
+    # this ends a session up to a minute early, never late.
+    if idle is not None and now - record.last_seen_at > idle:
+        return None
+    return record, user
+
+
+async def resolve_session(
+    session: AsyncSession,
+    token: str,
+    *,
+    idle: timedelta | None = None,
+    touch: bool = True,
+) -> User | None:
+    """The signed-in user, or None.
+
+    `idle` is the inactivity timeout (prefs.get_idle_minutes); None skips it.
+    `touch=False` for requests the browser makes by itself -- the live
+    refresh, the event stream, the timeout check -- so a tab left open does
+    not count as someone using it and never times out.
+    """
+    live = await _live(session, token, idle)
+    if live is None:
+        return None
+    record, user = live
 
     # Only write when it is actually stale. Updating this on every request
     # means every authenticated page view opens a write transaction and holds
     # SQLite's single writer slot for the life of the request -- which is what
     # made a background sweep collide with the request that started it. A
     # minute of resolution is plenty for an idle-session timestamp.
-    if (utcnow() - record.last_seen_at).total_seconds() > LAST_SEEN_RESOLUTION:
+    if touch and (utcnow() - record.last_seen_at).total_seconds() > LAST_SEEN_RESOLUTION:
         record.last_seen_at = utcnow()
     return user
+
+
+async def seconds_left(session: AsyncSession, token: str, idle: timedelta) -> int:
+    """Seconds until this session times out; 0 if it already has. No touch."""
+    live = await _live(session, token, idle)
+    if live is None:
+        return 0
+    record, _ = live
+    now = utcnow()
+    left = min(record.last_seen_at + idle, record.expires_at) - now
+    return max(0, int(left.total_seconds()))
+
+
+async def end_idle_sessions(session: AsyncSession, idle: timedelta) -> int:
+    """Delete sessions unused for longer than `idle`. Returns how many.
+
+    Run when the timeout is changed. The timeout is checked against
+    last_seen_at at request time, so without this a session that had timed
+    out under 30 minutes would come back to life when the timeout went up to
+    an hour.
+    """
+    result = await session.execute(
+        delete(UserSession).where(UserSession.last_seen_at < utcnow() - idle)
+    )
+    return result.rowcount or 0
 
 
 async def revoke_session(session: AsyncSession, token: str) -> None:

@@ -13,7 +13,8 @@
   </div>
 
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-  {% if saved %}<div class="alert ok">Saved. Every time in SPARK is now shown in {{ timezone }}.</div>{% endif %}
+  {% if saved == 'timezone' %}<div class="alert ok">Saved. Every time in SPARK is now shown in {{ timezone }}.</div>{% endif %}
+  {% if saved == 'session' %}<div class="alert ok">Saved. You'll be signed out after {{ idle_label }} without activity.</div>{% endif %}
 
   <section class="card">
     <div class="card-head">
@@ -44,6 +45,41 @@
         <button type="submit" class="btn-primary">Save</button>
       </div>
     </form>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+      <div>
+        <h2>Sign-in timeout</h2>
+        <p class="card-sub">
+          How long SPARK stays signed in without being used. Clicking, typing
+          and opening pages count; a page updating itself does not, so a tab
+          left open still times out and goes back to the sign-in page.
+        </p>
+      </div>
+    </div>
+
+    {% if proxy_mode %}
+    <p class="muted small">
+      Sign-in is handled by your reverse proxy, so it decides when you are
+      signed out.
+    </p>
+    {% else %}
+    <form method="post" action="/preferences" class="prefs-form">
+      <label class="stack-field">
+        <span class="muted small">Sign out after</span>
+        <select name="idle_minutes" id="idle_minutes" required>
+          {% for minutes, label in idle_choices %}
+          <option value="{{ minutes }}" {% if minutes == idle_minutes %}selected{% endif %}>{{ label }} without activity</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+    {% endif %}
   </section>
 </div>
 

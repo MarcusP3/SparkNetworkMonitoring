@@ -78,9 +78,9 @@ class TestChoosing:
         page = client.get("/preferences").text
         assert "<h2>Time zone</h2>" in page and re.search(r'<option value="UTC" selected>', page)
         response = client.post("/preferences", data={"timezone": "Europe/London"})
-        assert response.status_code == 303 and response.headers["location"] == "/preferences?saved=1"
+        assert response.status_code == 303 and response.headers["location"] == "/preferences?saved=timezone"
         assert saved_zone(config) == "Europe/London"
-        page = client.get("/preferences?saved=1").text
+        page = client.get("/preferences?saved=timezone").text
         assert "shown in Europe/London" in page
         assert re.search(r'<option value="Europe/London" selected>Europe/London</option>', page)
 

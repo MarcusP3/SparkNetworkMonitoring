@@ -16,11 +16,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import timedelta
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from .. import events
+from .. import events, prefs
 from ..auth import SESSION_COOKIE, resolve_proxy_user, resolve_session
 from ..db import session_scope
 
@@ -41,7 +42,10 @@ async def _authenticate(request: Request) -> bool:
         token = request.cookies.get(SESSION_COOKIE)
         if not token:
             return False
-        return await resolve_session(session, token) is not None
+        # Subject to the idle timeout, but never extends it: the stream is
+        # the browser's doing, not the person's.
+        idle = timedelta(minutes=await prefs.get_idle_minutes(session))
+        return await resolve_session(session, token, idle=idle, touch=False) is not None
 
 
 @router.get("/events")
