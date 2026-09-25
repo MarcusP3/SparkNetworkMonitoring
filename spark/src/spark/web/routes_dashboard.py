@@ -158,14 +158,8 @@ async def dashboard(
             "discovered. That is a setting, not a fault — untick Sweep only "
             "for segments you want on record without scanning."
         )
-    routed = [s for s in known_subnets if not s.attached and s.enabled]
-    if routed:
-        names = ", ".join(s.label for s in routed)
-        warnings.append(
-            f"{names} are marked as routed rather than directly attached. "
-            "ARP can't reach across a router, so devices there will be "
-            "identified by IP instead of MAC until SNMP collection arrives."
-        )
+    # No banner for routed subnets: routed is a setting, not a fault, and the
+    # subnet table below already marks each one "Routed · IP identity only".
 
     return templates.TemplateResponse(
         request,

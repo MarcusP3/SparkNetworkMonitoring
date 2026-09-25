@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — no routed-subnet banner (2026-09-25)
+
+### Removed
+
+- The dashboard banner "… are marked as routed rather than directly
+  attached". Routed is a setting, not a fault, and the subnet table already
+  marks each one "Routed · IP identity only".
+
+### Tests
+
+1 new (`test_dashboard.py`): a routed subnet raises no banner and is still
+marked in the subnet table. Putting the banner back fails it. The smoke
+test's routed-VLAN check now asserts the same. `pytest` 619 passed,
+`smoke_test.py` 76 passed.
+
 ## Unreleased — time zone preference (2026-09-25)
 
 ### Added

@@ -20,12 +20,12 @@ from fastapi.testclient import TestClient
 from spark import db as D
 from spark.config import Config
 from spark.main import create_app
-from spark.models import CheckType, HealthStatus, Incident, Target, utcnow
+from spark.models import CheckType, HealthStatus, Incident, Subnet, Target, utcnow
 
 PASSWORD = "correct horse battery"
 
 
-def make_client(status: HealthStatus | None, open_incident: bool):
+def make_client(status: HealthStatus | None, open_incident: bool, routed: bool = False):
     tmp = Path(tempfile.mkdtemp(prefix="spark-dash-"))
     cfg = Config.model_validate({
         "app": {"data_dir": str(tmp / "data"), "port": 9707, "log_level": "WARNING"},
@@ -36,6 +36,9 @@ def make_client(status: HealthStatus | None, open_incident: bool):
     async def seed():
         D.init_engine(cfg)
         await D.init_db(cfg)
+        if routed:
+            async with D.session_scope() as s:
+                s.add(Subnet(cidr="10.1.20.0/24", name="IoT", attached=False, enabled=True))
         if status is not None:
             async with D.session_scope() as s:
                 s.add(Target(name="gw", check_type=CheckType.PING,
@@ -54,8 +57,8 @@ def page():
     """Render the dashboard for a given state and return its HTML."""
     clients = []
 
-    def render(status=None, open_incident=False) -> str:
-        client = make_client(status, open_incident)
+    def render(status=None, open_incident=False, routed=False) -> str:
+        client = make_client(status, open_incident, routed)
         clients.append(client)
         client.__enter__()
         client.post("/setup", data={"username": "admin", "password": PASSWORD,
@@ -139,3 +142,13 @@ class TestUnaffected:
         html = page(HealthStatus.DOWN, open_incident=True)
         for name in ("Devices", "Services", "Monitored"):
             assert tile_classes(html, name) == {"stat-icon"}, name
+
+
+class TestBanners:
+    def test_a_routed_subnet_is_not_a_warning(self, page):
+        """Routed is a setting, not a fault. The subnet table still says so."""
+        html = page(HealthStatus.UP, routed=True)
+        assert "Routed · IP identity only" in html, "the subnet row still marks it"
+        assert "routed rather than directly attached" not in html
+        banners = re.findall(r'<div class="alert warn">(.*?)</div>', html, re.S)
+        assert not any("IoT" in b for b in banners), banners

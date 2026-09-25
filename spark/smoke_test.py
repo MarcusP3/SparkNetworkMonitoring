@@ -105,8 +105,9 @@ def main() -> int:
                   r.status_code == 200 and "Dashboard" in r.text)
             check("webhook from setup was saved (no missing-webhook warning)",
                   "No Discord webhook configured" not in r.text)
-            check("routed VLAN warning is shown",
-                  "IoT" in r.text and "identified by IP" in r.text)
+            check("routed VLAN is marked in the table, not warned about",
+                  "Routed · IP identity only" in r.text
+                  and "routed rather than directly attached" not in r.text)
             check("subnet table lists both segments",
                   "192.168.1.0/24" in r.text and "192.168.20.0/24" in r.text)
 
