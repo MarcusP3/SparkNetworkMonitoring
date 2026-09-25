@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — input limits; Preferences saves only changes (2026-09-25)
+
+An audit threw hostile input at every form field (572 attempts across 18
+forms) and every id in a URL. SQL, markup, template and shell payloads were
+all stored and shown as plain text, as intended. What it did find:
+
+### Fixed
+
+- **An id too large for SQLite** (over 2^63 − 1) in a URL or a form was a 500
+  on 14 routes. Every id in a URL is now range-checked and answers **404**
+  with a page; ids inside forms (`device_id`, `profile_id`,
+  `depends_on_target_id`, the device page's `?port=`) are checked the same way.
+- **`nan` as a target's timeout** got past the clamp and was a 500. `nan` and
+  `inf` are now refused.
+- **No length limits**: a 1 MB device name, target name or address was stored
+  and shown on every page. Every form field now has a cap (`limits.py`),
+  enforced by the server and matched by `maxlength` on the page, and any
+  request body over **64 KB** is refused with 413 before a route reads it.
+- **Malformed forms** (a missing field, a word where a number goes) got
+  FastAPI's JSON error. They now get a page naming the field, with a link
+  back to the page they came from (never off the site).
+- A target name or address of only spaces was saved as blank; setup accepted
+  a username of only spaces. Both are refused.
+- **Signing in could bounce straight back to the sign-in page.** Setup, sign
+  in and sign out left their database writes to `get_session`, whose commit
+  FastAPI runs *after* the response is sent; the browser follows the redirect
+  at once, so the next page could arrive before the new session row existed.
+  Intermittent (about one sign-in in eight in a browser test), and with the
+  sign-in timeout it read as "signed out after 30 minutes". They now commit
+  before answering, as every other form route already did; a failed sign-in
+  is counted toward the lockout at once for the same reason.
+
+### Changed
+
+- **Preferences**: each card's **Save** appears only when its setting differs
+  from what is saved, and goes again if changed back. Without JavaScript it
+  is always shown.
+
+### Tests
+
+45 new: 43 in `test_input_limits.py` (including one that fails if any future
+form field has no length cap), one in `test_preferences.py`, and one in
+`test_idle_timeout.py` that checks the session row exists at the moment each
+sign-in response is sent. Fifteen deliberate breaks each caught. The fuzz run
+was repeated after the fixes: no 5xx, no unescaped output. Browser runs check
+the Save buttons (including the Back-button case and no JavaScript) and eight
+sign-ins in a row with no bounce. `pytest` 701 passed with the agent,
+`smoke_test.py` 76 passed.
+
 ## Unreleased — Find SNMP on the Devices page (2026-09-25)
 
 ### Added

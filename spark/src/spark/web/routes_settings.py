@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from .. import alerts as alert_service
 from .. import port_catalogue
 from .. import prefs
@@ -33,7 +34,7 @@ from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
 from ..models import Device, SnmpDevice, SnmpPoll, User, utcnow
 from ..vault import vault_for
-from .deps import get_config, get_session, redirect, require_user, templates
+from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
@@ -401,10 +402,10 @@ async def settings_section(
 @router.post("/settings/subnets")
 async def add_subnet(
     request: Request,
-    cidr: str = Form(""),
-    name: str = Form(""),
-    vlan: str = Form(""),
-    attached: str = Form(""),
+    cidr: str = Form("", max_length=limits.NAME),
+    name: str = Form("", max_length=limits.NAME),
+    vlan: str = Form("", max_length=limits.SHORT),
+    attached: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -429,12 +430,12 @@ async def add_subnet(
 @router.post("/settings/subnets/{subnet_id}")
 async def edit_subnet(
     request: Request,
-    subnet_id: int,
-    cidr: str = Form(""),
-    name: str = Form(""),
-    vlan: str = Form(""),
-    attached: str = Form(""),
-    enabled: str = Form(""),
+    subnet_id: ItemId,
+    cidr: str = Form("", max_length=limits.NAME),
+    name: str = Form("", max_length=limits.NAME),
+    vlan: str = Form("", max_length=limits.SHORT),
+    attached: str = Form("", max_length=limits.SHORT),
+    enabled: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -459,7 +460,7 @@ async def edit_subnet(
 
 @router.post("/settings/subnets/{subnet_id}/delete")
 async def remove_subnet(
-    subnet_id: int,
+    subnet_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -472,8 +473,8 @@ async def remove_subnet(
 
 @router.post("/settings/port-scan")
 async def set_port_scan(
-    enabled: str = Form(""),
-    interval_hours: str = Form(""),
+    enabled: str = Form("", max_length=limits.SHORT),
+    interval_hours: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -503,8 +504,8 @@ async def set_port_scan(
 @router.post("/settings/ports")
 async def add_custom_port(
     request: Request,
-    port: str = Form(""),
-    name: str = Form(""),
+    port: str = Form("", max_length=limits.SHORT),
+    name: str = Form("", max_length=limits.NAME),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -607,15 +608,15 @@ def _profile_form(**fields: str) -> tuple[snmp_config.ProfileInput, dict]:
 @router.post("/settings/snmp/profiles")
 async def add_snmp_profile(
     request: Request,
-    name: str = Form(""),
-    version: str = Form("v2c"),
-    community: str = Form(""),
-    username: str = Form(""),
-    auth_protocol: str = Form("SHA"),
-    auth_key: str = Form(""),
-    priv_protocol: str = Form("AES"),
-    priv_key: str = Form(""),
-    port: str = Form("161"),
+    name: str = Form("", max_length=limits.NAME),
+    version: str = Form("v2c", max_length=limits.SHORT),
+    community: str = Form("", max_length=limits.SECRET),
+    username: str = Form("", max_length=limits.NAME),
+    auth_protocol: str = Form("SHA", max_length=limits.SHORT),
+    auth_key: str = Form("", max_length=limits.SECRET),
+    priv_protocol: str = Form("AES", max_length=limits.SHORT),
+    priv_key: str = Form("", max_length=limits.SECRET),
+    port: str = Form("161", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -654,16 +655,16 @@ async def add_default_snmp_profile(
 @router.post("/settings/snmp/profiles/{profile_id}")
 async def edit_snmp_profile(
     request: Request,
-    profile_id: int,
-    name: str = Form(""),
-    version: str = Form("v2c"),
-    community: str = Form(""),
-    username: str = Form(""),
-    auth_protocol: str = Form("SHA"),
-    auth_key: str = Form(""),
-    priv_protocol: str = Form("AES"),
-    priv_key: str = Form(""),
-    port: str = Form("161"),
+    profile_id: ItemId,
+    name: str = Form("", max_length=limits.NAME),
+    version: str = Form("v2c", max_length=limits.SHORT),
+    community: str = Form("", max_length=limits.SECRET),
+    username: str = Form("", max_length=limits.NAME),
+    auth_protocol: str = Form("SHA", max_length=limits.SHORT),
+    auth_key: str = Form("", max_length=limits.SECRET),
+    priv_protocol: str = Form("AES", max_length=limits.SHORT),
+    priv_key: str = Form("", max_length=limits.SECRET),
+    port: str = Form("161", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -685,7 +686,7 @@ async def edit_snmp_profile(
 @router.post("/settings/snmp/profiles/{profile_id}/delete")
 async def delete_snmp_profile(
     request: Request,
-    profile_id: int,
+    profile_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -702,15 +703,18 @@ async def delete_snmp_profile(
 @router.post("/settings/snmp/devices")
 async def add_snmp_device(
     request: Request,
-    device_id: str = Form(""),
-    profile_id: str = Form(""),
+    device_id: str = Form("", max_length=limits.SHORT),
+    profile_id: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
     try:
-        await snmp_config.add_device(session, int(device_id), int(profile_id))
-    except ValueError as exc:  # ProfileError, or int() of an empty select
+        device, profile = limits.as_id(device_id), limits.as_id(profile_id)
+        if device is None or profile is None:
+            raise ValueError("not an id")
+        await snmp_config.add_device(session, device, profile)
+    except ValueError as exc:  # ProfileError, or not an id that could exist
         message = str(exc) if isinstance(exc, snmp_config.ProfileError) else "Choose a device and a profile."
         return await _render(request, session, config, user, snmp_error=message,
                              status_code=400)
@@ -722,14 +726,17 @@ async def add_snmp_device(
 @router.post("/settings/snmp/devices/{row_id}/profile")
 async def change_snmp_device_profile(
     request: Request,
-    row_id: int,
-    profile_id: str = Form(""),
+    row_id: ItemId,
+    profile_id: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
     try:
-        await snmp_config.set_device_profile(session, row_id, int(profile_id))
+        profile = limits.as_id(profile_id)
+        if profile is None:
+            raise ValueError("not an id")
+        await snmp_config.set_device_profile(session, row_id, profile)
     except ValueError as exc:
         message = str(exc) if isinstance(exc, snmp_config.ProfileError) else "Choose a profile."
         return await _render(request, session, config, user, snmp_error=message,
@@ -740,7 +747,7 @@ async def change_snmp_device_profile(
 
 @router.post("/settings/snmp/devices/{row_id}/delete")
 async def remove_snmp_device(
-    row_id: int,
+    row_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -753,8 +760,8 @@ async def remove_snmp_device(
 
 @router.post("/settings/snmp/devices/{row_id}/polling")
 async def set_snmp_device_polling(
-    row_id: int,
-    enabled: str = Form(""),
+    row_id: ItemId,
+    enabled: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -822,13 +829,13 @@ def _hhmm_or_blank(value: str) -> str:
 @router.post("/settings/alerts")
 async def save_alerts(
     request: Request,
-    webhook: str = Form(""),
-    enabled: str = Form(""),
-    notify_on_recovery: str = Form(""),
-    notify_on_new_device: str = Form(""),
-    notify_on_snmp: str = Form(""),
-    quiet_start: str = Form(""),
-    quiet_end: str = Form(""),
+    webhook: str = Form("", max_length=limits.WEBHOOK),
+    enabled: str = Form("", max_length=limits.SHORT),
+    notify_on_recovery: str = Form("", max_length=limits.SHORT),
+    notify_on_new_device: str = Form("", max_length=limits.SHORT),
+    notify_on_snmp: str = Form("", max_length=limits.SHORT),
+    quiet_start: str = Form("", max_length=limits.SHORT),
+    quiet_end: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -900,7 +907,7 @@ async def test_alert(
 @router.post("/settings/snmp/polling")
 async def set_snmp_polling(
     request: Request,
-    interval_seconds: str = Form(""),
+    interval_seconds: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -924,7 +931,7 @@ async def set_snmp_polling(
 @router.post("/settings/snmp/devices/{row_id}/test")
 async def test_snmp_device(
     request: Request,
-    row_id: int,
+    row_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),

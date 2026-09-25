@@ -15,11 +15,11 @@
     <input type="hidden" name="next" value="{{ next or '/' }}">
     <label>
       <span>Username</span>
-      <input type="text" name="username" required autocomplete="username" autofocus>
+      <input type="text" name="username" maxlength="64" required autocomplete="username" autofocus>
     </label>
     <label>
       <span>Password</span>
-      <input type="password" name="password" required autocomplete="current-password">
+      <input type="password" name="password" maxlength="1024" required autocomplete="current-password">
     </label>
     <button type="submit" class="btn-primary">Sign in</button>
   </form>

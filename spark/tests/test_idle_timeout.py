@@ -216,3 +216,41 @@ def test_proxy_mode_has_no_timeout_of_its_own():
     config = _config(mode="proxy", proxy={"trusted_proxies": ["10.0.0.1"]})
     with TestClient(create_app(config), follow_redirects=False) as c:
         assert c.get("/session").status_code == 404
+
+
+class TestWrittenBeforeTheRedirect:
+    """get_session commits after the response has been sent. A route that
+    redirects must commit first, or the browser's next request can arrive
+    before the row it depends on exists -- which is how signing in sometimes
+    bounced straight back to the sign-in page."""
+
+    @staticmethod
+    def _sessions_when_answered(config, send_request):  # type: ignore[no-untyped-def]
+        import sqlite3
+
+        seen: list[int] = []
+        app = create_app(config)
+
+        async def watching(scope, receive, send):  # type: ignore[no-untyped-def]
+            async def spy(message):  # type: ignore[no-untyped-def]
+                if message["type"] == "http.response.start" and scope["method"] == "POST":
+                    with sqlite3.connect(config.app.db_path) as con:
+                        seen.append(con.execute("select count(*) from user_session "
+                                                "where revoked = 0").fetchone()[0])
+                await send(message)
+            await app(scope, receive, spy)
+
+        with TestClient(watching, follow_redirects=False) as c:
+            send_request(c)
+        return seen
+
+    def test_setup_and_login(self):
+        config = _config()
+
+        def go(c):  # type: ignore[no-untyped-def]
+            c.post("/setup", data={"username": "admin", "password": PASSWORD,
+                                   "password_confirm": PASSWORD, "timezone": "UTC"})
+            c.post("/login", data={"username": "admin", "password": PASSWORD})
+            c.post("/logout")
+        # setup: 1 live session; login: 2; logout revokes the current one: 1.
+        assert self._sessions_when_answered(config, go) == [1, 2, 1]

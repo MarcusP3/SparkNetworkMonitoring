@@ -324,7 +324,7 @@
                  own defaultValue would do, but this survives the live refresh
                  replacing the row underneath us. #}
               <form method="post" action="/devices/{{ device.id }}/name">
-                <input type="text" name="friendly_name"
+                <input type="text" name="friendly_name" maxlength="64"
                        value="{{ device.friendly_name or '' }}"
                        data-original="{{ device.friendly_name or '' }}"
                        placeholder="{{ device.hostname or device.primary_ip }}"

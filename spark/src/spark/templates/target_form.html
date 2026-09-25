@@ -29,7 +29,7 @@
 
     <label>
       <span>Name</span>
-      <input type="text" name="name" required autofocus
+      <input type="text" name="name" maxlength="64" required autofocus
              value="{{ target.name if target else '' }}"
              placeholder="sw-core">
     </label>
@@ -46,7 +46,7 @@
 
     <label>
       <span>Address</span>
-      <input type="text" name="address" required
+      <input type="text" name="address" maxlength="255" required
              value="{{ target.address if target else '' }}"
              placeholder="10.1.10.1  ·  10.1.10.1:443  ·  https://host/path  ·  example.com">
       <small class="muted">
@@ -108,7 +108,7 @@
 
     <label>
       <span>Params (JSON)</span>
-      <textarea name="params" rows="3" id="params"
+      <textarea name="params" maxlength="4096" rows="3" id="params"
                 placeholder="{{ param_hints.get(current, '{}') }}">{{ target.params | tojson if target and target.params else '' }}</textarea>
       <small class="muted" id="param_hint">
         Optional. Leave blank for defaults.

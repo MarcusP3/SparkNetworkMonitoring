@@ -29,7 +29,7 @@
       </div>
     </div>
 
-    <form method="post" action="/preferences" class="prefs-form">
+    <form method="post" action="/preferences" class="prefs-form save-when-changed">
       <label class="stack-field">
         <span class="muted small">Time zone</span>
         {{ timezone_select(timezone, choices) }}
@@ -66,7 +66,7 @@
       signed out.
     </p>
     {% else %}
-    <form method="post" action="/preferences" class="prefs-form">
+    <form method="post" action="/preferences" class="prefs-form save-when-changed">
       <label class="stack-field">
         <span class="muted small">Sign out after</span>
         <select name="idle_minutes" id="idle_minutes" required>
@@ -96,6 +96,30 @@
     document.getElementById('tz-use-browser').addEventListener('click', function () {
       select.value = tz;
       document.getElementById('tz-browser').hidden = true;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  })();
+
+  // Save appears only once something differs from what is saved, and goes
+  // again if it is changed back. Without JavaScript it is always shown.
+  (function () {
+    document.body.classList.add('js-save-when-changed');
+    document.querySelectorAll('form.save-when-changed').forEach(function (form) {
+      var fields = [].slice.call(form.querySelectorAll('select, input:not([type=hidden])'));
+      // What the server rendered, not what is in the box now: a page
+      // restored by the Back button keeps an unsaved choice in the box.
+      var saved = fields.map(function (el) {
+        if (el.tagName !== 'SELECT') return el.defaultValue;
+        var chosen = [].filter.call(el.options, function (o) { return o.defaultSelected; })[0];
+        return chosen ? chosen.value : (el.options[0] ? el.options[0].value : '');
+      });
+      function update() {
+        var changed = fields.some(function (el, i) { return el.value !== saved[i]; });
+        form.classList.toggle('dirty', changed);
+      }
+      form.addEventListener('change', update);
+      form.addEventListener('input', update);
+      update();
     });
   })();
 </script>

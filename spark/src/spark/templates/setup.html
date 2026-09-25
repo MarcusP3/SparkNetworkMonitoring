@@ -17,18 +17,18 @@
   <form method="post" action="/setup" class="form">
     <label>
       <span>Username</span>
-      <input type="text" name="username" value="{{ username or 'admin' }}" required autocomplete="username">
+      <input type="text" name="username" maxlength="64" value="{{ username or 'admin' }}" required autocomplete="username">
     </label>
 
     <label>
       <span>Password</span>
-      <input type="password" name="password" required minlength="12" autocomplete="new-password" autofocus>
+      <input type="password" name="password" maxlength="1024" required minlength="12" autocomplete="new-password" autofocus>
       <small class="hint">At least 12 characters. A short phrase you'll remember beats a short jumble you won't.</small>
     </label>
 
     <label>
       <span>Confirm password</span>
-      <input type="password" name="password_confirm" required minlength="12" autocomplete="new-password">
+      <input type="password" name="password_confirm" maxlength="1024" required minlength="12" autocomplete="new-password">
     </label>
 
     <label>
@@ -39,7 +39,7 @@
 
     <label>
       <span>Discord webhook URL <em class="optional">optional</em></span>
-      <input type="url" name="discord_webhook_url" placeholder="https://discord.com/api/webhooks/…">
+      <input type="url" name="discord_webhook_url" maxlength="512" placeholder="https://discord.com/api/webhooks/…">
       <small class="hint">Where outage alerts go. You can add this later in Settings.</small>
     </label>
 

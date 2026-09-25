@@ -12,6 +12,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from .. import prefs
 from ..auth import end_idle_sessions
 from ..config import Config
@@ -61,8 +62,8 @@ async def preferences_page(
 @router.post("/preferences")
 async def save_preferences(
     request: Request,
-    timezone_name: str | None = Form(None, alias="timezone"),
-    idle_minutes: str | None = Form(None),
+    timezone_name: str | None = Form(None, alias="timezone", max_length=limits.TIMEZONE),
+    idle_minutes: str | None = Form(None, max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),

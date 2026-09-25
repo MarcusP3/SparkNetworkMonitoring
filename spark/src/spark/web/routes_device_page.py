@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -28,7 +29,7 @@ from ..models import (
     utcnow,
 )
 from ..config import Config
-from .deps import get_config, get_session, redirect, require_user, templates
+from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
@@ -239,7 +240,7 @@ def _ago(when, now) -> str | None:  # type: ignore[no-untyped-def]
 @router.get("/devices/{device_id}")
 async def device_page(
     request: Request,
-    device_id: int,
+    device_id: ItemId,
     range: str = "",  # noqa: A002 - the query parameter's name in the URL
     port: str = "",
     session: AsyncSession = Depends(get_session),
@@ -250,10 +251,7 @@ async def device_page(
     if device is None:
         return redirect("/devices")
     range_name = history.parse_range(range)
-    try:
-        port_id = int(port) if port else None
-    except ValueError:
-        port_id = None
+    port_id = limits.as_id(port) if port else None
 
     services = (await services_for(session, [device.id])).get(device.id, [])
     watched = await session.scalar(

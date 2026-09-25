@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_brand.html" import mark %}
+{% block content %}
+{# For requests no page of SPARK's would send: an id that cannot exist, a field
+   longer than its box allows, a number that is not one. Plain words and a
+   way back, instead of a stack trace or a JSON dump. #}
+<div class="card auth-card error-card">
+  <div class="auth-head">
+    {{ mark("large") }}
+    <h1>{{ heading }}</h1>
+  </div>
+  <p>{{ message }}</p>
+  {% if problems %}
+  <ul class="muted small error-list">
+    {% for p in problems %}<li>{{ p }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  <p><a href="{{ back }}">{{ back_label }}</a></p>
+</div>
+{% endblock %}

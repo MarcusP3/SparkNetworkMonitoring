@@ -13,6 +13,10 @@ clickjacking, `form-action 'self'` stops a form being pointed elsewhere, and
 `Cache-Control: no-store` keeps a page full of the network's inventory out of
 a shared machine's back button.
 
+**Request size.** No form of SPARK's is more than a few kilobytes, so any
+body over `limits.BODY` (64 KB) is refused with 413 before a route reads it --
+by its Content-Length, or by counting as it arrives when there is none.
+
 **Same-origin writes.** Every state change in SPARK is a POST from one of its
 own pages. The session cookie is `SameSite=Lax`, which already stops a
 cross-site form post from carrying it, but a second, independent check is
@@ -31,6 +35,10 @@ from __future__ import annotations
 
 import secrets
 from urllib.parse import urlsplit
+
+from starlette.exceptions import HTTPException
+
+from ..limits import BODY as MAX_BODY
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -58,6 +66,20 @@ _FORBIDDEN = (
     b"This request came from another site and was refused. "
     b"SPARK only accepts changes from its own pages.\n"
 )
+
+_TOO_LARGE = b"That request is larger than any form of SPARK's sends, and was refused.\n"
+
+
+class _BodyTooLarge(HTTPException):
+    """Raised from receive() when a body without a Content-Length runs long.
+
+    An HTTPException because FastAPI turns any other error while reading a
+    form into "400: error parsing the body"; this one it lets through, and
+    Starlette answers it as a 413.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(status_code=413, detail=_TOO_LARGE.decode().strip())
 
 
 def _header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
@@ -106,27 +128,40 @@ class Hardening:
 
         headers = scope.get("headers", [])
         if scope["method"] in UNSAFE_METHODS and not same_origin(headers):
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 403,
-                    "headers": [
-                        (b"content-type", b"text/plain; charset=utf-8"),
-                        (b"content-length", str(len(_FORBIDDEN)).encode()),
-                        *_STATIC_HEADERS,
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": _FORBIDDEN})
+            await _refuse(send, 403, _FORBIDDEN)
             return
+        declared = _header(headers, b"content-length")
+        if declared is not None:
+            try:
+                too_big = int(declared) > MAX_BODY
+            except ValueError:
+                too_big = True
+            if too_big:
+                await _refuse(send, 413, _TOO_LARGE)
+                return
+
+        received = 0
+
+        async def receive_limited():  # type: ignore[no-untyped-def]
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > MAX_BODY:
+                    raise _BodyTooLarge
+            return message
 
         nonce = secrets.token_urlsafe(16)
         # `request.state` reads from here, so templates can emit the nonce.
         scope.setdefault("state", {})["csp_nonce"] = nonce
         csp = _CSP.format(nonce=nonce).encode("ascii")
 
+        started = False
+
         async def send_with_headers(message) -> None:  # type: ignore[no-untyped-def]
+            nonlocal started
             if message["type"] == "http.response.start":
+                started = True
                 out = list(message.get("headers", []))
                 present = {key for key, _ in out}
                 extra: list[tuple[bytes, bytes]] = [
@@ -142,4 +177,23 @@ class Hardening:
                 message = {**message, "headers": out}
             await send(message)
 
-        await self.app(scope, receive, send_with_headers)
+        try:
+            await self.app(scope, receive_limited, send_with_headers)
+        except _BodyTooLarge:
+            if not started:
+                await _refuse(send, 413, _TOO_LARGE)
+
+
+async def _refuse(send, status: int, body: bytes) -> None:  # type: ignore[no-untyped-def]
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"text/plain; charset=utf-8"),
+                (b"content-length", str(len(body)).encode()),
+                *_STATIC_HEADERS,
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})

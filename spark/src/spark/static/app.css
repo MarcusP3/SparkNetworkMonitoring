@@ -414,6 +414,8 @@ button { font: inherit; cursor: pointer; }
 .alert.ok    { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 /* Information, not a status: neutral, per the brand rule. */
 .alert.info  { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.error-list { margin: 0 0 1rem; padding-left: 1.2rem; }
+.error-card a { color: var(--accent); }
 
 /* ---------- Stats ---------- */
 
@@ -1551,6 +1553,8 @@ a.pill:hover { filter: brightness(1.12); }
 .user-chip form { margin: 0; }
 
 .prefs-form { display: flex; flex-direction: column; gap: .75rem; max-width: 32rem; }
+/* Save shows only when there is a change to save (preferences.html). */
+.js-save-when-changed .save-when-changed:not(.dirty) .form-actions { display: none; }
 .prefs-form select { width: 100%; }
 .prefs-form .btn-quiet { margin-left: .35rem; }
 .quiet-hours a { color: var(--accent); }

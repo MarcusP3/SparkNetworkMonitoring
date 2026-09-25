@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from .. import events, snmp_config, snmp_discover
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
@@ -34,7 +35,7 @@ from ..models import (
     User,
     utcnow,
 )
-from .deps import get_config, get_session, redirect, require_user, templates
+from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 from .routes_auth import _safe_next
 from .routes_settings import apply_snmp_schedule
 
@@ -420,8 +421,8 @@ async def list_devices(
 
 @router.post("/devices/schedule")
 async def set_scan_schedule(
-    auto: str = Form(""),
-    interval_minutes: str = Form(""),
+    auto: str = Form("", max_length=limits.SHORT),
+    interval_minutes: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -486,7 +487,7 @@ def _back(value: str) -> str:
 
 @router.post("/devices/find-snmp")
 async def find_snmp(
-    back: str = Form("/devices"),
+    back: str = Form("/devices", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -506,7 +507,7 @@ async def find_snmp(
 
 @router.post("/devices/find-snmp/add-all")
 async def add_all_snmp_found(
-    back: str = Form("/devices"),
+    back: str = Form("/devices", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -525,9 +526,9 @@ async def add_all_snmp_found(
 
 @router.post("/devices/{device_id}/snmp")
 async def add_snmp_found(
-    device_id: int,
-    profile_id: int = Form(...),
-    back: str = Form("/devices"),
+    device_id: ItemId,
+    profile_id: int = Form(..., ge=1, le=limits.MAX_ID),
+    back: str = Form("/devices", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -555,7 +556,7 @@ async def scan_ports_now(_user: User = Depends(require_user)):
 
 @router.post("/devices/services/{service_id}/watch")
 async def watch_service(
-    service_id: int,
+    service_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -611,8 +612,8 @@ async def scan_now(
 
 @router.post("/devices/{device_id}/name")
 async def rename_device(
-    device_id: int,
-    friendly_name: str = Form(""),
+    device_id: ItemId,
+    friendly_name: str = Form("", max_length=limits.NAME),
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -657,7 +658,7 @@ async def acknowledge_all(
 
 @router.post("/devices/{device_id}/acknowledge")
 async def acknowledge_device(
-    device_id: int,
+    device_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -672,7 +673,7 @@ async def acknowledge_device(
 
 @router.post("/devices/{device_id}/ignore")
 async def ignore_device(
-    device_id: int,
+    device_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -686,7 +687,7 @@ async def ignore_device(
 
 @router.post("/devices/{device_id}/watch")
 async def watch_device(
-    device_id: int,
+    device_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),

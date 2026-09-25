@@ -6,8 +6,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -15,7 +17,7 @@ from . import __version__
 from . import scheduler as scheduler_module
 from .config import Config, load_config
 from .db import close_engine, init_db, init_engine, session_scope
-from .web.deps import RedirectException
+from .web.deps import RedirectException, templates
 from .web.hardening import Hardening
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
@@ -50,6 +52,15 @@ def require_writable(data_dir: Path) -> None:
             f"    sudo chown -R {os.getuid()}:{os.getgid()} ./data\n"
             "from the spark/ directory (the one docker-compose.yml is in)."
         ) from exc
+
+
+def _back_to(request: Request) -> str:
+    """The page the request came from, if it was one of ours; else home."""
+    referer = urlsplit(request.headers.get("referer", ""))
+    if referer.netloc and referer.netloc.lower() == request.headers.get("host", "").lower():
+        path = referer.path if referer.path.startswith("/") and not referer.path.startswith("//") else "/"
+        return path + (f"?{referer.query}" if referer.query else "")
+    return "/"
 
 
 def configure_logging(level: str) -> None:
@@ -146,6 +157,43 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.exception_handler(RedirectException)
     async def _handle_redirect(_request: Request, exc: RedirectException):
         return RedirectResponse(exc.location, status_code=exc.status_code)
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_invalid(request: Request, exc: RequestValidationError):
+        """A request SPARK's own pages would not send, answered as a page.
+
+        FastAPI's default is a JSON document that repeats the input back --
+        harmless (it is served as JSON), but a raw dump is no answer to a
+        person. An impossible id in the URL is "not found"; anything else is
+        a form field that was missing, too long, or not a number.
+        """
+        errors = exc.errors()
+        if any(e.get("loc", ("",))[0] == "path" for e in errors):
+            return templates.TemplateResponse(
+                request, "error.html",
+                {"config": config, "title": "Not found", "heading": "Not found",
+                 "message": "There is nothing at that address.",
+                 "problems": [], "back": "/", "back_label": "Go to the dashboard"},
+                status_code=404,
+            )
+        problems = []
+        for e in errors:
+            field = str(e.get("loc", ("", "?"))[-1]).replace("_", " ")
+            kind = e.get("type", "")
+            if kind == "missing":
+                problems.append(f"{field}: missing")
+            elif kind == "string_too_long":
+                limit = (e.get("ctx") or {}).get("max_length")
+                problems.append(f"{field}: longer than {limit} characters")
+            else:
+                problems.append(f"{field}: not a value SPARK can use")
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"config": config, "title": "Not saved", "heading": "Nothing was saved",
+             "message": "Part of that form could not be used, so nothing changed.",
+             "problems": problems, "back": _back_to(request), "back_label": "Go back"},
+            status_code=400,
+        )
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

@@ -541,6 +541,16 @@ header and refused if it came from another site, as a second layer over
 default everywhere) or every form will answer 403. There is no OpenAPI
 document or Swagger page; there is no API.
 
+**Input.** Every query is parameterised, every page is escaped by the template
+engine, and nothing runs a shell (ping is ICMP from Python, ARP is read from
+`/proc`), so a name or address containing SQL, markup or shell syntax is only
+ever text. On top of that, every form field has a length cap (`limits.py`)
+that the page enforces with `maxlength` and the server enforces again; a
+request body over 64 KB is refused with 413 before any route reads it; an id
+too large to exist is a 404 rather than a database error; and a malformed
+form gets a page saying which field was wrong, never a stack trace or a JSON
+dump.
+
 SPARK ends up holding a map of your entire network, an inventory of every
 service on it, and references to credentials that reach your Docker hosts. That
 makes it the highest-value target on the LAN, which is why there is no
@@ -619,6 +629,7 @@ spark/
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
     prefs.py            preferences: time zone (the `local` filter's formatting), sign-in timeout
+    limits.py           how long any input may be, the largest request, the largest id
     alerts.py           deciding what to alert on; the Discord outbox and dispatcher
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
@@ -672,6 +683,7 @@ spark/
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
+    test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
 ```
 

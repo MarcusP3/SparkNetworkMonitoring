@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
@@ -32,7 +33,7 @@ from ..models import (
     Target,
     User,
 )
-from .deps import get_config, get_session, redirect, require_user, templates
+from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
@@ -81,6 +82,8 @@ async def _validate(
     check_type: str,
     depends_on_target_id: str,
     editing: Target | None,
+    name: str = "x",
+    address: str = "x",
 ) -> tuple[CheckType | None, int | None, str | None]:
     """The two fields a form can get wrong in a way `int()` does not catch.
 
@@ -89,6 +92,12 @@ async def _validate(
     itself -- was either an integrity error at commit or a target whose
     failures were forever a symptom of its own failure.
     """
+    # `required` on the page stops an empty box, but not one of spaces --
+    # which strip() then saved as a target with no name at all.
+    if not name.strip():
+        return None, None, "Give the target a name."
+    if not address.strip():
+        return None, None, "Enter an address to check."
     try:
         kind = CheckType(check_type)
     except ValueError:
@@ -98,9 +107,8 @@ async def _validate(
 
     parent_id: int | None = None
     if depends_on_target_id.strip():
-        try:
-            parent_id = int(depends_on_target_id)
-        except ValueError:
+        parent_id = limits.as_id(depends_on_target_id)
+        if parent_id is None:
             return None, None, "Choose a target from the list, or none."
         if editing is not None and parent_id == editing.id:
             return None, None, "A target cannot depend on itself."
@@ -206,15 +214,15 @@ async def new_target_form(
 @router.post("/targets/new")
 async def create_target(
     request: Request,
-    name: str = Form(...),
-    check_type: str = Form(...),
-    address: str = Form(...),
+    name: str = Form(..., max_length=limits.NAME),
+    check_type: str = Form(..., max_length=limits.SHORT),
+    address: str = Form(..., max_length=limits.ADDRESS),
     interval_seconds: int = Form(DEFAULT_INTERVAL_SECONDS),
-    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS),
+    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS, allow_inf_nan=False),
     failure_threshold: int = Form(DEFAULT_FAILURE_THRESHOLD),
     recovery_threshold: int = Form(DEFAULT_RECOVERY_THRESHOLD),
-    depends_on_target_id: str = Form(""),
-    params: str = Form(""),
+    depends_on_target_id: str = Form("", max_length=limits.SHORT),
+    params: str = Form("", max_length=limits.PARAMS),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -224,6 +232,7 @@ async def create_target(
     if not error:
         kind, parent_id, error = await _validate(
             session, check_type=check_type, depends_on_target_id=depends_on_target_id,
+            name=name, address=address,
             editing=None,
         )
     if error or kind is None:
@@ -259,7 +268,7 @@ async def create_target(
 @router.get("/targets/{target_id}/edit")
 async def edit_target_form(
     request: Request,
-    target_id: int,
+    target_id: ItemId,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -274,16 +283,16 @@ async def edit_target_form(
 @router.post("/targets/{target_id}/edit")
 async def update_target(
     request: Request,
-    target_id: int,
-    name: str = Form(...),
-    check_type: str = Form(...),
-    address: str = Form(...),
+    target_id: ItemId,
+    name: str = Form(..., max_length=limits.NAME),
+    check_type: str = Form(..., max_length=limits.SHORT),
+    address: str = Form(..., max_length=limits.ADDRESS),
     interval_seconds: int = Form(DEFAULT_INTERVAL_SECONDS),
-    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS),
+    timeout_seconds: float = Form(DEFAULT_TIMEOUT_SECONDS, allow_inf_nan=False),
     failure_threshold: int = Form(DEFAULT_FAILURE_THRESHOLD),
     recovery_threshold: int = Form(DEFAULT_RECOVERY_THRESHOLD),
-    depends_on_target_id: str = Form(""),
-    params: str = Form(""),
+    depends_on_target_id: str = Form("", max_length=limits.SHORT),
+    params: str = Form("", max_length=limits.PARAMS),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -297,6 +306,7 @@ async def update_target(
     if not error:
         kind, parent_id, error = await _validate(
             session, check_type=check_type, depends_on_target_id=depends_on_target_id,
+            name=name, address=address,
             editing=target,
         )
     if error or kind is None:
@@ -322,7 +332,7 @@ async def update_target(
 
 @router.post("/targets/{target_id}/toggle")
 async def toggle_target(
-    target_id: int,
+    target_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -356,7 +366,7 @@ async def toggle_target(
 
 @router.post("/targets/{target_id}/check")
 async def check_target_now(
-    target_id: int,
+    target_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -374,7 +384,7 @@ async def check_target_now(
 
 @router.post("/targets/{target_id}/delete")
 async def delete_target(
-    target_id: int,
+    target_id: ItemId,
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):

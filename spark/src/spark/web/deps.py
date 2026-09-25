@@ -5,15 +5,16 @@ from __future__ import annotations
 import hashlib
 from collections.abc import AsyncIterator
 from datetime import timedelta
+from typing import Annotated
 from pathlib import Path
 
-from fastapi import Depends, Request
+from fastapi import Depends, Path as PathParam, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import prefs
+from .. import limits, prefs
 from ..auth import SESSION_COOKIE, resolve_proxy_user, resolve_session, setup_required
 from ..config import Config
 from ..db import get_sessionmaker
@@ -22,6 +23,10 @@ from ..models import User
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+# A row id in a URL. Out of range is "not found" (main.py turns the
+# validation error into a 404 page) rather than an OverflowError from SQLite.
+ItemId = Annotated[int, PathParam(ge=1, le=limits.MAX_ID)]
 
 
 def _asset_version() -> str:

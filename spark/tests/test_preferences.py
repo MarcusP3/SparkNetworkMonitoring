@@ -182,3 +182,15 @@ def test_local_formats_in_the_zone_and_handles_nothing():
     assert prefs.local(stamp, prefs.zone_of("America/New_York"), "%H:%M %Z") == "07:00 EST"
     assert prefs.local(None, timezone.utc, "%H:%M") == "—"
     assert prefs.zone_of("nonsense") is timezone.utc
+
+
+def test_save_buttons_wait_for_a_change(site):
+    """Both cards' Save buttons are hidden until something differs from what
+    is saved (script in preferences.html, rule in app.css). Without the
+    script the rule never applies, so Save is always there."""
+    client, _ = site
+    page = client.get("/preferences").text
+    assert page.count('class="prefs-form save-when-changed"') == 2
+    assert "document.body.classList.add('js-save-when-changed')" in page
+    css = (Path(__file__).parents[1] / "src/spark/static/app.css").read_text()
+    assert ".js-save-when-changed .save-when-changed:not(.dirty) .form-actions { display: none; }" in css

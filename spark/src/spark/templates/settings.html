@@ -66,7 +66,7 @@
                row's fields submit together from wherever they sit. #}
             <form method="post" action="/settings/subnets/{{ subnet.id }}"
                   id="subnet-{{ subnet.id }}"></form>
-            <input type="text" name="cidr" value="{{ subnet.cidr }}"
+            <input type="text" name="cidr" maxlength="64" value="{{ subnet.cidr }}"
                    form="subnet-{{ subnet.id }}" aria-label="Network"
                    class="mono">
             {% if row.unparseable %}
@@ -78,7 +78,7 @@
             {% endif %}
           </td>
           <td>
-            <input type="text" name="name" value="{{ subnet.name or '' }}"
+            <input type="text" name="name" maxlength="64" value="{{ subnet.name or '' }}"
                    form="subnet-{{ subnet.id }}" placeholder="{{ subnet.cidr }}"
                    aria-label="Name">
           </td>
@@ -126,12 +126,12 @@
     <form method="post" action="/settings/subnets" class="row-form add-subnet">
       <label class="inline-field">
         <span class="muted small">Network</span>
-        <input type="text" name="cidr" required class="mono"
+        <input type="text" name="cidr" maxlength="64" required class="mono"
                value="{{ form.cidr or '' }}" placeholder="10.1.10.0/24">
       </label>
       <label class="inline-field">
         <span class="muted small">Name</span>
-        <input type="text" name="name" value="{{ form.name or '' }}" placeholder="LAN">
+        <input type="text" name="name" maxlength="64" value="{{ form.name or '' }}" placeholder="LAN">
       </label>
       <label class="inline-field">
         <span class="muted small">VLAN</span>
@@ -371,7 +371,7 @@
     <div class="snmp-grid">
       <label class="inline-field">
         <span class="muted small">Name</span>
-        <input type="text" name="name" value="{{ f.name or '' }}" placeholder="homelab" required
+        <input type="text" name="name" maxlength="64" value="{{ f.name or '' }}" placeholder="homelab" required
                maxlength="64" autocomplete="off">
       </label>
       <label class="inline-field">
@@ -389,13 +389,13 @@
 
       <label class="inline-field v2c-only">
         <span class="muted small">Community string</span>
-        <input type="password" name="community" autocomplete="new-password"
+        <input type="password" name="community" autocomplete="new-password" maxlength="255"
                placeholder="{{ '•••••••• — leave blank to keep' if editing and has_community else 'read-only community' }}">
       </label>
 
       <label class="inline-field v3-only">
         <span class="muted small">User</span>
-        <input type="text" name="username" value="{{ f.username or '' }}" autocomplete="off"
+        <input type="text" name="username" maxlength="64" value="{{ f.username or '' }}" autocomplete="off"
                maxlength="64" placeholder="spark">
       </label>
       <label class="inline-field v3-only">
@@ -408,7 +408,7 @@
       </label>
       <label class="inline-field v3-only">
         <span class="muted small">Auth password</span>
-        <input type="password" name="auth_key" autocomplete="new-password"
+        <input type="password" name="auth_key" autocomplete="new-password" maxlength="255"
                placeholder="{{ '•••••••• — leave blank to keep' if editing and has_auth else 'at least ' ~ snmp.min_key ~ ' characters' }}">
       </label>
       <label class="inline-field v3-only">
@@ -423,7 +423,7 @@
       </label>
       <label class="inline-field v3-only">
         <span class="muted small">Privacy password</span>
-        <input type="password" name="priv_key" autocomplete="new-password"
+        <input type="password" name="priv_key" autocomplete="new-password" maxlength="255"
                placeholder="{{ '•••••••• — leave blank to keep' if editing and has_priv else 'at least ' ~ snmp.min_key ~ ' characters' }}">
       </label>
     </div>
@@ -818,7 +818,7 @@
 
       <label class="stack-field">
         <span class="muted small">Discord webhook</span>
-        <input type="password" name="webhook" autocomplete="new-password" spellcheck="false"
+        <input type="password" name="webhook" autocomplete="new-password" maxlength="512" spellcheck="false"
                placeholder="{{ 'Saved — paste a new one to replace it' if alerts.has_webhook else 'https://discord.com/api/webhooks/…' }}">
         <span class="muted small">
           In Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.

@@ -138,6 +138,8 @@ async def setup_required(session: AsyncSession) -> bool:
 async def create_admin(session: AsyncSession, username: str, password: str) -> User:
     if not await setup_required(session):
         raise AuthError("An administrator account already exists")
+    if not username.strip():
+        raise AuthError("Choose a username.")
     validate_password_strength(password)
     user = User(username=username.strip(), password_hash=hash_password(password), is_admin=True)
     session.add(user)

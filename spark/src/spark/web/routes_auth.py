@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import limits
 from ..auth import (
     SESSION_COOKIE,
     AuthError,
@@ -96,11 +97,11 @@ async def setup_form(
 @router.post("/setup")
 async def setup_submit(
     request: Request,
-    username: str = Form("admin"),
-    password: str = Form(...),
-    password_confirm: str = Form(...),
-    discord_webhook_url: str = Form(""),
-    timezone_name: str = Form("", alias="timezone"),
+    username: str = Form("admin", max_length=limits.USERNAME),
+    password: str = Form(..., max_length=limits.PASSWORD),
+    password_confirm: str = Form(..., max_length=limits.PASSWORD),
+    discord_webhook_url: str = Form("", max_length=limits.WEBHOOK),
+    timezone_name: str = Form("", alias="timezone", max_length=limits.TIMEZONE),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
@@ -147,6 +148,11 @@ async def setup_submit(
         user_agent=request.headers.get("user-agent"),
         ip=client_ip(request, config.auth),
     )
+    # Committed here, not left to get_session: its commit runs after the
+    # response has gone, and the browser follows this redirect at once -- so
+    # the next request could arrive before the session row existed, and bounce
+    # straight back to the sign-in page.
+    await session.commit()
     response = redirect("/")
     _set_session_cookie(request, response, token, config)
     return response
@@ -194,9 +200,9 @@ async def login_form(
 @router.post("/login")
 async def login_submit(
     request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    next: str = Form("/"),
+    username: str = Form(..., max_length=limits.USERNAME),
+    password: str = Form(..., max_length=limits.PASSWORD),
+    next: str = Form("/", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
@@ -224,6 +230,9 @@ async def login_submit(
             status_code=429,
         )
     except AuthError as exc:
+        # The failed attempt counts toward the lockout from this moment, not
+        # from whenever get_session's commit runs after the page has gone.
+        await session.commit()
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -238,6 +247,11 @@ async def login_submit(
         user_agent=request.headers.get("user-agent"),
         ip=ip,
     )
+    # Committed here, not left to get_session: its commit runs after the
+    # response has gone, and the browser follows this redirect at once -- so
+    # the next request could arrive before the session row existed, and bounce
+    # straight back to the sign-in page.
+    await session.commit()
     destination = _safe_next(next)
     response = redirect(destination)
     _set_session_cookie(request, response, token, config)
@@ -253,6 +267,7 @@ async def logout(
     token = request.cookies.get(SESSION_COOKIE)
     if token:
         await revoke_session(session, token)
+        await session.commit()      # before the redirect; see login_submit
     response = redirect("/login")
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
@@ -272,6 +287,7 @@ async def _session_answer(session: AsyncSession, request: Request, *, touch: boo
     idle = timedelta(minutes=await prefs.get_idle_minutes(session))
     if token and touch:
         await resolve_session(session, token, idle=idle, touch=True)
+        await session.commit()      # the page's next check may be moments away
     left = await seconds_left(session, token, idle) if token else 0
     return JSONResponse({"remaining": left}, status_code=200 if left else 401,
                         headers={"Cache-Control": "no-store"})
