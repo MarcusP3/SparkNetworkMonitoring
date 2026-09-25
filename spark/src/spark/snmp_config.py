@@ -197,6 +197,46 @@ async def save_profile(
     return profile
 
 
+# The one factory default worth offering. "public" is the read-only community
+# almost every agent ships with. "private" is deliberately not offered: by
+# convention it is the read-write community, SPARK never writes, and v2c would
+# send it in clear text -- to every device, when Find is pressed.
+DEFAULT_COMMUNITY = "public"
+
+
+async def default_profile(session: AsyncSession, vault: Vault) -> SnmpProfile | None:
+    """The v2c profile that already uses the default community, if any.
+
+    By what it contains as well as its name: a profile called "home" with
+    community "public" is already the default, and a second one would only
+    make Find send the same string twice.
+    """
+    for profile in (await session.execute(
+        select(SnmpProfile).where(SnmpProfile.version == "v2c")
+    )).scalars():
+        if profile.name.lower() == DEFAULT_COMMUNITY:
+            return profile
+        try:
+            if profile.community_sealed and \
+                    vault.open(profile.community_sealed) == DEFAULT_COMMUNITY:
+                return profile
+        except SecretUnavailable:
+            continue
+    return None
+
+
+async def add_default_profile(session: AsyncSession, vault: Vault) -> SnmpProfile:
+    """Create the "public" v2c profile. ProfileError if one already exists."""
+    existing = await default_profile(session, vault)
+    if existing is not None:
+        raise ProfileError(
+            f"{existing.name!r} already uses the {DEFAULT_COMMUNITY!r} community."
+        )
+    return await save_profile(session, vault, ProfileInput(
+        name=DEFAULT_COMMUNITY, version="v2c", community=DEFAULT_COMMUNITY, port="161",
+    ))
+
+
 async def delete_profile(session: AsyncSession, profile_id: int) -> None:
     profile = await session.get(SnmpProfile, profile_id)
     if profile is None:

@@ -76,7 +76,7 @@ async def _port_catalogue(session: AsyncSession) -> dict:
     }
 
 
-async def _snmp(session: AsyncSession) -> dict:
+async def _snmp(session: AsyncSession, vault) -> dict:  # type: ignore[no-untyped-def]
     """Everything the SNMP card needs. No secret ever leaves this function.
 
     Profiles are described by what they protect, not by what they contain --
@@ -114,6 +114,8 @@ async def _snmp(session: AsyncSession) -> dict:
     )
     return {
         "discovery": await _discovery(session, listed_ids, now),
+        "has_default": await snmp_config.default_profile(session, vault) is not None,
+        "default_community": snmp_config.DEFAULT_COMMUNITY,
         "profiles": [
             {
                 "profile": p,
@@ -344,7 +346,7 @@ async def _render(
             "ports": await _port_catalogue(session) if section == "ports" else None,
             "port_error": port_error,
             "port_form": port_form or {},
-            "snmp": await _snmp(session) if section == "snmp" else None,
+            "snmp": await _snmp(session, vault_for(config)) if section == "snmp" else None,
             "snmp_error": snmp_error,
             "snmp_form": snmp_form or {},
             "alerts": await _alerts(session) if section == "alerts" else None,
@@ -624,6 +626,23 @@ async def add_snmp_profile(
     except snmp_config.ProfileError as exc:
         return await _render(request, session, config, user, snmp_error=str(exc),
                              snmp_form=safe, status_code=400)
+    await session.commit()
+    return redirect(SNMP_ANCHOR)
+
+
+@router.post("/settings/snmp/profiles/defaults")
+async def add_default_snmp_profile(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """One click for the factory-default read-only community, "public"."""
+    try:
+        await snmp_config.add_default_profile(session, vault_for(config))
+    except snmp_config.ProfileError as exc:
+        return await _render(request, session, config, user, snmp_error=str(exc),
+                             status_code=400)
     await session.commit()
     return redirect(SNMP_ANCHOR)
 

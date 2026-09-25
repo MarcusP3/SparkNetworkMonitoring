@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — one-click "public" SNMP profile (2026-09-25)
+
+### Added
+
+- **Add common defaults** on Settings → SNMP creates a v2c profile named
+  `public` with the community `public`, the factory read-only default. Shown
+  only while no v2c profile uses `public` — by name or by the community inside
+  it — so it cannot be added twice, and refused with a message if posted
+  anyway.
+- `private` is deliberately not offered: it is conventionally the read-write
+  community, SPARK only reads, and v2c sends it in clear text, which Find
+  would do to every device on the network.
+
+### Tests
+
+3 new in `test_snmp_settings.py`; four deliberate breaks each caught.
+`pytest` 604 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — Settings split into pages (2026-09-25)
 
 ### Changed

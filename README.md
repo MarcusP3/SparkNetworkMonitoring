@@ -331,6 +331,12 @@ press **Test**. SPARK asks each device a set of read-only questions and records
 which ones it can answer, so you can see what it will be able to collect before
 it collects anything. Most homelabs need exactly one profile.
 
+**Add common defaults** creates a v2c profile with the factory read-only
+community, `public`, in one click (the button disappears once any v2c profile
+uses `public`). `private` is deliberately not offered: by convention it is the
+read-write community, SPARK never writes, and v2c would send it in clear text
+— to every device, when **Find SNMP devices** is pressed.
+
 **SPARK does not look for SNMP devices on its own** — it polls the devices on
 the list, and only those. To find candidates, press **Find SNMP devices** on
 the same card. It sends one read-only question (the device's name) to every

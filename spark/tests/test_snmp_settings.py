@@ -547,3 +547,36 @@ class TestPollingControls:
         assert "CPU 13%" in page and "Memory 40%" in page
         assert "4 of 26 interfaces up" in page
         assert "Polled " in page
+
+
+# --------------------------------------------------------------------------
+# Common defaults
+# --------------------------------------------------------------------------
+
+
+class TestCommonDefaults:
+    def test_one_click_adds_public_and_only_public(self, env):
+        client, cfg = env
+        assert "Add common defaults" in client.get("/settings/snmp").text
+        assert client.post("/settings/snmp/profiles/defaults").status_code == 303
+        [profile] = rows(cfg, SnmpProfile)
+        assert (profile.name, profile.version, profile.port) == ("public", "v2c", 161)
+        assert vault_for(cfg).open(profile.community_sealed) == "public"
+        # Never "private": by convention the read-write community.
+        assert all(p.name != "private" for p in rows(cfg, SnmpProfile))
+        assert "Add common defaults" not in client.get("/settings/snmp").text
+
+    def test_it_is_not_added_twice(self, env):
+        client, cfg = env
+        client.post("/settings/snmp/profiles/defaults")
+        again = client.post("/settings/snmp/profiles/defaults")
+        assert again.status_code == 400 and "already uses" in again.text
+        assert len(rows(cfg, SnmpProfile)) == 1
+
+    def test_a_profile_already_using_public_counts_whatever_its_name(self, env):
+        client, cfg = env
+        client.post("/settings/snmp/profiles", data=v2c(name="home", community="public"))
+        assert "Add common defaults" not in client.get("/settings/snmp").text
+        response = client.post("/settings/snmp/profiles/defaults")
+        assert response.status_code == 400 and "home&#39; already uses" in response.text
+        assert [p.name for p in rows(cfg, SnmpProfile)] == ["home"]

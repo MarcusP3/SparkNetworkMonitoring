@@ -1516,3 +1516,5 @@ a.pill:hover { filter: brightness(1.12); }
   }
   .subnav a { flex: 0 0 auto; gap: .45rem; }
 }
+.snmp-defaults { margin: .25rem 0 .75rem; flex-wrap: wrap; gap: .6rem; }
+.snmp-defaults form, .snmp-defaults button { margin: 0; }

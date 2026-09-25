@@ -496,6 +496,17 @@
     </div>
     {% endif %}
 
+    {% if not snmp.has_default %}
+    <form method="post" action="/settings/snmp/profiles/defaults" class="row-form snmp-defaults">
+      <button type="submit" class="btn-quiet">Add common defaults</button>
+      <span class="muted small">
+        Creates a v2c profile with the factory read-only community,
+        <code>{{ snmp.default_community }}</code>. <code>private</code> is not
+        offered: it is usually the read-write community, and SPARK never writes.
+      </span>
+    </form>
+    {% endif %}
+
     <details class="add-profile" {% if not snmp.profiles or snmp_form %}open{% endif %}>
       <summary class="sub-title">Add a profile</summary>
       <form method="post" action="/settings/snmp/profiles" class="snmp-form">
