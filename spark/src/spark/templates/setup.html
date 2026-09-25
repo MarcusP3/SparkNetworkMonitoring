@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_brand.html" import mark %}
+{% from "_forms.html" import timezone_select %}
 {% block content %}
 <div class="card auth-card">
   <div class="auth-head">
@@ -31,6 +32,12 @@
     </label>
 
     <label>
+      <span>Time zone</span>
+      {{ timezone_select(timezone or 'UTC', timezone_choices, chosen=timezone is defined and timezone) }}
+      <small class="hint">Times are shown in this zone. Set from this browser; change it any time under Preferences.</small>
+    </label>
+
+    <label>
       <span>Discord webhook URL <em class="optional">optional</em></span>
       <input type="url" name="discord_webhook_url" placeholder="https://discord.com/api/webhooks/…">
       <small class="hint">Where outage alerts go. You can add this later in Settings.</small>
@@ -39,4 +46,15 @@
     <button type="submit" class="btn-primary">Create account</button>
   </form>
 </div>
+<script nonce="{{ request.state.csp_nonce }}">
+  // Start from this browser's zone, unless the form is coming back with one.
+  (function () {
+    var select = document.getElementById('timezone');
+    if (!select || select.dataset.chosen) return;
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if ([].some.call(select.options, function (o) { return o.value === tz; })) select.value = tz;
+    } catch (e) { /* stays UTC */ }
+  })();
+</script>
 {% endblock %}

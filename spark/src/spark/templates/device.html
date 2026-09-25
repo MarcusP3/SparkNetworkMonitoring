@@ -52,7 +52,7 @@
             Waiting for the first poll.
           {% elif poll.last_error %}
             <span class="pill bad dot">no answer</span>
-            {% if poll.last_ok_at %}Last answered {{ poll.last_ok_at.strftime('%b %-d, %H:%M') }} UTC.{% else %}Has not answered a poll yet.{% endif %}
+            {% if poll.last_ok_at %}Last answered {{ poll.last_ok_at | local('%b %-d, %H:%M %Z') }}.{% else %}Has not answered a poll yet.{% endif %}
           {% else %}
             <span class="pill ok dot">polling</span>
             {% if snmp.uptime %}Up {{ snmp.uptime }} ·{% endif %}
@@ -188,8 +188,8 @@
       <div>
         <h2>On the network</h2>
         <p class="card-sub">
-          First seen {{ device.first_seen.strftime('%b %-d, %Y') }}{% if device.last_seen %},
-          last seen {{ device.last_seen.strftime('%b %-d, %H:%M') }} UTC{% endif %}.
+          First seen {{ device.first_seen | local('%b %-d, %Y') }}{% if device.last_seen %},
+          last seen {{ device.last_seen | local('%b %-d, %H:%M %Z') }}{% endif %}.
           {% if watched %}Watched by {{ watched }} target{{ 's' if watched != 1 }}.{% endif %}
         </p>
       </div>

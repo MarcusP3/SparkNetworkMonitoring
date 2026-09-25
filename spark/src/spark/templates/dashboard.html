@@ -8,8 +8,8 @@
       <p>Here's what's happening with your infrastructure today.</p>
     </div>
     <div class="greeting-when">
-      {{ now.strftime('%a, %b %-d, %Y') }}<br>
-      {{ now.strftime('%-I:%M %p') }}
+      {{ now | local('%a, %b %-d, %Y') }}<br>
+      {{ now | local('%-I:%M %p %Z') }}
     </div>
   </div>
 
@@ -222,7 +222,7 @@
               {% endif %}
             </span>
           </span>
-          <span class="when">{{ incident.opened_at.strftime('%b %-d, %H:%M') }}</span>
+          <span class="when">{{ incident.opened_at | local }}</span>
         </li>
         {% endfor %}
       </ul>

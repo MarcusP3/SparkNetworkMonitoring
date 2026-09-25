@@ -1,7 +1,7 @@
 // Chart behaviour for server-rendered SVG charts (see charts.py).
 //
 // Two jobs, both optional -- a chart with this file blocked still draws:
-//   * show times in this browser's time zone (the server renders UTC);
+//   * show times in the chosen time zone, in this browser's clock style;
 //   * a hover line with a readout of the bucket under the pointer.
 //
 // A file rather than an inline script so the CSP needs nothing new: it is
@@ -10,20 +10,34 @@
 (function () {
   'use strict';
 
-  var timeFmt = { hour: '2-digit', minute: '2-digit' };
-  var dateFmt = { month: 'short', day: 'numeric' };
-
-  function local(date, withDate) {
-    var time = date.toLocaleTimeString(undefined, timeFmt);
-    return withDate ? date.toLocaleDateString(undefined, dateFmt) + ' ' + time : time;
+  // Times are shown in the zone chosen under Preferences (data-tz on each
+  // chart), not the browser's -- so a chart reads the same as the rest of the
+  // page, whichever machine is looking at it.
+  function formats(tz) {
+    var zone = tz ? { timeZone: tz } : {};
+    return {
+      time: Object.assign({ hour: '2-digit', minute: '2-digit' }, zone),
+      date: Object.assign({ month: 'short', day: 'numeric' }, zone)
+    };
   }
 
-  document.querySelectorAll('.chart time[datetime]').forEach(function (el) {
-    var d = new Date(el.getAttribute('datetime'));
-    if (isNaN(d)) return;
-    el.textContent = el.dataset.style === 'date'
-      ? d.toLocaleDateString(undefined, dateFmt)
-      : local(d, false);
+  function local(date, withDate, f) {
+    var time = date.toLocaleTimeString(undefined, f.time);
+    return withDate ? date.toLocaleDateString(undefined, f.date) + ' ' + time : time;
+  }
+
+  document.querySelectorAll('figure.chart').forEach(function (figure) {
+    var f;
+    try { f = formats(figure.dataset.tz); new Date().toLocaleTimeString(undefined, f.time); }
+    catch (e) { f = formats(null); }  // an unknown zone: fall back to the browser's
+    figure.querySelectorAll('time[datetime]').forEach(function (el) {
+      var d = new Date(el.getAttribute('datetime'));
+      if (isNaN(d)) return;
+      el.textContent = el.dataset.style === 'date'
+        ? d.toLocaleDateString(undefined, f.date)
+        : local(d, false, f);
+    });
+    figure.__formats = f;
   });
 
   document.querySelectorAll('figure.chart').forEach(function (figure) {
@@ -53,7 +67,8 @@
       cursor.setAttribute('x1', x);
       cursor.setAttribute('x2', x);
       cursor.classList.add('on');
-      box.textContent = local(new Date((start + index * width) * 1000), true) + ' · ' + text;
+      box.textContent = local(new Date((start + index * width) * 1000), true,
+                              figure.__formats || formats(null)) + ' · ' + text;
       box.hidden = false;
       // Keep the box inside the plot: flip to the left of the line past halfway.
       var px = (index + 0.5) / count * rect.width;

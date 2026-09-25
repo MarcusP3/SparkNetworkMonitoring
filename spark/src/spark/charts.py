@@ -15,9 +15,10 @@ How it stays legible at every width:
     readable number -- which is what lets the labels be positioned by class
     rather than by an inline style the CSP would refuse.
 
-Times are rendered in UTC and converted to the browser's local time by
-`static/charts.js`, which also draws the hover readout. With scripts off the
-charts still render, the axis reads in UTC, and there is no hover readout.
+Times are rendered in the time zone chosen under Preferences, and
+`static/charts.js` re-formats them in the browser's own clock style (12- or
+24-hour) in that same zone, and draws the hover readout. With scripts off the
+charts still render, in 24-hour time, with no hover readout.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import json
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from markupsafe import Markup, escape
 
@@ -161,19 +162,20 @@ class Line:
     fill: bool = False
 
 
-def _time_label(when: datetime, style: str) -> Markup:
-    text = when.strftime("%H:%M") if style == "time" else when.strftime("%b %-d")
+def _time_label(when: datetime, style: str, tz=timezone.utc) -> Markup:  # type: ignore[no-untyped-def]
+    local = when.astimezone(tz)
+    text = local.strftime("%H:%M") if style == "time" else local.strftime("%b %-d")
     return Markup(
         f'<time datetime="{when.isoformat()}" data-style="{style}">{escape(text)}</time>'
     )
 
 
-def x_labels(window: Window) -> list[Markup]:
+def x_labels(window: Window, tz=timezone.utc) -> list[Markup]:  # type: ignore[no-untyped-def]
     """Five times across the window: both ends and the quarters between."""
     span = window.width * window.count
     style = "time" if span <= 86400 else "date"
     return [
-        _time_label(window.start + timedelta(seconds=span * f), style)
+        _time_label(window.start + timedelta(seconds=span * f), style, tz)
         for f in (0, 0.25, 0.5, 0.75, 1)
     ]
 
@@ -186,6 +188,8 @@ def chart(
     fmt: Callable[[float | None], str],
     title: str,
     describe: Callable[[int], str] | None = None,
+    tz=timezone.utc,  # type: ignore[no-untyped-def]
+    tz_name: str = "UTC",
 ) -> Markup:
     """A complete chart: plot, grid, value axis, time axis, hover readouts.
 
@@ -224,9 +228,9 @@ def chart(
         f'<span class="tick q{q}">{escape(fmt(y_max * q / 4))}</span>'
         for q in (4, 3, 2, 1, 0)
     )
-    x_axis = "".join(f"<span>{label}</span>" for label in x_labels(window))
+    x_axis = "".join(f"<span>{label}</span>" for label in x_labels(window, tz))
     return Markup(
-        f'<figure class="chart" data-start="{window.start_epoch}" '
+        f'<figure class="chart" data-start="{window.start_epoch}" data-tz="{escape(tz_name)}" '
         f"data-width=\"{window.width}\" data-readouts='{_attr(readouts)}'>"
         f'<div class="chart-body"><div class="chart-y" aria-hidden="true">{y_axis}</div>'
         '<div class="chart-plot">'

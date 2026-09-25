@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — time zone preference (2026-09-25)
+
+### Added
+
+- **Preferences** (`/preferences`), opened by clicking your name in the top
+  bar. **Time zone** is the zone every time in SPARK is shown in: page
+  timestamps (dashboard, targets, device pages, SNMP last test), chart axes and
+  hover readouts, and the zone quiet hours are kept in. Offers the browser's
+  own zone when it differs from the saved one.
+- **Setup asks for it**, with the browser's zone preselected.
+- A `local` template filter (`{{ when | local('%b %-d, %H:%M %Z') }}`), and
+  a README convention: no `.strftime` on stored times in templates.
+
+### Changed
+
+- Quiet hours follow the Preferences zone. The Alerts card no longer captures
+  the browser's zone on save; it names the zone and links to Preferences. An
+  install that saved quiet hours before keeps that zone until a preference is
+  set, so upgrading does not move anyone's quiet hours.
+- Pages that said "UTC" after a time now show the zone's abbreviation
+  (CDT, BST, …), since the time is no longer in UTC.
+- The account chip in the top bar is a link to Preferences; Sign out is its
+  own button beside it.
+
+### Tests
+
+12 new (`test_preferences.py`): setup saves the zone and refuses a bad one;
+Preferences saves and refuses; the chip links there; the zone list has no
+legacy aliases; page times, chart axes and quiet hours use the zone; the
+alerts card names it; an older install keeps its quiet-hours zone. Six
+deliberate breaks each caught. `pytest` 618 passed with the agent,
+`smoke_test.py` 76 passed.
+
 ## Unreleased — no sideways jolt between pages (2026-09-25)
 
 ### Fixed

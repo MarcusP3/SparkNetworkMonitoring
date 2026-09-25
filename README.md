@@ -48,6 +48,7 @@ see [Alerts](#alerts).
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Monitoring](#monitoring)
+- [Preferences](#preferences)
 - [Alerts](#alerts)
 - [SNMP](#snmp)
 - [Authentication](#authentication)
@@ -278,6 +279,15 @@ thirty.
 
 ---
 
+## Preferences
+
+Click your name in the top bar. **Time zone** sets the zone every time in
+SPARK is shown in — page timestamps, chart axes and hover readouts — and the
+zone quiet hours are kept in. It is chosen first at setup (the browser's own
+zone is preselected), and Preferences offers the browser's zone whenever it
+differs from the saved one. Times are stored in UTC regardless; only how they
+read changes. One setting for the instance, since SPARK has one account.
+
 ## Alerts
 
 **Settings → Alerts.** Paste a Discord webhook (in Discord: Server Settings →
@@ -307,7 +317,7 @@ What is deliberately not sent:
 - the devices from the very first sweep, which are all new and none of them news.
 
 **Quiet hours** hold alerts and send one summary when the window ends. The
-window is kept in the time zone of the browser that saved it.
+window is kept in the time zone set under **Preferences**.
 
 **If Discord is unreachable** alerts wait and retry after 30 s, 2, 10 and 30
 minutes, then are marked failed; a webhook Discord says does not exist fails at
@@ -594,6 +604,7 @@ spark/
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
+    prefs.py            the time zone preference; the `local` template filter's formatting
     alerts.py           deciding what to alert on; the Discord outbox and dispatcher
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
@@ -643,6 +654,7 @@ spark/
     test_layout.py      every table scrolls inside its card
     test_snmp_discover.py  Find suggests and never adds; the Devices SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
+    test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
@@ -652,7 +664,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Nine things that will bite you if you don't know them:
+Ten things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -669,6 +681,8 @@ Nine things that will bite you if you don't know them:
 - **Every table sits in `<div class="table-scroll">`.** Without it, a table
   wider than the window widens the whole page instead of scrolling inside its
   card. `tests/test_layout.py` checks every template.
+- **Show times with `| local`**, never `.strftime` in a template. Stored
+  times are UTC; the filter shows them in the zone chosen under Preferences.
 - **No inline styles.** The CSP allows styles from `'self'` only, so a
   `style="…"` attribute is silently ignored. Position things with classes (the
   chart labels sit at fixed quarters for exactly this reason); a script may set

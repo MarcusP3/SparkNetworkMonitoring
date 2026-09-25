@@ -710,7 +710,7 @@
               <div class="muted small snmp-error">{{ row.last_error }}</div>
             {% endif %}
             {% if row.last_checked_at %}
-              <div class="muted small">{{ row.last_checked_at.strftime('%b %-d, %H:%M') }}</div>
+              <div class="muted small">{{ row.last_checked_at | local }}</div>
             {% endif %}
           </td>
           <td class="actions">
@@ -815,7 +815,6 @@
     {% set a = alerts.settings %}
 
     <form method="post" action="/settings/alerts" class="alerts-form" id="alerts-form">
-      <input type="hidden" name="timezone" value="{{ alerts.timezone }}" id="alerts-timezone">
 
       <label class="stack-field">
         <span class="muted small">Discord webhook</span>
@@ -844,7 +843,7 @@
         <span class="muted small">to</span>
         <input type="time" name="quiet_end" value="{{ a.quiet_hours_end }}" aria-label="Quiet hours end">
         <span class="muted small">
-          {{ alerts.timezone }}{% if alerts.quiet_now %} · <strong>quiet now</strong>{% endif %}.
+          {{ alerts.timezone }} (<a href="/preferences">change</a>){% if alerts.quiet_now %} · <strong>quiet now</strong>{% endif %}.
           Leave both empty for none.
         </span>
       </div>
@@ -910,8 +909,7 @@
       <dt>Quiet hours</dt>
       <dd>
         Alerts that happen in the window are held, and arrive as one summary when
-        it ends. Times are in the time zone of the browser that last saved this
-        card.
+        it ends. Times are in the time zone set under Preferences.
       </dd>
       <dt>If Discord is down</dt>
       <dd>
@@ -934,15 +932,6 @@
     if (location.pathname === '/settings' && moved[location.hash]) {
       location.replace(moved[location.hash]);
     }
-  })();
-
-  // Quiet hours are kept in the time zone of the browser saving them.
-  (function () {
-    var field = document.getElementById('alerts-timezone');
-    try {
-      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (field && tz) field.value = tz;
-    } catch (e) { /* keep the saved zone */ }
   })();
 
   // Grey the interval when the box is unticked. Appearance only -- the select

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_forms.html" import timezone_select %}
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="page-title">
+      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+      <div>
+        <h1>Preferences</h1>
+        <p class="page-sub">How SPARK shows things to you. What it does on the network is under <a href="/settings">Settings</a>.</p>
+      </div>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+  {% if saved %}<div class="alert ok">Saved. Every time in SPARK is now shown in {{ timezone }}.</div>{% endif %}
+
+  <section class="card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <div>
+        <h2>Time zone</h2>
+        <p class="card-sub">
+          Every time on every page is shown in this zone, charts included, and
+          quiet hours for alerts are kept in it. SPARK stores times in UTC, so
+          changing this changes only how they read.
+        </p>
+      </div>
+    </div>
+
+    <form method="post" action="/preferences" class="prefs-form">
+      <label class="stack-field">
+        <span class="muted small">Time zone</span>
+        {{ timezone_select(timezone, choices) }}
+      </label>
+      <p class="muted small">
+        Now: <strong>{{ now | local('%a %b %-d, %H:%M %Z') }}</strong>
+        <span id="tz-browser" hidden>
+          · this browser is set to <strong id="tz-browser-name"></strong>
+          <button type="button" class="btn-quiet" id="tz-use-browser">Use it</button>
+        </span>
+      </p>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+  // Offer the browser's own zone when it differs from the saved one.
+  (function () {
+    var tz;
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return; }
+    var select = document.getElementById('timezone');
+    if (!tz || !select || select.value === tz) return;
+    if (![].some.call(select.options, function (o) { return o.value === tz; })) return;
+    document.getElementById('tz-browser-name').textContent = tz;
+    document.getElementById('tz-browser').hidden = false;
+    document.getElementById('tz-use-browser').addEventListener('click', function () {
+      select.value = tz;
+      document.getElementById('tz-browser').hidden = true;
+    });
+  })();
+</script>
+{% endblock %}

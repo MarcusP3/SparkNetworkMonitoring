@@ -41,6 +41,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import prefs
 from .db import get_setting, save_setting, session_scope
 from .models import (
     HealthStatus,
@@ -465,6 +466,8 @@ async def _dispatch(config, client) -> int:  # type: ignore[no-untyped-def]
     # ---- decide what goes out, then let go of the database ----
     async with session_scope() as session:
         settings = await load(session)
+        # Quiet hours are kept in the zone chosen under Preferences.
+        settings["timezone"] = await prefs.get_timezone(session)
         due = list((await session.execute(
             select(Notification)
             .where(Notification.status == NotificationStatus.PENDING,

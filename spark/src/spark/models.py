@@ -971,6 +971,11 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     "snmp": {
         "poll_interval_seconds": 60,
     },
+    # Display preferences. Empty time zone means "not chosen yet": prefs.py
+    # falls back to the zone quiet hours used before this existed, then UTC.
+    "preferences": {
+        "timezone": "",
+    },
     "retention": {
         "raw_days": 7,
         "five_minute_days": 90,

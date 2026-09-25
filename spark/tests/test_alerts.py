@@ -573,7 +573,6 @@ class TestSettingsCard:
         client, config = site
         assert client.post("/settings/alerts", data={**FORM, "webhook": HOOK}).status_code == 303
         settings = saved(config)
-        assert settings["timezone"] == "America/Chicago"
         assert alerts.webhook_url(settings, vault_for(config)) == HOOK
         page = client.get("/settings/alerts").text
         assert "abcDEF-secret-token" not in page and "123456789012345678" not in page

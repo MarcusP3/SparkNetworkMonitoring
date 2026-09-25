@@ -60,7 +60,7 @@
           <td><code>{{ target.address }}</code></td>
           <td class="muted">{{ target.interval_seconds }}s</td>
           <td class="muted small">
-            {{ target.last_checked_at.strftime('%H:%M:%S') if target.last_checked_at else '—' }}
+            {{ target.last_checked_at | local('%H:%M:%S') }}
             {# Only while it is on its way down. Once a target is DOWN the count
                just climbs forever -- 2613 consecutive failures says nothing the
                status pill and the incident have not already said. Below the

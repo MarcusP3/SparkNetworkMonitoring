@@ -19,6 +19,7 @@ from ..auth import (
     setup_required,
 )
 from ..config import Config
+from .. import prefs
 from ..alerts import AlertError, set_webhook, validate_webhook
 from ..vault import vault_for
 from .deps import current_user, get_config, get_session, redirect, templates
@@ -83,7 +84,8 @@ async def setup_form(
     return templates.TemplateResponse(
         request,
         "setup.html",
-        {"config": config, "title": "Set up SPARK"},
+        {"config": config, "title": "Set up SPARK",
+         "timezone_choices": prefs.timezone_choices()},
     )
 
 
@@ -94,6 +96,7 @@ async def setup_submit(
     password: str = Form(...),
     password_confirm: str = Form(...),
     discord_webhook_url: str = Form(""),
+    timezone_name: str = Form("", alias="timezone"),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
@@ -109,6 +112,9 @@ async def setup_submit(
             validate_webhook(webhook)
         except AlertError as exc:
             error = str(exc)
+    tz = timezone_name.strip()
+    if error is None and tz and not prefs.valid(tz):
+        error = f"{tz!r} is not a time zone SPARK knows."
     if error is None:
         try:
             user = await create_admin(session, username, password)
@@ -119,12 +125,16 @@ async def setup_submit(
         return templates.TemplateResponse(
             request,
             "setup.html",
-            {"config": config, "title": "Set up SPARK", "error": error, "username": username},
+            {"config": config, "title": "Set up SPARK", "error": error, "username": username,
+             "timezone": tz if prefs.valid(tz) else None,
+             "timezone_choices": prefs.timezone_choices()},
             status_code=400,
         )
 
     if webhook:
         await set_webhook(session, vault_for(config), webhook)
+    if tz:
+        await prefs.set_timezone(session, tz)
 
     token = await create_session(
         session,

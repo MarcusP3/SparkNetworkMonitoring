@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts as alert_service
 from .. import port_catalogue
+from .. import prefs
 from .. import scheduler as scheduler_module
 from .. import snmp_config
 from .. import snmp_discover
@@ -148,13 +149,16 @@ async def _alerts(session: AsyncSession) -> dict:
     """What the Alerts card shows. The webhook itself never leaves this function
     -- only whether one is saved."""
     settings = await alert_service.load(session)
+    # Quiet hours are kept in the zone chosen under Preferences.
+    tz_name = await prefs.get_timezone(session)
+    timed = {**settings, "timezone": tz_name}
     now = utcnow()
-    tz = alert_service.zone(settings)
+    tz = alert_service.zone(timed)
     return {
         "settings": settings,
         "has_webhook": bool(settings.get("discord_webhook_sealed")),
-        "quiet_now": alert_service.in_quiet_hours(settings, now),
-        "timezone": settings.get("timezone") or "UTC",
+        "quiet_now": alert_service.in_quiet_hours(timed, now),
+        "timezone": tz_name,
         "recent": [
             {"row": row, "ago": _ago(row.created_at, now),
              "local": row.created_at.astimezone(tz).strftime("%b %-d, %H:%M")}
@@ -839,7 +843,6 @@ async def save_alerts(
     notify_on_snmp: str = Form(""),
     quiet_start: str = Form(""),
     quiet_end: str = Form(""),
-    timezone_name: str = Form("", alias="timezone"),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -849,8 +852,6 @@ async def save_alerts(
     A blank webhook keeps the saved one: the field is never filled in on the
     page, so blank is the only honest thing it can send back.
     """
-    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
     try:
         start, end = _hhmm_or_blank(quiet_start), _hhmm_or_blank(quiet_end)
         if bool(start) != bool(end):
@@ -862,11 +863,6 @@ async def save_alerts(
                              status_code=400)
 
     settings = await alert_service.load(session)
-    tz = (timezone_name or "").strip()
-    try:
-        ZoneInfo(tz)
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = settings.get("timezone") or "UTC"
     settings.update(
         enabled=_checked(enabled),
         notify_on_recovery=_checked(notify_on_recovery),
@@ -874,7 +870,6 @@ async def save_alerts(
         notify_on_snmp=_checked(notify_on_snmp),
         quiet_hours_start=start,
         quiet_hours_end=end,
-        timezone=tz,
     )
     settings.pop("discord_webhook_url", None)
     if new_webhook:

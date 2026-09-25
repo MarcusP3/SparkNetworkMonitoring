@@ -58,7 +58,7 @@ def _describe(series: history.Series, fmt) -> callable:  # type: ignore[no-untyp
     return describe
 
 
-def _health_charts(health: history.HealthHistory) -> list[dict]:
+def _health_charts(health: history.HealthHistory, zone: dict) -> list[dict]:
     """The health charts worth showing, in a fixed order. Empty ones are left out."""
     window = health.window
     out = []
@@ -75,7 +75,7 @@ def _health_charts(health: history.HealthHistory) -> list[dict]:
                              series.peak if _peaks_worth_drawing(series) else None,
                              fill=True)],
                 window, y_max=y_max, fmt=fmt, title=label,
-                describe=_describe(series, fmt),
+                describe=_describe(series, fmt), **zone,
             ),
         })
 
@@ -113,7 +113,7 @@ def _state(iface: SnmpInterface, last_ok) -> tuple[str, str]:  # type: ignore[no
 
 
 def _traffic_chart(traffic: history.TrafficHistory, window: history.Window,
-                   label: str):  # type: ignore[no-untyped-def]
+                   label: str, zone: dict):  # type: ignore[no-untyped-def]
     inbound, outbound = traffic.inbound, traffic.outbound
     values = [v for v in inbound.avg + inbound.peak + outbound.avg + outbound.peak
               if v is not None]
@@ -140,12 +140,12 @@ def _traffic_chart(traffic: history.TrafficHistory, window: history.Window,
                         kind="secondary", label="Out"),
         ],
         window, y_max=y_max, fmt=charts.fmt_bps, title=f"Traffic on {label}",
-        describe=describe,
+        describe=describe, **zone,
     )
 
 
 async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
-                        port: int | None) -> dict | None:
+                        port: int | None, zone: dict) -> dict | None:
     row = await session.scalar(select(SnmpDevice).where(SnmpDevice.device_id == device.id))
     if row is None:
         return None
@@ -189,7 +189,8 @@ async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
 
     selected_chart = None
     if selected is not None and selected["traffic"] and selected["traffic"].has_data:
-        selected_chart = _traffic_chart(selected["traffic"], window, selected["iface"].label)
+        selected_chart = _traffic_chart(selected["traffic"], window, selected["iface"].label,
+                                        zone)
 
     return {
         "row": row,
@@ -197,7 +198,7 @@ async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
         "poll": poll,
         "window": window,
         "health": health,
-        "health_charts": _health_charts(health),
+        "health_charts": _health_charts(health, zone),
         "answered": health.answered_fraction,
         "interfaces": entries,
         "up": sum(1 for e in entries if e["state"] == "up"),
@@ -258,7 +259,9 @@ async def device_page(
     watched = await session.scalar(
         select(func.count(Target.id)).where(Target.device_id == device.id)
     )
-    snmp = await _snmp_section(session, device, range_name, port_id)
+    # Charts label their time axes in the zone chosen under Preferences.
+    zone = {"tz": request.state.tz, "tz_name": request.state.tz_name}
+    snmp = await _snmp_section(session, device, range_name, port_id, zone)
     has_profiles = bool(await session.scalar(select(func.count(SnmpProfile.id))))
 
     return templates.TemplateResponse(

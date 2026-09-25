@@ -5,6 +5,7 @@ from . import (  # noqa: F401
     routes_device_page,
     routes_devices,
     routes_events,
+    routes_preferences,
     routes_settings,
     routes_targets,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "routes_device_page",
     "routes_devices",
     "routes_events",
+    "routes_preferences",
     "routes_settings",
     "routes_targets",
 ]

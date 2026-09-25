@@ -1,0 +1,20 @@
+{# Form pieces used on more than one page. #}
+
+{# The time zone picker: UTC first, then every zone grouped by region, so the
+   list is scannable rather than four hundred names in one run. #}
+{% macro timezone_select(current, choices, chosen=False) %}
+    <select name="timezone" id="timezone" required{% if chosen %} data-chosen="1"{% endif %}>
+      <option value="UTC" {% if current == 'UTC' %}selected{% endif %}>UTC</option>
+      {% set ns = namespace(region=None) %}
+      {% for name in choices[1:] %}
+        {% set region = name.split('/')[0] %}
+        {% if region != ns.region %}
+          {% if ns.region is not none %}</optgroup>{% endif %}
+          <optgroup label="{{ region }}">
+          {% set ns.region = region %}
+        {% endif %}
+        <option value="{{ name }}" {% if name == current %}selected{% endif %}>{{ name | replace('_', ' ') }}</option>
+      {% endfor %}
+      {% if ns.region is not none %}</optgroup>{% endif %}
+    </select>
+{% endmacro %}

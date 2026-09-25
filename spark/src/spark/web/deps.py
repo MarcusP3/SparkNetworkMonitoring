@@ -9,8 +9,10 @@ from pathlib import Path
 from fastapi import Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import prefs
 from ..auth import SESSION_COOKIE, resolve_proxy_user, resolve_session, setup_required
 from ..config import Config
 from ..db import get_sessionmaker
@@ -68,6 +70,19 @@ def _app_version() -> str:
         return "dev"
 
 
+@pass_context
+def _local(context, when, fmt: str = "%b %-d, %H:%M") -> str:  # type: ignore[no-untyped-def]
+    """`{{ some_time | local }}`: a stored UTC time, in the chosen time zone.
+
+    The zone comes from the request (set by require_user); pages rendered
+    before sign-in have none and show UTC, which is what they said before.
+    """
+    request = context.get("request")
+    tz = getattr(getattr(request, "state", None), "tz", None) or prefs.zone_of(None)
+    return prefs.local(when, tz, fmt)
+
+
+templates.env.filters["local"] = _local
 templates.env.globals["asset_version"] = _asset_version()
 templates.env.globals["app_version"] = _app_version()
 
@@ -114,6 +129,11 @@ async def require_user(
     user: User | None = Depends(current_user),
 ) -> User:
     if user is not None:
+        # Every signed-in page shows times in the chosen zone. One indexed
+        # read of a settings row, here rather than in every route.
+        name = await prefs.get_timezone(session)
+        request.state.tz_name = name
+        request.state.tz = prefs.zone_of(name)
         return user
     if await setup_required(session):
         raise RedirectException("/setup")
