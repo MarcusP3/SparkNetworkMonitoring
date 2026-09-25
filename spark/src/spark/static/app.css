@@ -577,10 +577,6 @@ a.stat:hover {
 .roadmap .next { background: var(--surface-2); color: var(--text-muted); }
 .roadmap li:has(.done) { color: var(--text); }
 
-@media (max-width: 640px) {
-  .topbar { gap: .75rem; }
-  .nav { display: none; }
-}
 
 /* Between phone and desktop the bar held its full width -- five links, the
    name and role, Sign out -- and pushed the whole page sideways from about
@@ -597,6 +593,43 @@ a.stat:hover {
 .nav { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
 .brand, .user-chip { flex-shrink: 0; }
+
+/* Phones: the links get a row of their own under the brand and the account
+   chip. They were hidden outright below 640px, which left a phone with no way
+   to reach any page but the one it was on. The links share the row out
+   between them, so all four fit without scrolling -- a scrolled row hides
+   pages off the edge, the same reason the Settings sub-menu wraps. */
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 0 .75rem;
+    padding: 0 1rem;
+  }
+  .brand { min-height: 56px; }
+  .user-chip { margin-left: auto; }
+  .nav {
+    order: 3;
+    /* Edge to edge: the full row plus the bar's own side padding. */
+    flex: 0 0 calc(100% + 2rem);
+    margin: 0 -1rem;
+    padding: .4rem .75rem .5rem;
+    gap: .25rem;
+    border-top: 1px solid var(--border);
+  }
+  .nav a {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: .45rem .25rem;
+    font-size: .875rem;
+  }
+}
+/* The smallest phones (iPhone SE and similar, 320px): a touch smaller still,
+   so Settings is not the link that ends up clipped. */
+@media (max-width: 360px) {
+  .nav { gap: .1rem; padding-left: .5rem; padding-right: .5rem; }
+  .nav a { font-size: .8125rem; padding: .45rem .2rem; }
+}
 
 /* ---- targets ---------------------------------------------------------- */
 

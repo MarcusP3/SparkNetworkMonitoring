@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — navigation on phones (2026-09-25)
+
+### Fixed
+
+- **Phones had no navigation.** Below 640px the page links were hidden with
+  nothing in their place, so a phone could only reach other pages by typing
+  the address. They now sit in their own row under the SPARK bar: Dashboard,
+  Targets, Devices, Settings, sharing the width so all four fit without
+  scrolling (checked at 320, 360, 390 and 412px). Anything wider than 640px
+  is untouched: the top bar was measured element by element against the
+  previous stylesheet at seven widths from 641 to 1400px, and is identical.
+
+### Tests
+
+2 new in `test_layout.py`: the phone rules keep the nav, and they come after
+the tablet rules (both apply on a phone, so the later one wins). Both caught
+a deliberate break. `pytest` 703 passed with the agent.
+
 ## Unreleased — input limits; Preferences saves only changes (2026-09-25)
 
 An audit threw hostile input at every form field (572 attempts across 18
