@@ -25,7 +25,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Check engine — ping, TCP, HTTP(S), DNS | ✅ working |
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
-| Device inventory — naming, review state, watch-in-one-click | ✅ working |
+| Device inventory — naming, review state, watch one or many in one click | ✅ working |
 | Scan schedule — on/off and interval, set on the Devices page | ✅ working |
 | Subnet management and VLAN tags (`/settings`) | ✅ working |
 | Subnet filter on the Devices page | ✅ working |
@@ -208,7 +208,12 @@ wins, so documenting a `/8` does not swallow the `/24`s inside it.
 ## Monitoring
 
 Targets come from two places: added by hand at `/targets`, or promoted from a
-discovered device with the **Watch** button at `/devices`.
+discovered device with the **Watch** button at `/devices`. To watch many at
+once, tick them in the Devices list (the box in the header ticks the whole
+page) and press **Watch N** in the bar that appears: each gets a ping check,
+exactly as its own Watch button would give it, and their first checks run
+within seconds. Devices already watched, ignored, or without an address have
+no box.
 
 ### Check types
 
@@ -684,6 +689,7 @@ spark/
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
     test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
+    test_watch_selected.py  tick devices and watch them all; skips, duplicates, junk, first checks queued
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
 ```
 

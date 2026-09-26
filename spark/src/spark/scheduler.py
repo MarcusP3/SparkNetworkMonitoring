@@ -72,16 +72,25 @@ async def shutdown() -> None:
     log.info("Scheduler stopped")
 
 
-def schedule_target(target: Target) -> None:
-    """Add or update one target's job."""
+def schedule_target(target: Target, *, first_run_in: float | None = None) -> None:
+    """Add or update one target's job.
+
+    `first_run_in` runs the first check that many seconds from now rather
+    than a whole interval away -- how watching many devices at once gets an
+    answer for each within seconds without awaiting them all in the request.
+    """
     scheduler = _scheduler
     if scheduler is None:
         return
     interval = max(5, int(target.interval_seconds or 60))
+    extra = {}
+    if first_run_in is not None:
+        extra["next_run_time"] = datetime.now(timezone.utc) + timedelta(seconds=first_run_in)
     scheduler.add_job(
         run_target,
         "interval",
         seconds=interval,
+        **extra,
         # Without jitter, every target added in the same minute polls in the
         # same instant forever after.
         jitter=min(int(interval * 0.1) or 1, 30),

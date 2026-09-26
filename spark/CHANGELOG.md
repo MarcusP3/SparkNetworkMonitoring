@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — watch many devices at once (2026-09-26)
+
+### Added
+
+- **Watch selected** on the Devices page. Tick devices in the list (the box
+  in the header ticks every one on the page) and a bar appears at the bottom
+  of the window: **Watch N** gives each a ping check, exactly as its own
+  Watch button would, and marks it reviewed. Devices already watched,
+  ignored, or without an address have no box and are skipped if sent anyway.
+- You stay on the Devices page, filters and page kept, with a line saying how
+  many were added and a link to Targets. The first checks are queued a fifth
+  of a second apart rather than run inside the request, so watching fifty
+  devices answers at once and pings them over ten seconds, not in one burst.
+- While anything is ticked, the page's live refresh waits, so a sweep
+  finishing does not untick what you picked. Without JavaScript the bar is
+  always shown and still works.
+
+### Tests
+
+14 new (`test_watch_selected.py`). Ten deliberate breaks each caught. A
+browser run ticks, selects all, clears, watches 14 devices and sees the
+Monitored tile go from 0 to 14, and checks the bar on a phone. `pytest` 717
+passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — navigation on phones (2026-09-25)
 
 ### Fixed

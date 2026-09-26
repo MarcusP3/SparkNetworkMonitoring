@@ -48,6 +48,17 @@
     </div>
   </div>
 
+  {% if just_watched is not none %}
+  <div class="alert {{ 'ok' if just_watched else 'info' }}">
+    {% if just_watched %}
+      Now watching {{ just_watched }} more device{{ 's' if just_watched != 1 }}. Their first
+      checks run in the next few seconds — <a href="/targets">see them in Targets</a>.
+    {% else %}
+      Nothing new to watch: the devices ticked were already watched, or have no address.
+    {% endif %}
+  </div>
+  {% endif %}
+
   {# Deliberately outside #live: a live refresh replaces that region wholesale,
      which would discard a dropdown you had changed but not yet applied. #}
   <section class="card scan-schedule">
@@ -302,6 +313,11 @@
     <table class="table">
       <thead>
         <tr>
+          {% if any_watchable %}
+          <th class="pick-col">
+            <input type="checkbox" class="pick-all" aria-label="Select every device on this page that is not watched yet">
+          </th>
+          {% endif %}
           <th>Name</th>
           <th>Address</th>
           <th>VLAN</th>
@@ -316,6 +332,17 @@
         {% set device = row.device %}
         <tr data-target-id="device-{{ device.id }}"
             data-status="{{ 'stale' if row.age_seconds and row.age_seconds > 3600 else 'seen' }}">
+          {% if any_watchable %}
+          <td class="pick-col">
+            {# In the Watch selected form below the table (form="bulk-watch"), not
+               in a form of its own: the row already holds forms, and forms
+               cannot nest. #}
+            {% if row.watchable %}
+            <input type="checkbox" class="pick" name="device_id" value="{{ device.id }}"
+                   form="bulk-watch" aria-label="Select {{ device.display_name }}">
+            {% endif %}
+          </td>
+          {% endif %}
           <td>
             <div class="inline-name">
               {# The Save button is hidden until the field actually differs from
@@ -500,9 +527,64 @@
   <p class="muted small">Some devices are ignored and hidden from this list.</p>
   {% endif %}
   </div>
+
+  {# Outside #live, so a refresh cannot throw away what you have ticked; while
+     anything is ticked the page's script also holds refreshes off. Sticks to
+     the bottom of the window, so it is in reach at row 200 of 250. #}
+  {% if any_watchable %}
+  <form method="post" action="/devices/watch-selected" id="bulk-watch" class="bulk-bar card">
+    <input type="hidden" name="back" value="{{ here }}">
+    <span class="bulk-count">Tick devices in the list, then</span>
+    <button type="submit" class="btn-primary bulk-go">Watch selected</button>
+    <button type="button" class="btn-quiet bulk-clear">Clear</button>
+    <span class="muted small">Each gets a ping check, like pressing Watch on its row.</span>
+  </form>
+  {% endif %}
 </div>
 
 <script nonce="{{ request.state.csp_nonce }}">
+  // Watch selected. The count and the bar follow the ticks; "select all"
+  // ticks every box on this page. While anything is ticked the table is
+  // marked .dirty, which the live refresh (base.html) waits for -- otherwise
+  // the next sweep would replace the table and untick everything.
+  (function () {
+    var form = document.getElementById('bulk-watch');
+    if (!form) return;
+    document.body.classList.add('js-bulk');
+    var count = form.querySelector('.bulk-count');
+    var go = form.querySelector('.bulk-go');
+
+    function boxes() {
+      return [].slice.call(document.querySelectorAll('input.pick'));
+    }
+    function update() {
+      var all = boxes();
+      var ticked = all.filter(function (b) { return b.checked; }).length;
+      form.classList.toggle('active', ticked > 0);
+      count.textContent = ticked + ' selected';
+      go.textContent = 'Watch ' + ticked;
+      var table = document.querySelector('#live table.table');
+      if (table) table.classList.toggle('dirty', ticked > 0);
+      var master = document.querySelector('input.pick-all');
+      if (master) {
+        master.checked = ticked > 0 && ticked === all.length;
+        master.indeterminate = ticked > 0 && ticked < all.length;
+      }
+    }
+    document.addEventListener('change', function (event) {
+      var el = event.target;
+      if (el.matches('input.pick-all')) {
+        boxes().forEach(function (b) { b.checked = el.checked; });
+      }
+      if (el.matches('input.pick, input.pick-all')) update();
+    });
+    form.querySelector('.bulk-clear').addEventListener('click', function () {
+      boxes().forEach(function (b) { b.checked = false; });
+      update();
+    });
+    update();
+  })();
+
   // The subnet and per-page dropdowns submit themselves. Delegated from
   // document because the filter bar lives inside #live and is replaced
   // whenever a sweep finishes.

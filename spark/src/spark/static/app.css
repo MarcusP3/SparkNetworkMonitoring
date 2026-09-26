@@ -1591,3 +1591,25 @@ a.pill:hover { filter: brightness(1.12); }
 .prefs-form select { width: 100%; }
 .prefs-form .btn-quiet { margin-left: .35rem; }
 .quiet-hours a { color: var(--accent); }
+
+/* ---- Devices: Watch selected ------------------------------------------- */
+.pick-col { width: 2.25rem; padding-right: 0; }
+.pick-col input { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); cursor: pointer; }
+.bulk-bar {
+  position: sticky;
+  bottom: 1rem;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem 1rem;
+  margin-top: 1rem;
+  padding-top: .75rem;
+  padding-bottom: .75rem;
+  box-shadow: 0 8px 28px rgb(0 0 0 / .25);
+}
+.bulk-count { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* With the script, the bar shows only while something is ticked. Without
+   it, it is always there and "Watch selected" still works. */
+.js-bulk .bulk-bar:not(.active) { display: none; }
+.js-bulk .bulk-bar .muted { display: none; }

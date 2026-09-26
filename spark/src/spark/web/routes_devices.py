@@ -265,6 +265,7 @@ async def list_devices(
     per_page: str = "",
     page: str = "",
     snmp: str = "",
+    watched: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -324,6 +325,9 @@ async def list_devices(
                 "device": device,
                 "age_seconds": age,
                 "watched": device.id in watched_ids,
+                # Can be ticked for "Watch selected": not watched yet, and
+                # something to ping.
+                "watchable": device.id not in watched_ids and bool(device.primary_ip),
                 # Worked out from the address rather than read from the label
                 # recorded at discovery time, so renaming a subnet does not
                 # orphan its devices and adding one classifies what is already
@@ -409,6 +413,9 @@ async def list_devices(
                 "listed": len(snmp_rows) + len(found),
             },
             "snmp_find": await _find_summary(session, find_state, found, refused, now),
+            # How many "Watch selected" just added; None when it was not used.
+            "any_watchable": any(r["watchable"] for r in rows),
+            "just_watched": int(watched) if watched.isdigit() and len(watched) < 6 else None,
             "filtered": bool(selected) or bool(snmp),
             "sweep": sweep,
             "port_scan": port_scan,
@@ -708,6 +715,19 @@ async def watch_device(
     if existing is not None:
         return redirect("/targets")
 
+    target = _ping_target(session, device)
+    await session.flush()
+    await session.commit()
+
+    events.publish({"kind": "created", "target_id": target.id})
+    scheduler_module.schedule_target(target)
+    await scheduler_module.run_now(target.id)
+    return redirect("/targets")
+
+
+def _ping_target(session: AsyncSession, device: Device) -> Target:
+    """A ping target for a device, added to the session. Watching is review,
+    so the device's "new" badge goes too."""
     target = Target(
         name=device.display_name,
         check_type=CheckType.PING,
@@ -717,10 +737,53 @@ async def watch_device(
     )
     session.add(target)
     device.acknowledged = True
-    await session.flush()
-    await session.commit()
+    return target
 
-    events.publish({"kind": "created", "target_id": target.id})
-    scheduler_module.schedule_target(target)
-    await scheduler_module.run_now(target.id)
-    return redirect("/targets")
+
+# One page of devices at most, with room to spare: the largest page size is 250.
+MAX_SELECTED = 500
+
+# Spread the first checks of a batch over a few seconds rather than firing
+# fifty pings in the same instant.
+FIRST_CHECK_SPACING = 0.2
+
+
+@router.post("/devices/watch-selected")
+async def watch_selected(
+    device_id: list[str] = Form([], max_length=MAX_SELECTED),
+    back: str = Form("/devices", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Watch every ticked device: a ping target each, like pressing Watch on
+    each row. Skips any already watched, ignored, or without an address.
+
+    Returns to the Devices page as it was, saying how many were added, rather
+    than to Targets: when you are working down a list you want to stay on it.
+    The first checks are queued a moment apart instead of run here, so the
+    page comes back at once however many were ticked.
+    """
+    ids = {i for i in (limits.as_id(v) for v in device_id) if i is not None}
+    added: list[Target] = []
+    if ids:
+        already = set((await session.execute(
+            select(Target.device_id).where(Target.device_id.in_(ids))
+        )).scalars())
+        devices = (await session.execute(
+            select(Device).where(
+                Device.id.in_(ids - already),
+                Device.ignored.is_(False),
+                Device.primary_ip.isnot(None),
+            ).order_by(Device.id)
+        )).scalars().all()
+        added = [_ping_target(session, device) for device in devices]
+        await session.flush()
+        await session.commit()
+        for n, target in enumerate(added):
+            events.publish({"kind": "created", "target_id": target.id})
+            scheduler_module.schedule_target(target, first_run_in=1 + n * FIRST_CHECK_SPACING)
+
+    path, _, query = _back(back).partition("?")
+    kept = [(k, v) for k, v in parse_qsl(query) if k != "watched"]
+    kept.append(("watched", str(len(added))))
+    return redirect(f"{path}?{urlencode(kept)}")
