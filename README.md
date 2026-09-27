@@ -36,7 +36,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
 | Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
-| Service map, topology | ❌ not yet |
+| Service map — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
 see [Alerts](#alerts).
@@ -48,6 +48,7 @@ see [Alerts](#alerts).
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Monitoring](#monitoring)
+- [Service map](#service-map)
 - [Preferences](#preferences)
 - [Alerts](#alerts)
 - [SNMP](#snmp)
@@ -276,6 +277,30 @@ thirty.
 
 ---
 
+## Service map
+
+**`/map`** shows every device in its place — gateway, then switches, then
+what hangs off each — with its status and the services the port scan found
+on it, then a searchable list of every service on the network ("plex",
+"8080", "nas", "10.1.10." all work).
+
+**Placing a device** is done on its own page, in the **On the service map**
+card: a **Role** (gateway, switch, access point, server, client) and
+**Connected to** (the device it is plugged into). Set it for your handful of
+infrastructure; everything else can hang off its switch or stay in **Not
+placed yet**, which the map lists rather than hides. A device cannot be
+connected to itself or to anything below it.
+
+**Status** comes from the device's targets (the worst of them), or from SNMP
+polling if it has none, or reads *not watched*. A service watched by a
+target shows that target's status.
+
+**Alerts follow the map.** While a device is down, nothing below it alerts:
+the core switch goes, you get one message for the switch, not one for each
+server behind it. The failures are still recorded, flagged as explained by
+their dependency. This works alongside a target's own **depends on**, which
+still applies.
+
 ## Preferences
 
 Click your name in the top bar. **Time zone** sets the zone every time in
@@ -334,7 +359,8 @@ Add to it from the Muted card, or with **Mute alerts** on a device's page.
 What is deliberately not sent:
 
 - a target whose failure is explained by one it **depends on** being down
-  (set on the target) — the switch goes, you get one message, not thirty;
+  (set on the target), or by a device above it on the **service map** being
+  down — the switch goes, you get one message, not thirty;
 - a recovery for an outage that was never alerted (it went down while alerts
   were off, or its dependency explained it);
 - **degraded** — a warning on the page, not a page for you;
@@ -658,6 +684,8 @@ spark/
     limits.py           how long any input may be, the largest request, the largest id
     alerts.py           deciding what to alert on; the mute list; the Discord outbox and dispatcher
     snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
+    servicemap.py       the service map: the tree, each device's status, the services list
+    hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -707,6 +735,7 @@ spark/
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
+    test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file
@@ -772,7 +801,7 @@ Ten things that will bite you if you don't know them:
 | 4c | History retention, scan schedule, subnet management + filter | ✅ done |
 | 4b | Service discovery — TCP port scan, services on devices | ✅ done |
 | 4d | Docker inventory — read-only socket proxy | next |
-| 5 | Service map — tree and filterable list views | planned |
+| 5 | Service map — tree and filterable list views | ✅ done (Docker containers join it with 4d) |
 | 6 | SNMP — credentials, Test, polling, history, device pages | ✅ done |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | ✅ done (ahead of 4d, 5, 7) |

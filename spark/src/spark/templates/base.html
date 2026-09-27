@@ -20,7 +20,7 @@
     <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
     <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
     <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
-    <a href="/map" class="disabled" title="Arrives with the discovery increment">Service map</a>
+    <a href="/map" class="{% if request.url.path.startswith('/map') %}active{% endif %}"><span class="nav-full">Service map</span><span class="nav-short">Map</span></a>
     <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>
   </nav>
   <div class="user-chip">
@@ -139,6 +139,31 @@
   })();
 </script>
 {% if user %}
+<script nonce="{{ request.state.csp_nonce }}">
+  // Forms marked .save-when-changed (Preferences, a device's place on the
+  // map): Save appears only once something differs from what is saved.
+  // It goes again if changed back. Without JavaScript it is always shown.
+  (function () {
+    document.body.classList.add('js-save-when-changed');
+    document.querySelectorAll('form.save-when-changed').forEach(function (form) {
+      var fields = [].slice.call(form.querySelectorAll('select, input:not([type=hidden])'));
+      // What the server rendered, not what is in the box now: a page
+      // restored by the Back button keeps an unsaved choice in the box.
+      var saved = fields.map(function (el) {
+        if (el.tagName !== 'SELECT') return el.defaultValue;
+        var chosen = [].filter.call(el.options, function (o) { return o.defaultSelected; })[0];
+        return chosen ? chosen.value : (el.options[0] ? el.options[0].value : '');
+      });
+      function update() {
+        var changed = fields.some(function (el, i) { return el.value !== saved[i]; });
+        form.classList.toggle('dirty', changed);
+      }
+      form.addEventListener('change', update);
+      form.addEventListener('input', update);
+      update();
+    });
+  })();
+</script>
 <script nonce="{{ request.state.csp_nonce }}">
   // Sign-in timeout. The server ends a session after the time set under
   // Preferences with no activity; this takes the tab to the sign-in page when

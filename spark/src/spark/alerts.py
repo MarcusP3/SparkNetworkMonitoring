@@ -19,9 +19,10 @@ What is deliberately *not* alerted:
   * anything on the mute list (Settings -> Alerts): a muted device, or a
     muted target, is still checked and shown, but sends nothing;
 
-  * a target whose failure is explained by one it depends on being down --
-    the switch goes, you get one message, not thirty (the incident is still
-    recorded, flagged, as before);
+  * a target whose failure is explained by one it depends on being down, or
+    by a device above it on the service map being down -- the switch goes,
+    you get one message, not thirty (the incident is still recorded,
+    flagged, as before);
   * a recovery whose outage was never alerted, which would read as news about
     something nobody was told had broken;
   * DEGRADED, which is the early warning on the page, not a page for you;
@@ -318,6 +319,11 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
                                     Target.status == HealthStatus.DOWN).limit(1)
         )
         if covered is not None:
+            return
+        # Something above it on the service map is down: that explains it.
+        from .hierarchy import upstream_is_down
+
+        if await upstream_is_down(session, device_id):
             return
         from .engine.state import human_duration
 

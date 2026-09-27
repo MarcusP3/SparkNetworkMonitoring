@@ -148,6 +148,19 @@ class DeviceRole(enum.StrEnum):
     HOST = "host"
     CLIENT = "client"
     UNKNOWN = "unknown"
+    ACCESS_POINT = "access_point"
+
+
+# How each role reads on a page, in the order the service map sorts siblings:
+# the things other things hang off first.
+ROLE_LABELS: dict[DeviceRole, str] = {
+    DeviceRole.GATEWAY: "Gateway / router",
+    DeviceRole.SWITCH: "Switch",
+    DeviceRole.ACCESS_POINT: "Access point",
+    DeviceRole.HOST: "Server",
+    DeviceRole.CLIENT: "Client device",
+    DeviceRole.UNKNOWN: "Not set",
+}
 
 
 class HealthStatus(enum.StrEnum):

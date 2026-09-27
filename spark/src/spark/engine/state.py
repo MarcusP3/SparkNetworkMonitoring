@@ -219,12 +219,17 @@ async def _dependency_is_down(session: AsyncSession, target: Target) -> bool:
     news; thirty is a reason to mute the tool. The incident is still recorded --
     you want the history -- it is just flagged so the notifier stays quiet.
     """
-    if target.depends_on_target_id is None:
-        return False
-    parent_status = await session.scalar(
-        select(Target.status).where(Target.id == target.depends_on_target_id)
-    )
-    return _as_status(parent_status) is HealthStatus.DOWN
+    if target.depends_on_target_id is not None:
+        parent_status = await session.scalar(
+            select(Target.status).where(Target.id == target.depends_on_target_id)
+        )
+        if _as_status(parent_status) is HealthStatus.DOWN:
+            return True
+    # And the device's place on the service map: anything above it down
+    # explains this too, without a "depends on" set on every target.
+    from ..hierarchy import upstream_is_down
+
+    return await upstream_is_down(session, target.device_id)
 
 
 async def _open_incident(session: AsyncSession, target_id: int) -> Incident | None:

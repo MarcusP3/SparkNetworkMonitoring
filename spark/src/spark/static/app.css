@@ -347,7 +347,8 @@ main.centered {
 .form label > span { font-size: .8125rem; font-weight: 550; }
 .optional { font-style: normal; font-weight: 400; color: var(--text-muted); }
 
-input[type="text"], input[type="password"], input[type="url"], input[type="number"], select {
+input[type="text"], input[type="password"], input[type="url"], input[type="number"],
+input[type="search"], select {
   font: inherit;
   font-size: .9375rem;
   padding: .55rem .7rem;
@@ -623,6 +624,12 @@ a.stat:hover {
     padding: .45rem .25rem;
     font-size: .875rem;
   }
+}
+/* "Service map" is "Map" in the phone row, so five links fit at 320px. */
+.nav-short { display: none; }
+@media (max-width: 640px) {
+  .nav-full { display: none; }
+  .nav-short { display: inline; }
 }
 /* The smallest phones (iPhone SE and similar, 320px): a touch smaller still,
    so Settings is not the link that ends up clipped. */
@@ -1642,3 +1649,27 @@ a.pill:hover { filter: brightness(1.12); }
 .mute-add { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .75rem; }
 .mute-add form { display: flex; gap: .5rem; align-items: center; margin: 0; }
 .mute-add select { max-width: 18rem; }
+
+/* ---- Service map -------------------------------------------------------- */
+.tree, .tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul { margin-left: .95rem; padding-left: 1.1rem; border-left: 1px solid var(--border); }
+.tree li { position: relative; padding: .4rem 0; }
+.tree ul > li::before {
+  content: ""; position: absolute; left: -1.1rem; top: 1.2rem; width: .85rem;
+  border-top: 1px solid var(--border);
+}
+.map-node { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; min-width: 0; }
+.map-icon { width: 1.9rem; height: 1.9rem; flex: none; display: grid; place-items: center;
+  border-radius: var(--radius-sm); background: var(--tile-1); color: var(--accent); }
+.map-icon .icon { width: 1.05rem; height: 1.05rem; }
+.map-name { font-weight: 600; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.map-name:hover { text-decoration: underline; }
+.map-services { display: flex; flex-wrap: wrap; gap: .3rem; margin: .35rem 0 0 2.5rem; }
+.unplaced summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: baseline; }
+.unplaced-list { list-style: none; margin: .75rem 0 0; padding: 0; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .4rem 1rem; }
+.unplaced-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; }
+.unplaced-list a { color: var(--accent); }
+.service-search input[type="search"] { min-width: 0; width: 18rem; max-width: 100%; padding: .4rem .6rem; }
+.place-form { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: flex-end; }
+.place-form select { max-width: 20rem; }

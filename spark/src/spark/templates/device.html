@@ -208,6 +208,45 @@
   </section>
   {% endif %}
 
+  {% set pl = placement %}
+  <section class="card" id="place">
+    <div class="card-head">
+      <div>
+        <h2>On the service map</h2>
+        <p class="card-sub">
+          What this device is, and what it is plugged into. While anything above
+          it is down, it does not alert — you hear about the switch, not every
+          device behind it.
+          {% if pl.children %}{{ pl.children }} device{{ 's are' if pl.children != 1 else ' is' }} connected below it.{% endif %}
+          <a href="/map">Open the map</a>.
+        </p>
+      </div>
+    </div>
+    <form method="post" action="/devices/{{ device.id }}/place" class="place-form save-when-changed">
+      <input type="hidden" name="back" value="{{ back }}">
+      <label class="stack-field">
+        <span class="muted small">Role</span>
+        <select name="role" id="role">
+          {% for value, label in pl.roles %}
+          <option value="{{ value }}" {% if value == device.role %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="stack-field">
+        <span class="muted small">Connected to</span>
+        <select name="parent_id" id="parent_id">
+          <option value="" {% if not device.parent_device_id %}selected{% endif %}>Nothing (top of the map)</option>
+          {% for d, label in pl.options %}
+          <option value="{{ d.id }}" {% if d.id == device.parent_device_id %}selected{% endif %}>{{ d.display_name }}{% if d.role != 'unknown' %} · {{ label }}{% endif %}{% if d.primary_ip %} — {{ d.primary_ip }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </section>
+
   <section class="card">
     <div class="card-head">
       <div>

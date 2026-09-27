@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% macro role_icon(role) -%}
+<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if role == 'gateway' -%}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+{%- elif role == 'switch' -%}<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h.01"/>
+{%- elif role == 'access_point' -%}<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/>
+{%- elif role == 'host' -%}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>
+{%- elif role == 'client' -%}<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/>
+{%- else -%}<circle cx="12" cy="12" r="4"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+{% macro state_pill(s) -%}
+<span class="pill {{ s.kind }}{% if s.kind != 'neutral' %} dot{% endif %}" title="From {{ s.source }}">{{ s.label }}</span>
+{%- endmacro %}
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="page-title">
+      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span>
+      <div>
+        <h1>Service map</h1>
+        <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="live">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Network</h2>
+        <p class="card-sub">
+          Status comes from each device's targets, or its SNMP polling if it has none.
+          While anything is down, nothing below it alerts — you hear about the switch,
+          not everything behind it.
+        </p>
+      </div>
+    </div>
+    {% if map.roots %}
+    <ul class="tree">
+      {% for n in map.roots recursive %}
+      <li>
+        <div class="map-node">
+          <span class="map-icon">{{ role_icon(n.device.role) }}</span>
+          <a href="/devices/{{ n.device.id }}" class="map-name">{{ n.device.display_name }}</a>
+          {% if n.device.primary_ip %}<code class="small muted">{{ n.device.primary_ip }}</code>{% endif %}
+          {% if n.device.role != 'unknown' %}<span class="muted small">{{ n.role }}</span>{% endif %}
+          {{ state_pill(n.state) }}
+        </div>
+        {% if n.services %}
+        <div class="map-services">
+          {% for s in n.services %}
+            <span class="pill {{ s.state.kind if s.state else 'neutral' }}"
+                  title="{% if s.target %}Watched by {{ s.target.name }}: {{ s.state.label }}{% else %}Found by the port scan; not watched{% endif %}">
+              {{ s.service.name or s.service.port }}<span class="muted"> :{{ s.service.port }}</span>
+            </span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if n.children %}<ul>{{ loop(n.children) }}</ul>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <p class="muted">
+        Nothing is placed yet. Open your gateway from <a href="/devices">Devices</a>,
+        set its <strong>Role</strong>, then open each switch and set <strong>Connected to</strong>
+        the gateway, and so on down. A handful of infrastructure is enough —
+        everything else can hang off its switch or stay unplaced.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  {% if map.unplaced %}
+  <details class="card unplaced">
+    <summary>
+      <strong>Not placed yet</strong>
+      <span class="muted small">{{ map.unplaced | length }} device{{ 's' if map.unplaced | length != 1 }} with no role or connection — open one to place it</span>
+    </summary>
+    <ul class="unplaced-list">
+      {% for n in map.unplaced %}
+      <li>
+        <a href="/devices/{{ n.device.id }}">{{ n.device.display_name }}</a>
+        {% if n.device.primary_ip %}<code class="small muted">{{ n.device.primary_ip }}</code>{% endif %}
+        {{ state_pill(n.state) }}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Services</h2>
+        <p class="card-sub">Everything the port scan found, on every device. Search by name, port, device or address.</p>
+      </div>
+    </div>
+    <form method="get" action="/map" class="row-form service-search">
+      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="plex, 8080, nas, 10.1.10." aria-label="Search services">
+      <button type="submit" class="btn-quiet">Search</button>
+      {% if q %}<a href="/map" class="btn-quiet">Clear</a>{% endif %}
+      <span class="muted small">{{ map.services | length }} service{{ 's' if map.services | length != 1 }}{% if q %} match{% endif %}</span>
+    </form>
+    {% if map.services %}
+    <div class="table-scroll">
+    <table class="table compact">
+      <thead><tr><th>Service</th><th class="num">Port</th><th>Device</th><th>Address</th><th>Watched</th><th></th></tr></thead>
+      <tbody>
+        {% for r in map.services %}
+        <tr>
+          <td>{{ r.service.name or '—' }}</td>
+          <td class="num"><code>{{ r.service.port }}</code></td>
+          <td><a href="/devices/{{ r.device.id }}" class="map-name">{{ r.device.display_name }}</a></td>
+          <td><code class="small">{{ r.device.primary_ip or '—' }}</code></td>
+          <td>{% if r.state %}{{ state_pill(r.state) }}{% else %}<span class="muted small">—</span>{% endif %}</td>
+          <td class="actions">
+            {% if not r.target %}
+            <form method="post" action="/devices/services/{{ r.service.id }}/watch">
+              <button type="submit" class="btn-quiet" title="Watch this service (TCP check on port {{ r.service.port }})">Watch</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% elif q %}
+      <p class="muted small">Nothing matches “{{ q }}”.</p>
+    {% else %}
+      <p class="muted small">No services found yet. They appear after a port scan (Devices → Scan ports).</p>
+    {% endif %}
+  </section>
+  </div>
+</div>
+{% endblock %}

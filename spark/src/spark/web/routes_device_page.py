@@ -13,14 +13,16 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, limits, snmp_alerts
+from .. import alerts, hierarchy, limits, snmp_alerts
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
+    ROLE_LABELS,
     AlertMute,
     Device,
+    DeviceRole,
     SnmpDevice,
     SnmpInterface,
     SnmpPoll,
@@ -264,6 +266,7 @@ async def device_page(
     snmp = await _snmp_section(session, device, range_name, port_id, zone)
     has_profiles = bool(await session.scalar(select(func.count(SnmpProfile.id))))
     muted = await alerts.is_muted(session, device_id=device.id)
+    placement = await _placement(session, device)
 
     return templates.TemplateResponse(
         request,
@@ -282,9 +285,38 @@ async def device_page(
             "ranges": [(key, RANGE_LABELS[key]) for key in history.RANGES],
             "port": port_id,
             "muted": muted,
+            "placement": placement,
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
+
+
+async def _placement(session: AsyncSession, device: Device) -> dict:
+    """The "On the map" card: this device's role and parent, and the choices.
+
+    A device cannot be connected to itself or to anything below it -- that
+    would be a loop -- so those are left out of the list.
+    """
+    rows = (await session.execute(
+        select(Device.id, Device.parent_device_id).where(Device.ignored.is_(False))
+    )).all()
+    parents = {row.id: row.parent_device_id for row in rows}
+    below = hierarchy.descendants(parents, device.id)
+    options = [
+        d for d in (await session.execute(
+            select(Device).where(Device.ignored.is_(False), Device.id != device.id)
+        )).scalars()
+        if d.id not in below
+    ]
+    order = list(ROLE_LABELS)
+    options.sort(key=lambda d: (order.index(d.role), d.display_name.lower()))
+    parent = await session.get(Device, device.parent_device_id) if device.parent_device_id else None
+    return {
+        "roles": [(role.value, label) for role, label in ROLE_LABELS.items()],
+        "options": [(d, ROLE_LABELS[d.role]) for d in options],
+        "parent": parent,
+        "children": len(below),
+    }
 
 
 def _back_to_device(device_id: int, back: str) -> str:
@@ -339,3 +371,41 @@ async def set_device_muted(session: AsyncSession, device_id: int, muted: bool) -
         session.add(AlertMute(device_id=device_id))
     elif not muted and row is not None:
         await session.delete(row)
+
+
+
+@router.post("/devices/{device_id}/place")
+async def place_device(
+    device_id: ItemId,
+    role: str = Form("unknown", max_length=limits.SHORT),
+    parent_id: str = Form("", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Set where a device sits on the service map: its role and parent.
+
+    A role or parent that is not one of the choices changes nothing; the page
+    only offers valid ones, so anything else did not come from it.
+    """
+    device = await session.get(Device, device_id)
+    if device is None:
+        return redirect("/devices")
+    try:
+        new_role = DeviceRole(role)
+    except ValueError:
+        return redirect(_back_to_device(device_id, back))
+    new_parent = limits.as_id(parent_id) if parent_id.strip() else None
+    if new_parent is not None:
+        parent = await session.get(Device, new_parent)
+        rows = (await session.execute(select(Device.id, Device.parent_device_id))).all()
+        if (parent is None or parent.ignored
+                or not hierarchy.can_parent({r.id: r.parent_device_id for r in rows},
+                                            device_id, new_parent)):
+            return redirect(_back_to_device(device_id, back))
+    elif parent_id.strip():
+        return redirect(_back_to_device(device_id, back))
+    device.role = new_role
+    device.parent_device_id = new_parent
+    await session.commit()
+    return redirect(_back_to_device(device_id, back))

@@ -161,11 +161,11 @@ class TestSize:
         """So a field added later cannot quietly accept a megabyte."""
         from annotated_types import MaxLen
 
-        from spark.web import (routes_auth, routes_devices, routes_preferences,
-                               routes_settings, routes_targets)
+        from spark.web import (routes_auth, routes_device_page, routes_devices,
+                               routes_preferences, routes_settings, routes_targets)
         uncapped = []
-        for module in (routes_auth, routes_devices, routes_preferences, routes_settings,
-                       routes_targets):
+        for module in (routes_auth, routes_device_page, routes_devices, routes_preferences,
+                       routes_settings, routes_targets):
             for route in module.router.routes:
                 for param in route.dependant.body_params:
                     if "str" not in str(param.field_info.annotation):

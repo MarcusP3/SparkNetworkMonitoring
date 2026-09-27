@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — service map (2026-09-27)
+
+### Added
+
+- **Service map** (`/map`, now live in the nav; "Map" on phones). Every
+  device in its place — gateway, switches, what hangs off each — with an
+  icon for its role, its status, and the services the port scan found on it.
+  Devices not placed yet are listed in a **Not placed yet** group rather than
+  left off. Below the tree, a searchable list of every service on the
+  network, with Watch for those not watched yet.
+- **On the service map** card on each device's page: **Role** (gateway,
+  switch, access point, server, client) and **Connected to**. A device cannot
+  be connected to itself or anything below it; the list leaves those out and
+  the server refuses them. Save appears only once something changes.
+- Status on the map: the worst of the device's targets, else its SNMP
+  polling, else *not watched*. A watched service shows its target's status.
+
+### Changed
+
+- **Alerts follow the map.** A target whose device has anything above it
+  down does not alert, and an SNMP device gone silent below a down device
+  does not either; the incident is still recorded, flagged as explained by
+  its dependency. Works alongside each target's own "depends on".
+- `DeviceRole` gains `access_point`. The role and parent columns already
+  existed (declared in the original schema), so there is no migration.
+- The Save-when-changed script moved from Preferences into the base
+  template, for any form marked `.save-when-changed`.
+- `input[type=search]` takes the same style as other inputs.
+
+### Tests
+
+23 new (`test_service_map.py`); the form-field cap test now covers the
+device page's routes too. Thirteen deliberate breaks each caught. A browser
+run places a device, searches services, and checks the map and a five-link
+phone nav at 320 and 390px. `pytest` 768 passed with the agent,
+`smoke_test.py` 76 passed.
+
 ## Unreleased — SNMP alerts and the mute list (2026-09-27)
 
 ### Added
