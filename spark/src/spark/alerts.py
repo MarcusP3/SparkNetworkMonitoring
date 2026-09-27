@@ -16,6 +16,9 @@ Two halves, joined by the `notification` table (an outbox):
 
 What is deliberately *not* alerted:
 
+  * anything on the mute list (Settings -> Alerts): a muted device, or a
+    muted target, is still checked and shown, but sends nothing;
+
   * a target whose failure is explained by one it depends on being down --
     the switch goes, you get one message, not thirty (the incident is still
     recorded, flagged, as before);
@@ -44,6 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import prefs
 from .db import get_setting, save_setting, session_scope
 from .models import (
+    AlertMute,
     HealthStatus,
     Notification,
     NotificationStatus,
@@ -209,6 +213,25 @@ async def enqueue(
     return row
 
 
+async def is_muted(session: AsyncSession, *, device_id: int | None = None,
+                   target_id: int | None = None) -> bool:
+    """On the mute list: the device itself, or the target itself.
+
+    A target on a muted device is muted too -- muting a device means "never
+    tell me about this box", whichever part of SPARK noticed.
+    """
+    clauses = []
+    if device_id is not None:
+        clauses.append(AlertMute.device_id == device_id)
+    if target_id is not None:
+        clauses.append(AlertMute.target_id == target_id)
+    if not clauses:
+        return False
+    from sqlalchemy import or_
+
+    return await session.scalar(select(AlertMute.id).where(or_(*clauses)).limit(1)) is not None
+
+
 async def _queued(session: AsyncSession, key: str) -> bool:
     return await session.scalar(
         select(Notification.id).where(Notification.dedupe_key == key)
@@ -223,6 +246,8 @@ async def on_target_transition(session: AsyncSession, target: Target, transition
         return
     now = utcnow()
     if target.muted_until is not None and target.muted_until > now:
+        return
+    if await is_muted(session, device_id=target.device_id, target_id=target.id):
         return
 
     if transition.incident_opened is not None and not transition.suppressed_by_dependency:
@@ -278,6 +303,8 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
         return  # never answered: a configuration problem, not an outage
     settings = await load(session)
     if not settings.get("enabled", True) or not settings.get("notify_on_snmp", True):
+        return
+    if await is_muted(session, device_id=device_id):
         return
     key = f"snmp:{row_id}:{previous_ok.isoformat()}"
 
@@ -585,6 +612,6 @@ async def counts(session: AsyncSession) -> dict[str, int]:
 
 __all__ = [
     "AlertError", "dispatch", "enqueue", "in_quiet_hours", "on_new_devices",
-    "on_snmp_poll", "on_target_transition", "post", "seal_plaintext_webhook",
+    "is_muted", "on_snmp_poll", "on_target_transition", "post", "seal_plaintext_webhook",
     "send_test", "set_webhook", "validate_webhook", "webhook_url",
 ]

@@ -9,16 +9,17 @@ where to change that.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import limits
+from .. import alerts, limits, snmp_alerts
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
+    AlertMute,
     Device,
     SnmpDevice,
     SnmpInterface,
@@ -110,7 +111,8 @@ def _state(iface: SnmpInterface, last_ok) -> tuple[str, str]:  # type: ignore[no
         return "disabled", "neutral"
     if iface.oper_status == "up":
         return "up", "ok"
-    return iface.oper_status or "unknown", "neutral"
+    # A starred port is one someone said matters; down is news there.
+    return iface.oper_status or "unknown", "bad" if iface.starred else "neutral"
 
 
 def _traffic_chart(traffic: history.TrafficHistory, window: history.Window,
@@ -261,6 +263,7 @@ async def device_page(
     zone = {"tz": request.state.tz, "tz_name": request.state.tz_name}
     snmp = await _snmp_section(session, device, range_name, port_id, zone)
     has_profiles = bool(await session.scalar(select(func.count(SnmpProfile.id))))
+    muted = await alerts.is_muted(session, device_id=device.id)
 
     return templates.TemplateResponse(
         request,
@@ -278,5 +281,61 @@ async def device_page(
             "range": range_name,
             "ranges": [(key, RANGE_LABELS[key]) for key in history.RANGES],
             "port": port_id,
+            "muted": muted,
+            "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
+
+
+def _back_to_device(device_id: int, back: str) -> str:
+    """This device's page as it was (range, port), and nowhere else."""
+    from .routes_auth import _safe_next
+
+    target = _safe_next(back)
+    page = f"/devices/{device_id}"
+    return target if target == page or target.startswith(page + "?") else page
+
+
+@router.post("/devices/{device_id}/interfaces/{interface_id}/star")
+async def star_interface(
+    device_id: ItemId,
+    interface_id: ItemId,
+    starred: str = Form("", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Star or unstar a port. Starred ports alert when they go down or stay busy."""
+    iface = await session.get(SnmpInterface, interface_id)
+    row = await session.get(SnmpDevice, iface.snmp_device_id) if iface else None
+    if iface is not None and row is not None and row.device_id == device_id:
+        iface.starred = starred == "1"
+        if not iface.starred:
+            # A later star starts from nothing, not from a half-counted streak.
+            await snmp_alerts.forget(session, f"port:{iface.id}", f"busy:{iface.id}")
+        await session.commit()
+    return redirect(_back_to_device(device_id, back))
+
+
+@router.post("/devices/{device_id}/mute")
+async def mute_device(
+    device_id: ItemId,
+    muted: str = Form("", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Put a device on the mute list, or take it off."""
+    device = await session.get(Device, device_id)
+    if device is not None:
+        await set_device_muted(session, device_id, muted == "1")
+        await session.commit()
+    return redirect(_back_to_device(device_id, back))
+
+
+async def set_device_muted(session: AsyncSession, device_id: int, muted: bool) -> None:
+    row = await session.scalar(select(AlertMute).where(AlertMute.device_id == device_id))
+    if muted and row is None:
+        session.add(AlertMute(device_id=device_id))
+    elif not muted and row is not None:
+        await session.delete(row)

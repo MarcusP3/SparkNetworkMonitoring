@@ -310,6 +310,26 @@ What is sent — changes only, never a reminder that something is still down:
 | An SNMP device stopped answering | Three missed polls, and at least three minutes |
 | An SNMP device is answering again | The next poll that answers, with how long it was silent |
 | New devices on the network | One message per sweep that found any |
+| A **starred** port is down / back up | Down on two polls in a row |
+| A **starred** port is busy / back to normal | Over 80% of its speed for 10 minutes |
+| CPU / memory high, back to normal | Over 90% for 10 minutes |
+| Temperature high, back to normal | Over 80 °C for 5 minutes |
+
+The last four are **SNMP alerts**, from what polling already collects. The
+numbers are defaults, each rule can be switched off, and all of them are set
+on the SNMP alerts card. A value has to stay over the line on every poll for
+the whole time; it clears only when it is back under by 5 (% or °C), so a
+value hovering on the line does not send a message every few minutes; a gap
+in polling longer than three intervals starts the count again. Ports alert
+only when **starred** — press the star beside a port on its device's page.
+Most ports on a switch are desks and access points whose links come and go,
+so the default is quiet; star the uplinks, the NAS, the server links. Every
+starred port is listed on the card with an Unstar button.
+
+**The mute list** is one global list of things that never alert: a whole
+device (its targets, its SNMP polling and its ports) or a single target.
+Muted things are still checked, polled and shown; only the messages stop.
+Add to it from the Muted card, or with **Mute alerts** on a device's page.
 
 What is deliberately not sent:
 
@@ -320,7 +340,8 @@ What is deliberately not sent:
 - **degraded** — a warning on the page, not a page for you;
 - SNMP silence on a device a target already reports down, or on a device that
   has never answered (that is a configuration problem, shown on the SNMP card);
-- the devices from the very first sweep, which are all new and none of them news.
+- the devices from the very first sweep, which are all new and none of them news;
+- anything on the mute list.
 
 **Quiet hours** hold alerts and send one summary when the window ends. The
 window is kept in the time zone set under **Preferences**.
@@ -635,7 +656,8 @@ spark/
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
     prefs.py            preferences: time zone (the `local` filter's formatting), sign-in timeout
     limits.py           how long any input may be, the largest request, the largest id
-    alerts.py           deciding what to alert on; the Discord outbox and dispatcher
+    alerts.py           deciding what to alert on; the mute list; the Discord outbox and dispatcher
+    snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -684,6 +706,7 @@ spark/
     test_layout.py      every table scrolls inside its card
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
+    test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file

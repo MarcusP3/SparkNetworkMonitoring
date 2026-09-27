@@ -24,18 +24,29 @@
           {% else %} · <span title="No MAC: this subnet is routed, so ARP
                 cannot reach it. Identity falls back to IP.">IP identity</span>{% endif %}
           {% if device.vendor %} · {{ device.vendor }}{% endif %}
+          {% if muted %} · <span class="pill neutral" title="On the mute list: checked and shown as usual, but no alerts are sent for it">alerts muted</span>{% endif %}
         </p>
       </div>
     </div>
-    {% if snmp %}
-    <nav class="range-picker" aria-label="Time range">
-      {% for key, label in ranges %}
-        <a href="/devices/{{ device.id }}?range={{ key }}{% if port %}&amp;port={{ port }}{% endif %}"
-           class="{% if key == range %}active{% endif %}"
-           {% if key == range %}aria-current="true"{% endif %}>{{ key }}</a>
-      {% endfor %}
-    </nav>
-    {% endif %}
+    <div class="head-actions device-actions">
+      <form method="post" action="/devices/{{ device.id }}/mute">
+        <input type="hidden" name="muted" value="{{ '0' if muted else '1' }}">
+        <input type="hidden" name="back" value="{{ back }}">
+        <button type="submit" class="btn-quiet"
+                title="{{ 'Send alerts for this device again' if muted else 'Stop every alert for this device: targets, SNMP, ports. It is still checked and shown.' }}">
+          {{ 'Unmute alerts' if muted else 'Mute alerts' }}
+        </button>
+      </form>
+      {% if snmp %}
+      <nav class="range-picker" aria-label="Time range">
+        {% for key, label in ranges %}
+          <a href="/devices/{{ device.id }}?range={{ key }}{% if port %}&amp;port={{ port }}{% endif %}"
+             class="{% if key == range %}active{% endif %}"
+             {% if key == range %}aria-current="true"{% endif %}>{{ key }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </div>
   </div>
 
   {% if snmp %}
@@ -126,6 +137,7 @@
     <table class="table compact interface-table">
       <thead>
         <tr>
+          <th class="star-col"><span class="visually-hidden">Alert</span></th>
           <th>Interface</th><th>Status</th><th>Speed</th>
           <th class="num">In now</th><th class="num">Out now</th>
           <th class="num">Peak in / out</th><th class="num">Errors</th>
@@ -135,7 +147,20 @@
       <tbody>
         {% for e in snmp.interfaces %}
         {% set iface = e.iface %}
-        <tr class="{% if snmp.selected and snmp.selected.iface.id == iface.id %}is-selected{% endif %}{% if e.state != 'up' %} is-quiet{% endif %}">
+        <tr class="{% if snmp.selected and snmp.selected.iface.id == iface.id %}is-selected{% endif %}{% if e.state != 'up' and not iface.starred %} is-quiet{% endif %}">
+          <td class="star-col">
+            {# Starred ports alert when they go down or stay busy (Settings -> Alerts). #}
+            <form method="post" action="/devices/{{ device.id }}/interfaces/{{ iface.id }}/star">
+              <input type="hidden" name="starred" value="{{ '0' if iface.starred else '1' }}">
+              <input type="hidden" name="back" value="{{ back }}">
+              <button type="submit" class="star{% if iface.starred %} on{% endif %}"
+                      aria-pressed="{{ 'true' if iface.starred else 'false' }}"
+                      title="{{ 'Starred: alerts when it goes down or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down or stays busy' }}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+                <span class="visually-hidden">{{ 'Unstar' if iface.starred else 'Star' }} {{ iface.label }}</span>
+              </button>
+            </form>
+          </td>
           <td>
             {% if e.traffic and e.traffic.has_data %}
               <a href="/devices/{{ device.id }}?range={{ range }}&amp;port={{ iface.id }}">{{ iface.label }}</a>

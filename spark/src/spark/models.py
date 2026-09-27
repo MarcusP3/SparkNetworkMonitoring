@@ -545,6 +545,49 @@ class SpeedtestResult(Base):
     detail: Mapped[str | None] = mapped_column(Text)
 
 
+class AlertMute(Base):
+    """Something that never alerts: a whole device, or one target.
+
+    One global list, kept in Settings -> Alerts. A muted thing is still
+    checked, polled and shown; only the Discord messages stop. Exactly one of
+    the two ids is set. Rows go with what they mute (ON DELETE CASCADE).
+    """
+
+    __tablename__ = "alert_mute"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="CASCADE"), unique=True
+    )
+    target_id: Mapped[int | None] = mapped_column(
+        ForeignKey("target.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AlertState(Base):
+    """Where one threshold rule stands for one device or port.
+
+    "CPU over 90% for 10 minutes" needs to remember when the 10 minutes began
+    and whether it has already said so -- or every poll after the tenth minute
+    would say it again. Keyed like "cpu:3" or "port:41". A row exists only
+    while the condition holds (or has fired and not yet cleared).
+    """
+
+    __tablename__ = "alert_state"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    since: Mapped[datetime] = mapped_column(UTCDateTime)
+    seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    polls: Mapped[int] = mapped_column(Integer, default=0)
+    fired: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether a message actually went out when it fired. Not the same as
+    # `fired`: a muted device fires silently, and must not then send a
+    # recovery for an alert nobody received.
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    value: Mapped[float | None] = mapped_column(Float)
+
+
 class NotificationStatus(enum.StrEnum):
     PENDING = "pending"    # waiting for the dispatcher
     HELD = "held"          # arrived during quiet hours; goes out in the digest
@@ -807,6 +850,11 @@ class SnmpInterface(Base):
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
+    # Starred on the device page: this port alerts when it goes down or stays
+    # busy. Off by default, because most ports on a switch are desks and
+    # access points whose links come and go all day (migration 9).
+    starred: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
     @property
     def label(self) -> str:
         return self.alias or self.name or self.descr or f"if{self.if_index}"
@@ -967,6 +1015,16 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "notify_on_recovery": True,
         "notify_on_new_device": True,
         "notify_on_snmp": True,
+    },
+    # Threshold alerts from SNMP polling (snmp_alerts.py). Ports only alert
+    # when starred on their device's page; the rest apply to every polled
+    # device not on the mute list.
+    "alert_rules": {
+        "port_down": True,
+        "port_busy": True, "port_busy_percent": 80, "port_busy_minutes": 10,
+        "cpu": True, "cpu_percent": 90, "cpu_minutes": 10,
+        "memory": True, "memory_percent": 90, "memory_minutes": 10,
+        "temperature": True, "temperature_celsius": 80, "temperature_minutes": 5,
     },
     "snmp": {
         "poll_interval_seconds": 60,

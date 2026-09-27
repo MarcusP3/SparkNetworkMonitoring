@@ -43,7 +43,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts
+from . import alerts, snmp_alerts
 from .collectors import SnmpCollector
 from .collectors.base import DeviceHealth, InterfaceStat
 from .db import get_setting, session_scope
@@ -299,6 +299,7 @@ async def record_poll(
     }
 
     pending: list[tuple[SnmpInterface, Rates]] = []
+    current: list[SnmpInterface] = []
     for stat in interfaces:
         iface = existing.get(stat.index)
         if iface is None:
@@ -306,6 +307,7 @@ async def record_poll(
             session.add(iface)
         elif iface.oper_status != stat.oper_status:
             iface.status_changed_at = now
+        current.append(iface)
 
         rates = interface_rates(
             _reading(iface), stat, now, interval=interval, rebooted=rebooted
@@ -344,6 +346,15 @@ async def record_poll(
                 out_errors=rates.out_errors,
             )
             for iface, rates in pending
+        )
+
+    # Threshold rules -- ports down or busy, CPU, memory, heat -- from what
+    # this poll just recorded, in the same transaction (snmp_alerts.py).
+    if device is not None:
+        await session.flush()  # interface ids key the port rules
+        await snmp_alerts.evaluate(
+            session, row_id=row_id, device=device, poll=poll,
+            interfaces=current, now=now, interval=interval,
         )
     return poll
 

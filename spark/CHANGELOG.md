@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — SNMP alerts and the mute list (2026-09-27)
+
+### Added
+
+- **SNMP alerts**, from what polling already collects, sent through the
+  existing Discord alerting (quiet hours, batching, retries included):
+  - a **starred** port going down (on two polls in a row) and coming back;
+  - a starred port over **80%** of its speed for **10 minutes**;
+  - **CPU** or **memory** over **90%** for **10 minutes**;
+  - **temperature** over **80 °C** for **5 minutes**.
+
+  Each fires once and recovers once. The value must stay over the line on
+  every poll for the whole time, clears only when back under by 5, and a gap
+  in polling of more than three intervals restarts the count. Numbers and
+  on/off per rule on a new **SNMP alerts** card under Settings → Alerts.
+- **Starred ports.** A star beside each port on a device's page; only starred
+  ports alert. A starred port that is down shows red there. Every starred
+  port is listed on the SNMP alerts card, with Unstar.
+- **The mute list**: one global list of devices and targets that never alert,
+  on a new **Muted** card (add and remove there), plus **Mute alerts** on each
+  device's page. Muting a device covers its targets, its SNMP polling and
+  its ports. Muted things are still checked and shown.
+
+### Changed
+
+- Migration 9: `snmp_interface.starred`, and the `alert_mute` and
+  `alert_state` tables.
+
+### Tests
+
+24 new (`test_snmp_alerts.py`) and 3 in `test_alerts.py` for the mute list on
+targets and SNMP silence. Sixteen deliberate breaks each caught. A browser
+run stars two ports, mutes a device and checks both pages on a phone.
+`pytest` 744 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — watch many devices at once (2026-09-26)
 
 ### Added

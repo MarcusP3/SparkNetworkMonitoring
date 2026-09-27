@@ -270,6 +270,30 @@ class TestTargets:
         run_checks(monkeypatch, 1, False, False)
         assert rows() == []
 
+    def test_a_target_on_the_mute_list_is_not_alerted(self, db, monkeypatch):
+        from spark.models import AlertMute
+
+        async def mute():
+            async with D.session_scope() as s:
+                s.add(AlertMute(target_id=1))
+        asyncio.run(mute())
+        run_checks(monkeypatch, 1, False, False, True)
+        assert rows() == []
+
+    def test_muting_a_device_mutes_its_targets(self, db, monkeypatch):
+        from spark.models import AlertMute
+
+        async def mute():
+            async with D.session_scope() as s:
+                s.add(Device(mac="aa:bb:cc:00:00:09", primary_ip="10.0.0.1",
+                             friendly_name="gw", last_seen=utcnow()))
+                await s.flush()
+                (await s.get(Target, 1)).device_id = 1
+                s.add(AlertMute(device_id=1))
+        asyncio.run(mute())
+        run_checks(monkeypatch, 1, False, False)
+        assert rows() == []
+
     def test_degraded_is_not_an_alert(self, db, monkeypatch):
         from spark.engine import runner
 
@@ -343,6 +367,18 @@ class TestSnmp:
         poll(T0, True)
         for k in range(1, 5):
             poll(T0 + timedelta(minutes=k), False)
+        assert rows() == []
+
+    def test_a_muted_device_going_silent_is_not_alerted(self, snmp_db):
+        from spark.models import AlertMute
+
+        async def mute():
+            async with D.session_scope() as s:
+                s.add(AlertMute(device_id=1))
+        asyncio.run(mute())
+        poll(T0, True)
+        for k in range(1, 6):
+            poll(T0 + timedelta(minutes=k), k == 5)
         assert rows() == []
 
     def test_snmp_alerts_can_be_switched_off(self, snmp_db):

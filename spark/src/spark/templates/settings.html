@@ -895,7 +895,8 @@
       <dd>
         A target going down (after its failure threshold) and coming back, with
         how long it was down. An SNMP device silent for three polls (at least
-        three minutes) and answering again. New devices found by a sweep, in
+        three minutes) and answering again. The SNMP alerts below: starred
+        ports, CPU, memory and temperature. New devices found by a sweep, in
         one message per sweep.
       </dd>
       <dt>What is not</dt>
@@ -904,7 +905,7 @@
         the switch goes, you get one message, not thirty. Degraded, which is a
         warning on the page rather than a page for you. SNMP silence on a device
         a target already reports down. The devices from the very first sweep,
-        which are all new and none of them news.
+        which are all new and none of them news. Anything on the mute list.
       </dd>
       <dt>Quiet hours</dt>
       <dd>
@@ -918,6 +919,149 @@
         marked failed straight away. A burst of four or more goes as one message.
       </dd>
     </dl>
+  </section>
+
+  {% set r = alerts.rules %}
+  <section class="card" id="rules">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+      <div>
+        <h2>SNMP alerts</h2>
+        <p class="card-sub">
+          From what SNMP polling sees. Each alerts once when it starts and once
+          when it ends, and a value has to stay over the line the whole time —
+          a single spike is not news.
+        </p>
+      </div>
+    </div>
+    <form method="post" action="/settings/alerts/rules" class="rules-form">
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_down" value="1" {% if r.port_down %}checked{% endif %}>
+          <span>A starred port goes down</span></label>
+        <span class="muted small rule-scope">Down on two polls in a row, so a quick reconnect stays quiet.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_busy" value="1" {% if r.port_busy %}checked{% endif %}>
+          <span>A starred port is over</span></label>
+        <input type="number" name="port_busy_percent" min="1" max="100" required value="{{ r.port_busy_percent }}" aria-label="Port traffic percent">
+        <span>% of its speed for</span>
+        <input type="number" name="port_busy_minutes" min="1" max="1440" required value="{{ r.port_busy_minutes }}" aria-label="Port traffic minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="cpu" value="1" {% if r.cpu %}checked{% endif %}>
+          <span>CPU is over</span></label>
+        <input type="number" name="cpu_percent" min="1" max="100" required value="{{ r.cpu_percent }}" aria-label="CPU percent">
+        <span>% for</span>
+        <input type="number" name="cpu_minutes" min="1" max="1440" required value="{{ r.cpu_minutes }}" aria-label="CPU minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="memory" value="1" {% if r.memory %}checked{% endif %}>
+          <span>Memory is over</span></label>
+        <input type="number" name="memory_percent" min="1" max="100" required value="{{ r.memory_percent }}" aria-label="Memory percent">
+        <span>% for</span>
+        <input type="number" name="memory_minutes" min="1" max="1440" required value="{{ r.memory_minutes }}" aria-label="Memory minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="temperature" value="1" {% if r.temperature %}checked{% endif %}>
+          <span>Temperature is over</span></label>
+        <input type="number" name="temperature_celsius" min="30" max="120" required value="{{ r.temperature_celsius }}" aria-label="Temperature in Celsius">
+        <span>°C for</span>
+        <input type="number" name="temperature_minutes" min="1" max="1440" required value="{{ r.temperature_minutes }}" aria-label="Temperature minutes">
+        <span>minutes</span>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save SNMP alerts</button>
+      </div>
+    </form>
+
+    <h3 class="sub-title" id="starred">Starred ports</h3>
+    {% if alerts.starred %}
+    <div class="table-scroll">
+    <table class="table compact alert-list">
+      <thead><tr><th>Device</th><th>Port</th><th>Now</th><th></th></tr></thead>
+      <tbody>
+        {% for p in alerts.starred %}
+        <tr>
+          <td><a href="/devices/{{ p.device.id }}">{{ p.device.display_name }}</a></td>
+          <td>{{ p.iface.label }}{% if p.iface.speed_mbps %} <span class="muted small">· {{ p.iface.speed_mbps }} Mbps</span>{% endif %}</td>
+          <td><span class="pill {{ 'ok' if p.up else 'bad' }}">{{ 'up' if p.up else (p.iface.oper_status or 'down') }}</span></td>
+          <td class="actions">
+            <form method="post" action="/settings/alerts/ports/{{ p.iface.id }}/unstar">
+              <button type="submit" class="btn-quiet">Unstar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">
+        No ports starred yet. Open a polled device from <a href="/devices">Devices</a>
+        and press the star beside the ports that matter — uplinks, the NAS, the
+        server links. Desk and Wi-Fi ports that come and go are best left alone.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="card" id="muted">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m23 9-6 6M17 9l6 6"/></svg></span>
+      <div>
+        <h2>Muted</h2>
+        <p class="card-sub">
+          Things that never alert. They are still checked, polled and shown;
+          only the Discord messages stop. Muting a device covers its targets,
+          its SNMP polling and its ports.
+        </p>
+      </div>
+    </div>
+    {% set m = alerts.mutes %}
+    {% if m.entries %}
+    <div class="table-scroll">
+    <table class="table compact alert-list">
+      <thead><tr><th>Muted</th><th>What</th><th></th></tr></thead>
+      <tbody>
+        {% for e in m.entries %}
+        <tr>
+          <td><a href="{{ e.href }}">{{ e.name }}</a>{% if e.detail %} <code class="small">{{ e.detail }}</code>{% endif %}</td>
+          <td class="muted small">{{ e.kind }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/alerts/mute/{{ e.id }}/delete">
+              <button type="submit" class="btn-quiet">Unmute</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">Nothing is muted.</p>
+    {% endif %}
+    <div class="mute-add">
+      {% if m.devices %}
+      <form method="post" action="/settings/alerts/mute">
+        <select name="device_id" required aria-label="Device to mute">
+          <option value="">Mute a device…</option>
+          {% for d in m.devices %}<option value="{{ d.id }}">{{ d.display_name }}{% if d.primary_ip %} — {{ d.primary_ip }}{% endif %}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-quiet">Mute</button>
+      </form>
+      {% endif %}
+      {% if m.targets %}
+      <form method="post" action="/settings/alerts/mute">
+        <select name="target_id" required aria-label="Target to mute">
+          <option value="">Mute a target…</option>
+          {% for t in m.targets %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-quiet">Mute</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
   {% endif %}
   </div>

@@ -25,14 +25,23 @@ from .. import port_catalogue
 from .. import prefs
 from .. import scheduler as scheduler_module
 from .. import snmp_config
-from .. import snmp_discover
+from .. import snmp_alerts, snmp_discover
 from .. import snmp_poll
 from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
-from ..models import Device, SnmpDevice, SnmpPoll, User, utcnow
+from ..models import (
+    AlertMute,
+    Device,
+    SnmpDevice,
+    SnmpInterface,
+    SnmpPoll,
+    Target,
+    User,
+    utcnow,
+)
 from ..vault import vault_for
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
@@ -157,6 +166,9 @@ async def _alerts(session: AsyncSession) -> dict:
     tz = alert_service.zone(timed)
     return {
         "settings": settings,
+        "rules": await snmp_alerts.load(session),
+        "mutes": await _mute_list(session),
+        "starred": await _starred_ports(session),
         "has_webhook": bool(settings.get("discord_webhook_sealed")),
         "quiet_now": alert_service.in_quiet_hours(timed, now),
         "timezone": tz_name,
@@ -166,6 +178,47 @@ async def _alerts(session: AsyncSession) -> dict:
             for row in await alert_service.recent(session)
         ],
     }
+
+
+async def _mute_list(session: AsyncSession) -> dict:
+    """The mute list, and what could be added to it."""
+    rows = list((await session.execute(select(AlertMute).order_by(AlertMute.created_at))).scalars())
+    devices = {d.id: d for d in (await session.execute(
+        select(Device).where(Device.ignored.is_(False))
+    )).scalars()}
+    targets = {t.id: t for t in (await session.execute(select(Target))).scalars()}
+    entries = []
+    for row in rows:
+        if row.device_id in devices:
+            d = devices[row.device_id]
+            entries.append({"id": row.id, "kind": "Device", "name": d.display_name,
+                            "detail": d.primary_ip, "href": f"/devices/{d.id}"})
+        elif row.target_id in targets:
+            t = targets[row.target_id]
+            entries.append({"id": row.id, "kind": "Target", "name": t.name,
+                            "detail": t.address, "href": f"/targets/{t.id}/edit"})
+    muted_devices = {r.device_id for r in rows if r.device_id}
+    muted_targets = {r.target_id for r in rows if r.target_id}
+    return {
+        "entries": entries,
+        "devices": sorted((d for i, d in devices.items() if i not in muted_devices),
+                          key=lambda d: d.display_name.lower()),
+        "targets": sorted((t for i, t in targets.items() if i not in muted_targets),
+                          key=lambda t: t.name.lower()),
+    }
+
+
+async def _starred_ports(session: AsyncSession) -> list[dict]:
+    """Every starred port, across all devices: the ports that can alert."""
+    rows = (await session.execute(
+        select(SnmpInterface, Device)
+        .join(SnmpDevice, SnmpDevice.id == SnmpInterface.snmp_device_id)
+        .join(Device, Device.id == SnmpDevice.device_id)
+        .where(SnmpInterface.starred.is_(True))
+        .order_by(Device.id, SnmpInterface.if_index)
+    )).all()
+    return [{"iface": iface, "device": device,
+             "up": (iface.oper_status or "").lower() == "up"} for iface, device in rows]
 
 
 async def _discovery(session: AsyncSession, listed_ids: set[int], now) -> dict:  # type: ignore[no-untyped-def]
@@ -389,6 +442,7 @@ async def settings_page(
 async def settings_section(
     request: Request,
     section: str,
+    saved: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -396,7 +450,8 @@ async def settings_section(
     """One Settings sub-page. An unknown name goes to the first one."""
     if section not in SECTION_URLS or section == "subnets":
         return redirect("/settings")
-    return await _render(request, session, config, user, section=section)
+    notice = "SNMP alert rules saved." if section == "alerts" and saved == "rules" else None
+    return await _render(request, session, config, user, section=section, alert_notice=notice)
 
 
 @router.post("/settings/subnets")
@@ -811,6 +866,89 @@ async def add_found_snmp_devices(
 
 
 ALERTS_ANCHOR = "/settings/alerts"
+
+
+@router.post("/settings/alerts/rules")
+async def save_alert_rules(
+    request: Request,
+    port_down: str = Form("", max_length=limits.SHORT),
+    port_busy: str = Form("", max_length=limits.SHORT),
+    port_busy_percent: str = Form("", max_length=limits.SHORT),
+    port_busy_minutes: str = Form("", max_length=limits.SHORT),
+    cpu: str = Form("", max_length=limits.SHORT),
+    cpu_percent: str = Form("", max_length=limits.SHORT),
+    cpu_minutes: str = Form("", max_length=limits.SHORT),
+    memory: str = Form("", max_length=limits.SHORT),
+    memory_percent: str = Form("", max_length=limits.SHORT),
+    memory_minutes: str = Form("", max_length=limits.SHORT),
+    temperature: str = Form("", max_length=limits.SHORT),
+    temperature_celsius: str = Form("", max_length=limits.SHORT),
+    temperature_minutes: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """The SNMP threshold rules. All validated before any is saved."""
+    try:
+        await snmp_alerts.save(session, {
+            "port_down": port_down, "port_busy": port_busy,
+            "port_busy_percent": port_busy_percent, "port_busy_minutes": port_busy_minutes,
+            "cpu": cpu, "cpu_percent": cpu_percent, "cpu_minutes": cpu_minutes,
+            "memory": memory, "memory_percent": memory_percent, "memory_minutes": memory_minutes,
+            "temperature": temperature, "temperature_celsius": temperature_celsius,
+            "temperature_minutes": temperature_minutes,
+        })
+    except snmp_alerts.RuleError as exc:
+        return await _render(request, session, config, user, section="alerts",
+                             alert_error=str(exc), status_code=400)
+    await session.commit()
+    return redirect(ALERTS_ANCHOR + "?saved=rules")
+
+
+@router.post("/settings/alerts/mute")
+async def add_mute(
+    device_id: str = Form("", max_length=limits.SHORT),
+    target_id: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Add a device or a target to the mute list. Unknown ids do nothing."""
+    device, target = limits.as_id(device_id), limits.as_id(target_id)
+    if device is not None and await session.get(Device, device) is not None:
+        if await session.scalar(select(AlertMute.id).where(AlertMute.device_id == device)) is None:
+            session.add(AlertMute(device_id=device))
+    elif target is not None and await session.get(Target, target) is not None:
+        if await session.scalar(select(AlertMute.id).where(AlertMute.target_id == target)) is None:
+            session.add(AlertMute(target_id=target))
+    await session.commit()
+    return redirect(ALERTS_ANCHOR + "#muted")
+
+
+@router.post("/settings/alerts/mute/{mute_id}/delete")
+async def remove_mute(
+    mute_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    row = await session.get(AlertMute, mute_id)
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
+    return redirect(ALERTS_ANCHOR + "#muted")
+
+
+@router.post("/settings/alerts/ports/{interface_id}/unstar")
+async def unstar_port(
+    interface_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    iface = await session.get(SnmpInterface, interface_id)
+    if iface is not None:
+        iface.starred = False
+        await snmp_alerts.forget(session, f"port:{iface.id}", f"busy:{iface.id}")
+        await session.commit()
+    return redirect(ALERTS_ANCHOR + "#starred")
 
 
 def _hhmm_or_blank(value: str) -> str:

@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import (
 from .config import Config
 from .models import (
     DEFAULT_SETTINGS,
+    AlertMute,
+    AlertState,
     Base,
     CheckRollup,
     Notification,
@@ -234,7 +236,26 @@ async def _rebuild_notification_outbox(session: AsyncSession) -> None:
     await connection.run_sync(Notification.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 8
+@migration(9, "starred ports, the alert mute list, and threshold alert state")
+async def _add_alert_rules(session: AsyncSession) -> None:
+    """Add snmp_interface.starred and create alert_mute and alert_state.
+
+    The column by hand (tolerating it already being there, as migration 4
+    explains); the tables from model metadata with `checkfirst`.
+    """
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("snmp_interface")}
+    )
+    if "starred" not in existing:
+        await session.execute(text(
+            "ALTER TABLE snmp_interface ADD COLUMN starred BOOLEAN NOT NULL DEFAULT 0"
+        ))
+    for model in (AlertMute, AlertState):
+        await connection.run_sync(model.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 9
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:
