@@ -340,6 +340,13 @@ Devices page and on both devices' pages. Nothing is merged until you press
 good. The SNMP **Test** lists "Its own IP addresses" and "ARP table" when the
 device supports them.
 
+**Folding.** A device with things connected below it has a ▾ beside it:
+click to fold that branch away ("12 below ▸"), or use **Collapse all** /
+**Expand all**. What you fold is remembered in that browser. Ports: the ones
+you watch with a target show on each device; the rest are folded under their
+count ("+6 more") and open on a click. The **Services** table below the map
+still lists every one.
+
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a
 target shows that target's status.

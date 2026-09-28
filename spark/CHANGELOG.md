@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — a foldable map, and quieter ports on it (2026-09-28)
+
+### Changed
+
+- **Branches fold.** Each device on the map with anything below it has a
+  toggle; folded, it reads "N below". **Collapse all** and **Expand all** sit
+  above the tree. What is folded is remembered in the browser (by device)
+  and survives the page's live refresh. Without JavaScript every branch is
+  open, as before.
+- **Ports on the map.** Watched ports (a target on them) stay on each device,
+  since they carry a status. The rest fold under their count ("3 ports",
+  "+6 more") and open on a click. The Services table is unchanged and still
+  lists everything.
+- The live refresh now announces each swap (`spark:live-updated`), so a
+  page can put back what it keeps in #live.
+
+### Tests
+
+2 new in `test_service_map.py`. A browser run checks folding, Collapse and
+Expand all, that a fold survives a reload and a live refresh, an opened
+"+N more" survives a live refresh, and the page without JavaScript.
+`pytest` 858 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — interfaces as a list, not a long table (2026-09-28)
 
 ### Changed

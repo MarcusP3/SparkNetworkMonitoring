@@ -123,6 +123,8 @@
               row.classList.add('just-changed');
             }
           });
+          // For a page that keeps state in #live (the map's folded branches).
+          document.dispatchEvent(new CustomEvent('spark:live-updated'));
         })
         .catch(function () { /* a failed refresh is not worth surfacing */ })
         .finally(function () { inFlight = false; });

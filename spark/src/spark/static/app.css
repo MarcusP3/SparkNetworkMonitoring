@@ -1677,7 +1677,25 @@ a.pill:hover { filter: brightness(1.12); }
 .map-icon .icon { width: 1.05rem; height: 1.05rem; }
 .map-name { font-weight: 600; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .map-name:hover { text-decoration: underline; }
-.map-services { display: flex; flex-wrap: wrap; gap: .3rem; margin: .35rem 0 0 2.5rem; }
+.map-services { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin: .35rem 0 0 2.5rem; }
+/* Unwatched ports, folded under their count (map.html). */
+.more-ports > summary { display: inline-block; list-style: none; cursor: pointer; font-size: .75rem; color: var(--accent);
+  padding: .1rem .55rem; border: 1px dashed var(--border); border-radius: 999px; }
+.more-ports > summary::-webkit-details-marker { display: none; }
+.more-ports[open] { flex-basis: 100%; }
+.more-ports-list { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+/* Folding branches: only with JavaScript, which does the folding. */
+.js-only { display: none; }
+.js-fold .js-only { display: inline-flex; }
+.js-fold .tree-actions { display: flex; gap: .5rem; margin: -.5rem 0 .75rem; }
+.branch-toggle { align-items: center; gap: .25rem; background: none; border: 0; padding: .1rem .3rem;
+  color: var(--accent); font: inherit; font-size: .75rem; cursor: pointer; border-radius: var(--radius-sm); }
+.branch-toggle:hover { background: var(--surface-2); }
+.branch-toggle .chevron { width: .9rem; height: .9rem; transition: transform .15s; }
+.branch-count { display: none; }
+.tree li.folded > .map-node .branch-count { display: inline; }
+.tree li.folded > .map-node .chevron { transform: rotate(-90deg); }
+.tree li.folded > ul { display: none; }
 .unplaced summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: .25rem .75rem; align-items: baseline; }
 .unplaced-list { list-style: none; margin: .75rem 0 0; padding: 0; display: grid;
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: .4rem 1rem; }

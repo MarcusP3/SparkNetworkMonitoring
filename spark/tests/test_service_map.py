@@ -311,6 +311,33 @@ class TestPages:
         assert "Not placed yet" in page and "laptop" in page and "old-box" not in page
         assert "Plex" in page and ":32400" in page
 
+    def test_branches_fold_and_the_page_remembers_which(self, site):
+        page = " ".join(site.get("/map").text.split())
+        assert '<li data-branch="1">' in page and '<ul id="branch-1">' in page
+        assert re.search(r'<button type="button" class="branch-toggle js-only" aria-expanded="true"'
+                         r' aria-controls="branch-1"[^>]*> <span class="branch-count">2 below</span>', page)
+        assert page.count('class="branch-toggle') == 2, "gateway and switch; not the nas"
+        assert 'data-fold="all">Collapse all' in page and 'data-fold="none">Expand all' in page
+        assert "'spark.map.folded'" in page and "addEventListener('spark:live-updated', apply)" in page
+        assert "new CustomEvent('spark:live-updated')" in page, "the live refresh says when it swapped"
+
+    def test_unwatched_ports_are_folded_under_their_count(self, site):
+        page = " ".join(site.get("/map").text.split())
+        tree = page[page.index('<ul class="tree">'):page.index("Not placed yet")]
+        assert re.search(r'<details class="more-ports" data-ports="3"> <summary[^>]*>2 ports</summary>', tree)
+
+        async def watch_plex():
+            async with D.session_scope() as s:
+                s.add(Target(name="plex web", check_type=CheckType.TCP, address="10.0.0.20:32400",
+                             device_id=3, service_id=1))
+        run(watch_plex())
+        page = " ".join(site.get("/map").text.split())
+        tree = page[page.index('<ul class="tree">'):page.index("Not placed yet")]
+        services = tree[tree.index('<div class="map-services">'):]
+        assert services.index("Plex") < services.index("<details"), "the watched one stays in view"
+        assert re.search(r'<summary[^>]*>\+1 more</summary> <div class="more-ports-list"> '
+                         r'<span class="pill neutral"[^>]*> SMB', services)
+
     def test_searching_services(self, site):
         page = site.get("/map?q=8080").text
         table = page[page.index("<th>Service</th>"):]
