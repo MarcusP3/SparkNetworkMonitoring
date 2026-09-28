@@ -118,7 +118,7 @@
     {% endif %}
   </section>
 
-  <section class="card">
+  <section class="card" id="interfaces">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10v4M11 10v4M15 10v4"/></svg></span>
       <div>
@@ -130,8 +130,30 @@
       </div>
     </div>
 
-    {% if snmp.selected %}
     {% set sel = snmp.selected %}
+    {% if snmp.interfaces %}
+    {# A GET form: the choice lands in the URL, so a reload, the range picker
+       and the Back button keep it. Changing the list submits it (base.html);
+       without JavaScript, Show does. #}
+    <form method="get" action="/devices/{{ device.id }}#interfaces" class="row-form port-picker">
+      <input type="hidden" name="range" value="{{ range }}">
+      <label class="inline-field">
+        <span class="muted small">Interface</span>
+        <select name="port" data-autosubmit aria-label="Interface to chart">
+          {% if not sel %}<option value="" selected>Choose an interface…</option>{% endif %}
+          {% for e in snmp.interfaces %}
+          <option value="{{ e.iface.id }}"{% if sel and sel.iface.id == e.iface.id %} selected{% endif %}>
+            {%- if e.iface.starred %}★ {% endif %}{{ e.iface.label }} · {{ e.state }}
+            {%- if e.state == 'up' and e.now_in != '—' %} · {{ e.now_in }} in / {{ e.now_out }} out{% endif -%}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn-quiet autosubmit-button">Show</button>
+    </form>
+    {% endif %}
+
+    {% if sel %}
     <div class="chart-card traffic-card">
       <div class="chart-title">
         <span>{{ sel.iface.label }}{% if sel.iface.speed_mbps %} <span class="muted small">· {{ sel.iface.speed_mbps }} Mbps link</span>{% endif %}</span>
@@ -146,10 +168,29 @@
       {% else %}
         <p class="muted small">No traffic recorded for this interface in this range.</p>
       {% endif %}
+      <div class="port-facts">
+        <span class="pill {{ sel.kind }}">{{ sel.state }}</span>
+        {% if sel.state == 'up' %}<span><span class="muted">Now</span> {{ sel.now_in }} in · {{ sel.now_out }} out</span>{% endif %}
+        <span><span class="muted">Peak ({{ range }})</span> {{ sel.peak_in }} / {{ sel.peak_out }}</span>
+        {% if sel.errors %}<span><span class="muted">Errors</span> {{ sel.errors }}</span>{% endif %}
+        {% set iface = sel.iface %}
+        <form method="post" action="/devices/{{ device.id }}/interfaces/{{ iface.id }}/star">
+          <input type="hidden" name="starred" value="{{ '0' if iface.starred else '1' }}">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="btn-quiet"
+                  title="{{ 'Starred: alerts when it goes down or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down or stays busy' }}">
+            {{ '★ Starred' if iface.starred else '☆ Star for alerts' }}
+          </button>
+        </form>
+      </div>
     </div>
     {% endif %}
 
     {% if snmp.interfaces %}
+    {# Every interface at once, for starring several or scanning status.
+       Folded away: on a 48-port switch it is a long scroll to get past. #}
+    <details class="all-interfaces">
+      <summary>All {{ snmp.interfaces | length }} interfaces</summary>
     <div class="table-scroll">
     <table class="table compact interface-table">
       <thead>
@@ -200,6 +241,7 @@
       </tbody>
     </table>
     </div>
+    </details>
     {% else %}
       <p class="muted small">No interfaces reported yet.</p>
     {% endif %}

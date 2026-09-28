@@ -162,6 +162,15 @@
       form.addEventListener('input', update);
       update();
     });
+    // A list marked data-autosubmit (the interface picker on a device page)
+    // shows its choice as soon as it is made; its Show button is for when
+    // JavaScript is off.
+    document.body.classList.add('js-autosubmit');
+    document.querySelectorAll('select[data-autosubmit]').forEach(function (select) {
+      select.addEventListener('change', function () {
+        if (select.value) select.form.submit();
+      });
+    });
   })();
 </script>
 <script nonce="{{ request.state.csp_nonce }}">

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — interfaces as a list, not a long table (2026-09-28)
+
+### Changed
+
+- A device page's **Interfaces** card now shows one chart, with an
+  **Interface** list above it to pick the port (status and current rate in
+  each entry, starred ports marked ★). Picking one shows it straight away and
+  keeps the chosen time range; the page lands back on the chart. Without
+  JavaScript a **Show** button does the same.
+- Under the chart: the port's status, rate now, peak in the range, errors,
+  and **Star for alerts**.
+- The full interface table is still there, folded under **All N
+  interfaces**, for starring several ports or scanning status.
+
+### Tests
+
+2 new in `test_device_page.py`. `pytest` 856 passed with the agent,
+`smoke_test.py` 76 passed. Checked in a browser with a 48-interface access
+point, both themes and phone width.
+
 ## Unreleased — the map from SNMP, as suggestions (2026-09-28)
 
 ### Added

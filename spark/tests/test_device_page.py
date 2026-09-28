@@ -362,6 +362,30 @@ class TestDevicePage:
         page = site.get("/devices/1?port=1").text
         assert re.search(r'class="chart-title">\s*<span>eth0-1', page)
 
+    def test_ports_are_picked_from_a_list_not_scrolled_past(self, site):
+        page = site.get("/devices/1").text
+        start = page.index('<form method="get" action="/devices/1#interfaces" class="row-form port-picker">')
+        picker = page[start:page.index("</form>", start)]
+        assert 'name="range" value="24h"' in picker
+        options = re.findall(r'<option value="(\d+)"( selected)?>([^<]*)</option>', picker)
+        assert [o[0] for o in options] == ["1", "2", "3"], "every interface, in order"
+        assert [o[0] for o in options if o[1]] == ["2"], "the busiest chosen"
+        assert "NAS · up · " in options[1][2] and options[2][2].endswith("eth2 · down")
+        # The full table is still there for starring several, folded away.
+        assert re.search(r'<details class="all-interfaces">\s*<summary>All 3 interfaces</summary>', page)
+        assert 'class="table compact interface-table"' in page
+        # Under the chart: the chosen port's numbers and its star.
+        facts = page[page.index('class="port-facts"'):]
+        assert 'pill ok">up' in facts and "☆ Star for alerts" in facts
+
+    def test_the_list_follows_the_port_in_the_url_and_submits_itself(self, site):
+        page = site.get("/devices/1?port=3&range=7d").text
+        assert re.search(r'<option value="3" selected>eth2 · down</option>', page)
+        assert 'name="range" value="7d"' in page
+        assert "No traffic recorded for this interface in this range." in page
+        assert "select[data-autosubmit]" in page and "select.form.submit()" in page
+        assert 'class="btn-quiet autosubmit-button"' in page
+
     def test_an_empty_port_is_not_painted_as_a_fault(self, site):
         page = site.get("/devices/1").text
         table = page[page.index('class="table compact interface-table"'):]

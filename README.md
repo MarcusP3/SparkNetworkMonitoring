@@ -514,9 +514,11 @@ or `no answer` with the reason — and when the next one is due.
 - **Health** — CPU (or load average), memory and the hottest temperature
   sensor, each charted over **1h, 24h, 7d or 30d**. Charts that would be empty
   are left out.
-- **Interfaces** — every port with its status, current rate in and out, the
-  peak in the range, errors, and a small trace of the range. Choose a port to
-  chart its traffic; the busiest one is charted to begin with.
+- **Interfaces** — one port's traffic chart, the busiest to begin with.
+  Pick another from the **Interface** list (each shows its status and rate
+  now); under the chart are its current rate, peak in the range, errors, and
+  its star for alerts. **All N interfaces**, folded away beneath, is the full
+  table: every port's status, rates, errors and a small trace of the range.
 - The solid line is the average for each point on the chart; where a point
   covers several polls, a faint line shows the busiest of them, so a
   five-minute spike still shows on a 30-day chart. Hover for the reading.

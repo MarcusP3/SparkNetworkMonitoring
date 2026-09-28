@@ -1399,6 +1399,19 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 }
 .chart-card { min-width: 0; }
 .traffic-card { margin-bottom: 1rem; }
+/* The interface picker and what sits under the chart (device page). */
+.port-picker { margin-bottom: 1rem; }
+/* A long option ("ath12 · up · 1.2 Mbps in / 300 kbps out") must not push a
+   phone sideways: the label may shrink, and the list with it. */
+.port-picker .inline-field { min-width: 0; max-width: 100%; }
+.port-picker select { min-width: 0; max-width: min(36rem, 100%); }
+.js-autosubmit .autosubmit-button { display: none; }
+.port-facts { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1rem;
+              margin-top: .75rem; font-size: .875rem; }
+.port-facts form { margin: 0 0 0 auto; }
+.all-interfaces > summary { cursor: pointer; color: var(--accent); font-size: .875rem;
+                            padding: .25rem 0; }
+.all-interfaces[open] > summary { margin-bottom: .75rem; }
 .chart-title {
   display: flex;
   justify-content: space-between;
