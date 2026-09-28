@@ -18,6 +18,7 @@ async def service_map(
     request: Request,
     q: str = "",
     accepted: str = "",
+    wiped: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -31,8 +32,13 @@ async def service_map(
         "map.html",
         {"config": config, "user": user, "title": "Service map", "map": result, "q": query,
          "discovery": discovery, "suggested": suggested,
-         "accepted": int(accepted) if accepted.isdigit() and len(accepted) < 6 else None},
+         "mode": await topology.get_mode(session),
+         "accepted": _count(accepted), "wiped": _count(wiped)},
     )
+
+
+def _count(value: str) -> int | None:
+    return int(value) if value.isdigit() and len(value) < 6 else None
 
 
 def _back(device_id: int, back: str) -> str:
@@ -68,11 +74,16 @@ async def dismiss_suggestion(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
-    """"Not right": this placement is not suggested again."""
+    """"Not right": this placement is not suggested again -- and if automatic
+    mode already made it, the device is taken back off."""
     found = await _suggestion(session, device_id)
     if found is not None:
         await topology.dismiss(session, found)
         await session.commit()
+    else:
+        seen = (await topology.discover(session)).found.get(device_id)
+        if seen is not None and await topology.take_back(session, seen):
+            await session.commit()
     return redirect(_back(device_id, back))
 
 

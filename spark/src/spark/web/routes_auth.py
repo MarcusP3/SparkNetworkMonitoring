@@ -24,7 +24,7 @@ from ..auth import (
     setup_required,
 )
 from ..config import Config
-from .. import prefs
+from .. import prefs, topology
 from ..alerts import AlertError, set_webhook, validate_webhook
 from ..vault import vault_for
 from .deps import current_user, get_config, get_session, redirect, templates
@@ -102,6 +102,7 @@ async def setup_submit(
     password_confirm: str = Form(..., max_length=limits.PASSWORD),
     discord_webhook_url: str = Form("", max_length=limits.WEBHOOK),
     timezone_name: str = Form("", alias="timezone", max_length=limits.TIMEZONE),
+    map_mode: str = Form("manual", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
 ):
@@ -109,10 +110,12 @@ async def setup_submit(
         return redirect("/login")
 
     error: str | None = None
+    if map_mode not in topology.MODES:
+        error = "Choose Manual or Automatic for the service map."
     webhook = discord_webhook_url.strip()
-    if password != password_confirm:
+    if error is None and password != password_confirm:
         error = "The two passwords do not match."
-    elif webhook:
+    elif error is None and webhook:
         try:
             validate_webhook(webhook)
         except AlertError as exc:
@@ -132,7 +135,7 @@ async def setup_submit(
             "setup.html",
             {"config": config, "title": "Set up SPARK", "error": error, "username": username,
              "timezone": tz if prefs.valid(tz) else None,
-             "timezone_choices": prefs.timezone_choices()},
+             "timezone_choices": prefs.timezone_choices(), "map_mode": map_mode},
             status_code=400,
         )
 
@@ -140,6 +143,7 @@ async def setup_submit(
         await set_webhook(session, vault_for(config), webhook)
     if tz:
         await prefs.set_timezone(session, tz)
+    await topology.set_mode(session, map_mode)
 
     token = await create_session(
         session,

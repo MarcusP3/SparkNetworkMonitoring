@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page narrow">
+  <div class="page-head">
+    <div class="page-title">
+      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+      <div>
+        <p class="crumb"><a href="/preferences#map">Preferences</a> /</p>
+        <h1>Wipe the map</h1>
+        <p class="page-sub">Nothing has changed yet. This is what wiping would do.</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="card">
+    <ul class="merge-plan">
+      <li>{{ counts.roles }} device{{ 's lose their roles' if counts.roles != 1 else ' loses its role' }} (gateway, switch, access point…).</li>
+      <li>{{ counts.parents }} device{{ 's are' if counts.parents != 1 else ' is' }} taken off the map, including any you placed by hand.</li>
+      <li>{{ counts.dismissed }} “Not right” answer{{ 's are' if counts.dismissed != 1 else ' is' }} forgotten, so SNMP can suggest {{ 'them' if counts.dismissed != 1 else 'it' }} again.</li>
+      <li>Devices, targets, services, alerts and history are left as they are.</li>
+      {% if map_mode == 'automatic' %}
+      <li>The map is automatic, so it is rebuilt straight away from what SNMP last reported.</li>
+      {% else %}
+      <li>The map is manual, so what SNMP sees comes back as suggestions to accept.</li>
+      {% endif %}
+    </ul>
+    {% if counts.gateway and not counts.gateway_found_without_role %}
+    <div class="alert warn">
+      SPARK knows {{ counts.gateway.display_name }} is your gateway only from its role.
+      Afterwards, set its <strong>Role</strong> to Gateway / router again on
+      <a href="/devices/{{ counts.gateway.id }}">its page</a>{% if map_mode == 'automatic' %}, and the map rebuilds from there{% endif %}.
+    </div>
+    {% endif %}
+    <p class="muted small">
+      While a device has no place, nothing is quiet because of what is above it:
+      an outage upstream alerts for everything it takes down, until the map is
+      back.
+    </p>
+    <div class="form-actions">
+      <form method="post" action="/preferences/wipe-map">
+        <button type="submit" class="btn-quiet danger">Wipe the map</button>
+      </form>
+      <a href="/preferences#map" class="btn-quiet">Cancel</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

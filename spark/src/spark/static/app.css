@@ -1610,6 +1610,9 @@ a.pill:hover { filter: brightness(1.12); }
 .js-save-when-changed .save-when-changed:not(.dirty) .form-actions { display: none; }
 .prefs-form select { width: 100%; }
 .prefs-form .btn-quiet { margin-left: .35rem; }
+.wipe-map { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: .5rem 1rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.wipe-map p { margin: 0; flex: 1 1 20rem; }
 .quiet-hours a { color: var(--accent); }
 
 /* ---- Devices: Watch selected ------------------------------------------- */

@@ -29,7 +29,20 @@
   {% if accepted is not none %}
   <div class="alert ok">Placed {{ accepted }} device{{ 's' if accepted != 1 }} from SNMP.</div>
   {% endif %}
-  {% if suggested %}
+  {% if wiped is not none %}
+  <div class="alert ok">
+    Map wiped: every role, place and “Not right” is cleared.
+    {% if mode == 'automatic' %}Rebuilt from SNMP: {{ wiped }} device{{ 's' if wiped != 1 }} placed.{% else %}What SNMP sees is suggested below.{% endif %}
+  </div>
+  {% endif %}
+  {% if mode == 'automatic' %}
+  <div class="alert info">
+    <strong>Automatic map.</strong> After every SNMP read (every 15 minutes) devices are placed where
+    the switches see them, and followed when they move. Anything you place yourself is kept.
+    Change it under <a href="/preferences#map">Preferences</a>.
+    {% if discovery.reason %}<br>{{ discovery.reason }}{% endif %}
+  </div>
+  {% elif suggested %}
   <section class="card suggest-card" id="suggested">
     <div class="card-head">
       <div>

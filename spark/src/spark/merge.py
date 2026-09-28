@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Device, DeviceAddress, DeviceRole, Service, SnmpDevice, Target
+from .models import Device, DeviceAddress, DeviceRole, MapAuto, Service, SnmpDevice, Target
 
 
 class MergeError(ValueError):
@@ -119,6 +119,9 @@ async def apply(session: AsyncSession, keep_id: int, other_id: int) -> Plan:
     await session.execute(update(Target).where(Target.device_id == other_id)
                           .values(device_id=keep_id))
     await session.execute(update(Device).where(Device.parent_device_id == other_id)
+                          .values(parent_device_id=keep_id))
+    # What automatic mode placed under the duplicate is still automatic's.
+    await session.execute(update(MapAuto).where(MapAuto.parent_device_id == other_id)
                           .values(parent_device_id=keep_id))
     if p.takes_snmp:
         await session.execute(update(SnmpDevice).where(SnmpDevice.device_id == other_id)

@@ -27,10 +27,18 @@ neighbours (identity.py reads them, `store` keeps them). From those:
      other device **seen only on uplinks** -- upstream of every switch that
      sees it -- is on the gateway itself, or on something SNMP cannot see.
 
-None of this changes a device's place on its own. It is shown as
-suggestions on the map, to accept or dismiss, and on each device's page as
-where SNMP sees it. A parent set by hand is never replaced. (Automatic mode,
-which fills parents in, comes later: see the backlog.)
+What happens with it depends on the map mode (Preferences, and asked at
+setup):
+
+  * **Manual** (the default): shown as suggestions on the map, to accept or
+    dismiss, and on each device's page as where SNMP sees it.
+  * **Automatic**: applied after every read (`apply_automatic`). A device
+    automatic placed follows SNMP when it moves; one placed by hand --
+    including by Accept -- is never touched (MapAuto keeps which is which).
+    "Not right" still works, and takes the device back off.
+
+In both, a parent set by hand is never replaced, and roles are only ever
+filled in where none is set. `wipe` starts the map over.
 """
 
 from __future__ import annotations
@@ -38,13 +46,22 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import hierarchy, identity
 from .collectors.snmp import FdbEntry, LldpNeighbour, usable_mac
 from .db import get_setting, save_setting
-from .models import ROLE_LABELS, Device, DeviceRole, SnmpDevice, SnmpInterface, SnmpNeighbour, utcnow
+from .models import (
+    ROLE_LABELS,
+    Device,
+    DeviceRole,
+    MapAuto,
+    SnmpDevice,
+    SnmpInterface,
+    SnmpNeighbour,
+    utcnow,
+)
 
 log = logging.getLogger(__name__)
 
@@ -365,6 +382,12 @@ async def _root(session: AsyncSession, devices: dict[int, Device], polled: set[i
                       key=lambda d: (d.id not in polled, d.id))
     if gateways:
         return gateways[0]
+    return await _root_by_addresses(session, devices)
+
+
+async def _root_by_addresses(session: AsyncSession, devices: dict[int, Device]) -> Device | None:
+    """The polled device holding the most addresses of its own (two or more,
+    and strictly the most): a router has one per VLAN."""
     counts: dict[int, int] = {}
     for owner in (await identity.reports(session)).own.values():
         counts[owner] = counts.get(owner, 0) + 1
@@ -431,3 +454,147 @@ async def dismiss(session: AsyncSession, f: Found) -> None:
     if f.key not in pairs:
         pairs.append(f.key)
     await save_setting(session, DISMISSED, {"pairs": pairs[-MAX_DISMISSED:]})
+
+
+# --------------------------------------------------------------------------
+# Map mode: manual or automatic, and starting over
+# --------------------------------------------------------------------------
+
+MODE_SETTING = "map"
+MODES = ("manual", "automatic")
+
+
+async def get_mode(session: AsyncSession) -> str:
+    mode = (await get_setting(session, MODE_SETTING)).get("mode")
+    return mode if mode in MODES else "manual"
+
+
+async def set_mode(session: AsyncSession, mode: str) -> Applied:
+    """ValueError if not a mode. Switching to automatic applies the map now,
+    rather than at the next 15-minute read."""
+    if mode not in MODES:
+        raise ValueError("Choose Manual or Automatic.")
+    value = await get_setting(session, MODE_SETTING)
+    value["mode"] = mode
+    await save_setting(session, MODE_SETTING, value)
+    return await apply_automatic(session)
+
+
+@dataclass
+class Applied:
+    placed: int = 0     # had no parent, now has one
+    moved: int = 0      # automatic's own, moved to where SNMP now sees it
+    roles: int = 0
+
+
+async def apply_automatic(session: AsyncSession) -> Applied:
+    """Automatic mode's pass. Does nothing in manual mode.
+
+    Top of the map first, so each parent is in place before what hangs off
+    it. For each place SNMP gives:
+      * no parent and never placed by automatic: placed;
+      * placed by automatic and still where it put it: moved if SNMP now
+        sees it elsewhere;
+      * anything else is a person's decision and is left alone -- a parent
+        set by hand, or one automatic set and a person then changed or
+        cleared.
+    "Not right" answers are respected, and a move that would make a loop is
+    skipped. Roles are filled in only where none is set.
+    """
+    done = Applied()
+    if await get_mode(session) != "automatic":
+        return done
+    discovery = await discover(session)
+    rejected = await dismissed(session)
+    autos = {row.device_id: row for row in (await session.execute(select(MapAuto))).scalars()}
+    parents = {r.id: r.parent_device_id for r in
+               (await session.execute(select(Device.id, Device.parent_device_id))).all()}
+    order = sorted(discovery.found.values(), key=lambda f: _depth(discovery.found, f.device.id))
+    for f in order:
+        if f.key in rejected:
+            continue
+        device = f.device
+        auto = autos.get(device.id)
+        if f.parent is not None and f.parent.id != device.parent_device_id:
+            fresh = auto is None and device.parent_device_id is None
+            own = auto is not None and device.parent_device_id == auto.parent_device_id
+            if (fresh or own) and hierarchy.can_parent(parents, device.id, f.parent.id):
+                device.parent_device_id = parents[device.id] = f.parent.id
+                if auto is None:
+                    auto = autos[device.id] = MapAuto(device_id=device.id)
+                    session.add(auto)
+                auto.parent_device_id, auto.placed_at = f.parent.id, utcnow()
+                if fresh:
+                    done.placed += 1
+                else:
+                    done.moved += 1
+        if f.role is not None and device.role == DeviceRole.UNKNOWN:
+            device.role = f.role
+            done.roles += 1
+    await session.flush()
+    if done.placed or done.moved:
+        log.info("Automatic map: placed %d, moved %d", done.placed, done.moved)
+    return done
+
+
+async def placed_automatically(session: AsyncSession, device: Device) -> bool:
+    """Is this device's current place automatic's (not a person's)?"""
+    auto = await session.get(MapAuto, device.id)
+    return (auto is not None and device.parent_device_id is not None
+            and device.parent_device_id == auto.parent_device_id)
+
+
+async def take_back(session: AsyncSession, f: Found) -> bool:
+    """"Not right" on a place automatic set: note the answer and take the
+    device back off, so the map does not keep a place a person rejected."""
+    device = f.device
+    if not await placed_automatically(session, device):
+        return False
+    if f.parent is None or device.parent_device_id != f.parent.id:
+        return False
+    await dismiss(session, f)
+    device.parent_device_id = None
+    await session.execute(delete(MapAuto).where(MapAuto.device_id == device.id))
+    await session.flush()
+    return True
+
+
+@dataclass
+class WipeCounts:
+    roles: int
+    parents: int
+    dismissed: int
+    # The gateway as SPARK knows it now, and whether it would still know it
+    # once roles are cleared (by its own addresses over SNMP). If not, a wiped
+    # map has no top until someone sets the gateway's role again.
+    gateway: Device | None = None
+    gateway_found_without_role: bool = False
+
+
+async def wipe_counts(session: AsyncSession) -> WipeCounts:
+    devices = {d.id: d for d in (await session.execute(select(Device))).scalars()}
+    by_addresses = await _root_by_addresses(session, devices)
+    return WipeCounts(
+        roles=await session.scalar(select(func.count(Device.id)).where(
+            Device.role != DeviceRole.UNKNOWN)) or 0,
+        parents=await session.scalar(select(func.count(Device.id)).where(
+            Device.parent_device_id.is_not(None))) or 0,
+        dismissed=len(await dismissed(session)),
+        gateway=await _root(session, devices, set()),
+        gateway_found_without_role=by_addresses is not None,
+    )
+
+
+async def wipe(session: AsyncSession) -> tuple[WipeCounts, Applied]:
+    """Start the map over: every role and parent, and every "Not right".
+
+    Devices, targets, services, alerts and history are untouched. In
+    automatic mode the map is rebuilt at once from what SNMP last reported.
+    """
+    counts = await wipe_counts(session)
+    await session.execute(update(Device).values(role=DeviceRole.UNKNOWN, parent_device_id=None))
+    await session.execute(delete(MapAuto))
+    await save_setting(session, DISMISSED, {"pairs": []})
+    await session.flush()
+    session.expire_all()
+    return counts, await apply_automatic(session)

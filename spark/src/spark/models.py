@@ -953,6 +953,27 @@ class SnmpNeighbour(Base):
     seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class MapAuto(Base):
+    """A place on the map that automatic mode set, and what it set it to.
+
+    Automatic mode may move a device it placed when SNMP later sees it
+    somewhere else; it never moves one placed by hand. A device whose parent
+    still equals `parent_device_id` here is automatic's; one whose parent has
+    since been changed -- on its page, by Accept, by anything -- is a person's,
+    and stays as they left it (topology.apply_automatic, migration 13).
+    """
+
+    __tablename__ = "map_auto"
+
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("device.id", ondelete="CASCADE"), primary_key=True
+    )
+    parent_device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL")
+    )
+    placed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class SnmpHealthSample(Base):
     """One poll's health reading; the SNMP counterpart of check_result.
 
@@ -1131,6 +1152,11 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     # (topology.py).
     "map_dismissed": {
         "pairs": [],
+    },
+    # "manual": SNMP suggests, a person accepts. "automatic": SNMP's places
+    # are applied after every read; places set by hand are kept (topology.py).
+    "map": {
+        "mode": "manual",
     },
     # Preferences. Empty time zone means "not chosen yet": prefs.py falls
     # back to the zone quiet hours used before this existed, then UTC.

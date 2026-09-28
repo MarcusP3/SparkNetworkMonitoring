@@ -185,12 +185,12 @@ def test_local_formats_in_the_zone_and_handles_nothing():
 
 
 def test_save_buttons_wait_for_a_change(site):
-    """Both cards' Save buttons are hidden until something differs from what
-    is saved (script in preferences.html, rule in app.css). Without the
-    script the rule never applies, so Save is always there."""
+    """Every card's Save button is hidden until something differs from what
+    is saved (script in base.html, rule in app.css). Without the script the
+    rule never applies, so Save is always there."""
     client, _ = site
     page = client.get("/preferences").text
-    assert page.count('class="prefs-form save-when-changed"') == 2
+    assert page.count('class="prefs-form save-when-changed"') == 3, "time zone, timeout, map"
     assert "document.body.classList.add('js-save-when-changed')" in page
     css = (Path(__file__).parents[1] / "src/spark/static/app.css").read_text()
     assert ".js-save-when-changed .save-when-changed:not(.dirty) .form-actions { display: none; }" in css

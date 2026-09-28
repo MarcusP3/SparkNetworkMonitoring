@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — manual or automatic map, and Wipe map (2026-09-28)
+
+### Added
+
+- **Map mode**, asked at setup and changed under **Preferences → Service
+  map**. Manual (the default, and what an upgraded install keeps): SNMP
+  suggests, you accept. Automatic: after every SNMP read, devices are placed
+  where the switches see them, and a device automatic placed follows SNMP
+  when it moves. Switching to automatic applies it at once.
+  - Never touched: a place set on a device's page, one accepted from a
+    suggestion, and one automatic set that a person then changed or
+    cleared. Moves that would make a loop are skipped. Roles are filled in
+    only where none is set.
+  - "Not right" is respected, and on a device automatic placed it takes the
+    place back off.
+  - The map page says the map is automatic instead of listing suggestions;
+    a device's page says "Placed there automatically".
+- **Wipe map** (Preferences → Service map): a page first says what it will
+  clear (roles, places including hand-set ones, "Not right" answers) and
+  that devices, targets, services, alerts and history stay. Automatic
+  mode rebuilds the map at once. It warns when the gateway is known only by
+  its role, since the wipe clears that too.
+- Merging keeps what automatic placed below the duplicate as automatic's.
+
+### Changed
+
+- Migration 13: the `map_auto` table (which places automatic set). A new
+  `map` setting.
+
+### Tests
+
+20 new (`test_map_mode.py`); nineteen deliberate breaks each caught. The
+Preferences save-button test now counts three cards. A browser run of setup,
+Preferences, the map, a device page and the wipe page, at desktop and phone
+width. `pytest` 880 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — suggestion buttons stay put (2026-09-28)
 
 ### Fixed

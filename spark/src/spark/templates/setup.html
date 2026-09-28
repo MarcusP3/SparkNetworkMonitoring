@@ -38,6 +38,15 @@
     </label>
 
     <label>
+      <span>Service map</span>
+      <select name="map_mode">
+        <option value="manual" {% if map_mode != 'automatic' %}selected{% endif %}>Manual: SNMP suggests, you accept</option>
+        <option value="automatic" {% if map_mode == 'automatic' %}selected{% endif %}>Automatic: SNMP places devices and follows them</option>
+      </select>
+      <small class="hint">Automatic needs managed switches on the SNMP list. Places you set yourself are never changed either way. Change it any time under Preferences.</small>
+    </label>
+
+    <label>
       <span>Discord webhook URL <em class="optional">optional</em></span>
       <input type="url" name="discord_webhook_url" maxlength="512" placeholder="https://discord.com/api/webhooks/…">
       <small class="hint">Where outage alerts go. You can add this later in Settings.</small>

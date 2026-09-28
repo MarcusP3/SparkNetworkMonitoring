@@ -2,7 +2,8 @@
 
 Kept apart from Settings on purpose: Settings is what SPARK does on the
 network; this is how SPARK presents itself to you: the time zone every time
-on every page is shown in, and how long you stay signed in without using it.
+on every page is shown in, how long you stay signed in without using it, and
+whether the service map is placed by you or by SNMP (with Wipe map).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
-from .. import prefs
+from .. import prefs, topology
 from ..auth import end_idle_sessions
 from ..config import Config
 from ..models import User, utcnow
@@ -26,6 +27,7 @@ async def _render(request: Request, session: AsyncSession, config: Config, user:
                   error: str | None = None, saved: str = "", status_code: int = 200):  # type: ignore[no-untyped-def]
     current = await prefs.get_timezone(session)
     idle = await prefs.get_idle_minutes(session)
+    placed = request.query_params.get("placed", "")
     return templates.TemplateResponse(
         request,
         "preferences.html",
@@ -39,6 +41,8 @@ async def _render(request: Request, session: AsyncSession, config: Config, user:
             "idle_label": prefs.idle_label(idle),
             "idle_choices": [(m, prefs.idle_label(m)) for m in prefs.IDLE_CHOICES],
             "proxy_mode": config.auth.mode == "proxy",
+            "map_mode": await topology.get_mode(session),
+            "placed": int(placed) if placed.isdigit() and len(placed) < 6 else None,
             "now": utcnow(),
             "error": error,
             "saved": saved,
@@ -56,7 +60,7 @@ async def preferences_page(
     user: User = Depends(require_user),
 ):
     return await _render(request, session, config, user,
-                         saved=saved if saved in ("timezone", "session") else "")
+                         saved=saved if saved in ("timezone", "session", "map") else "")
 
 
 @router.post("/preferences")
@@ -64,6 +68,7 @@ async def save_preferences(
     request: Request,
     timezone_name: str | None = Form(None, alias="timezone", max_length=limits.TIMEZONE),
     idle_minutes: str | None = Form(None, max_length=limits.SHORT),
+    map_mode: str | None = Form(None, max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -81,9 +86,39 @@ async def save_preferences(
             new = await prefs.get_idle_minutes(session)
             await end_idle_sessions(session, timedelta(minutes=min(previous, new)))
             saved = "session"
+        elif map_mode is not None:
+            applied = await topology.set_mode(session, map_mode)
+            await session.commit()
+            return redirect(f"/preferences?saved=map&placed={applied.placed + applied.moved}#map")
         else:
             raise ValueError("Nothing to save.")
     except ValueError as exc:
         return await _render(request, session, config, user, error=str(exc), status_code=400)
     await session.commit()
     return redirect(f"/preferences?saved={saved}")
+
+
+@router.get("/preferences/wipe-map")
+async def wipe_map_confirm(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Say what Wipe map clears before it does."""
+    return templates.TemplateResponse(
+        request, "wipe_map.html",
+        {"config": config, "user": user, "title": "Wipe the map",
+         "counts": await topology.wipe_counts(session),
+         "map_mode": await topology.get_mode(session)},
+    )
+
+
+@router.post("/preferences/wipe-map")
+async def wipe_map(
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    _counts, applied = await topology.wipe(session)
+    await session.commit()
+    return redirect(f"/map?wiped={applied.placed}")

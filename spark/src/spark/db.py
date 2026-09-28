@@ -29,6 +29,7 @@ from .models import (
     Base,
     CheckRollup,
     DeviceAddress,
+    MapAuto,
     Notification,
     Setting,
     SnmpAddress,
@@ -276,7 +277,13 @@ async def _add_snmp_neighbour(session: AsyncSession) -> None:
     await connection.run_sync(SnmpNeighbour.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 12
+@migration(13, "Places on the map set by automatic mode")
+async def _add_map_auto(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(MapAuto.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 13
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

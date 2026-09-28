@@ -314,6 +314,24 @@ parent set by hand is never replaced. How it works:
   access point, VMs behind their host.
 - LLDP, where a switch has it, is exact and wins over the MAC tables.
 
+**Manual or automatic.** Chosen at setup, and changed any time under
+**Preferences → Service map**:
+
+- **Manual** (the default): what SNMP finds is suggested, as above.
+- **Automatic**: after every SNMP read (every 15 minutes) devices are placed
+  where the switches see them, and a device automatic placed is moved when
+  it moves. A place you set yourself, on a device's page or by pressing
+  Accept, is never touched, and neither is one automatic set that you then
+  changed or cleared. **Not right** on a device's page takes an automatic
+  place back off for good.
+
+**Wipe map** (Preferences → Service map) starts the map over: every role,
+every place (including yours) and every "Not right". It shows what it will
+clear and asks first. Devices, targets, services, alerts and history are
+untouched. In automatic mode the map is rebuilt at once. If SPARK knows your
+gateway only because you set its role, the page says so: set it again after
+the wipe.
+
 What it cannot see: unmanaged switches (what is behind one lands on the
 port above it), and which of two access points on one port is the wired
 one, as with a mesh AP. Set the mesh AP's parent by hand once and its

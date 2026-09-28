@@ -312,6 +312,8 @@ async def device_page(
             # suggestion still open (topology.py).
             "seen": discovery.found.get(device.id),
             "seen_open": any(f.device.id == device.id for f in placed),
+            "map_mode": await topology.get_mode(session),
+            "auto_placed": await topology.placed_automatically(session, device),
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )

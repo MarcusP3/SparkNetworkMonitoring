@@ -82,6 +82,10 @@ async def refresh(config) -> int:  # type: ignore[no-untyped-def]
                 answered += 1
         async with session_scope() as session:
             await fill_in_macs(session)
+        from . import topology
+
+        async with session_scope() as session:
+            await topology.apply_automatic(session)     # nothing in manual mode
         return answered
     except Exception:  # noqa: BLE001 - the scheduler must keep running
         log.exception("Reading addresses over SNMP failed")
