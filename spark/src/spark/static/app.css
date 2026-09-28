@@ -1692,5 +1692,11 @@ a.pill:hover { filter: brightness(1.12); }
 .suggest-actions form { margin: 0; }
 .suggest-into p { margin: 0 0 .5rem; }
 .suggest-list a:not(.btn-quiet), .suggest-into a:not(.btn-quiet) { color: var(--accent); }
+/* Where SNMP sees a device, on its "On the service map" card (topology.py). */
+.seen-by-snmp { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem;
+                margin: 0 0 1rem; padding: .6rem .8rem; border: 1px solid var(--border);
+                border-radius: var(--radius-sm); background: var(--surface-2); }
+.seen-by-snmp p { margin: 0; flex: 1 1 18rem; }
+.suggest-card .card-head form { margin: 0; }
 .merge-plan { margin: .5rem 0 1rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .4rem; }
 .form-actions form { margin: 0; }

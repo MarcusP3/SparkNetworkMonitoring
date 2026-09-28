@@ -238,6 +238,31 @@ def _format_mac(value: Any) -> str | None:
     return None
 
 
+# A forwarding table on a busy switch is the largest thing SPARK walks.
+FDB_ROWS = 20000
+
+
+@dataclass(frozen=True)
+class FdbEntry:
+    """One row of a switch's MAC table: `mac` was learned on `if_index`.
+    `own` rows are the switch's own MACs, with no port."""
+
+    mac: str
+    if_index: int | None
+    vlan: int | None = None
+    own: bool = False
+
+
+@dataclass(frozen=True)
+class LldpNeighbour:
+    """What LLDP heard on one port: the neighbour's MAC and/or name."""
+
+    if_index: int | None
+    mac: str | None
+    name: str | None
+    port: str | None = None
+
+
 def usable_ip(ip: str | None) -> bool:
     """An IPv4 address a sweep could find a device at."""
     try:
@@ -465,6 +490,79 @@ class SnmpCollector:
                 if kinds.get(index) != O.ARP_INVALID:
                     _add_pair(pairs, ip, _format_mac(value))
         return pairs
+
+    # ---------------- topology: MAC tables and LLDP ----------------
+
+    async def _bridge_ports(self) -> dict[int, int]:
+        """Bridge port number -> ifIndex. Absent on some agents, where the
+        two are the same number."""
+        return {int(k): v for k, v in (await self.walk(O.DOT1D_BASE_PORT_IFINDEX)).items()
+                if k.isdigit() and isinstance(v, int)}
+
+    async def bridge_table(self) -> list[FdbEntry]:
+        """Which MAC was learned on which port: the switch's forwarding table.
+
+        Q-BRIDGE (per VLAN) first, then plain BRIDGE-MIB. Learned entries
+        only, plus the switch's own MACs ("self"), which is how another
+        switch's table is recognised as having this switch on a port. One
+        entry per MAC and port, whatever the VLAN.
+        """
+        ports = await self.walk(O.DOT1Q_TP_FDB_PORT, max_rows=FDB_ROWS)
+        status_oid, per_vlan = O.DOT1Q_TP_FDB_STATUS, True
+        if not ports:
+            ports = await self.walk(O.DOT1D_TP_FDB_PORT, max_rows=FDB_ROWS)
+            status_oid, per_vlan = O.DOT1D_TP_FDB_STATUS, False
+        if not ports:
+            return []
+        statuses = await self.walk(status_oid, max_rows=FDB_ROWS)
+        to_if = await self._bridge_ports()
+        found: dict[tuple[str, int | None], FdbEntry] = {}
+        for index, port in ports.items():
+            parts = index.split(".")
+            if len(parts) != 6 + per_vlan or not all(p.isdigit() for p in parts):
+                continue
+            octets = [int(p) for p in parts[-6:]]
+            if any(o > 255 for o in octets):
+                continue
+            mac = ":".join(f"{o:02x}" for o in octets)
+            status = statuses.get(index, O.FDB_LEARNED)   # no status column: learned
+            own = status == O.FDB_SELF
+            if not usable_mac(mac) or not (own or status == O.FDB_LEARNED):
+                continue
+            if_index = to_if.get(port, port) if isinstance(port, int) and port > 0 else None
+            if if_index is None and not own:
+                continue
+            key = (mac, None if own else if_index)
+            found.setdefault(key, FdbEntry(mac=mac, if_index=None if own else if_index,
+                                           vlan=int(parts[0]) if per_vlan else None, own=own))
+        return list(found.values())
+
+    async def lldp_neighbours(self) -> list[LldpNeighbour]:
+        """What LLDP says is on the other end of each port."""
+        subtypes = await self.walk(O.LLDP_REM_CHASSIS_SUBTYPE)
+        if not subtypes:
+            return []
+        chassis = await self.walk_raw(O.LLDP_REM_CHASSIS_ID)
+        names = await self.walk(O.LLDP_REM_SYS_NAME)
+        remote_ports = await self.walk(O.LLDP_REM_PORT_DESC)
+        to_if = await self._bridge_ports()
+        out = []
+        for index, subtype in subtypes.items():
+            parts = index.split(".")
+            if len(parts) != 3 or not parts[1].isdigit():
+                continue
+            local = int(parts[1])
+            mac = _format_mac(chassis.get(index)) if subtype == O.LLDP_CHASSIS_MAC else None
+            name = str(names.get(index) or "").strip() or None
+            if not usable_mac(mac) and not name:
+                continue
+            out.append(LldpNeighbour(
+                if_index=to_if.get(local, local),
+                mac=mac if usable_mac(mac) else None,
+                name=name,
+                port=str(remote_ports.get(index) or "").strip()[:128] or None,
+            ))
+        return out
 
     # ---------------- health ----------------
 

@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts
+from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts, topology
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -278,6 +278,7 @@ async def device_page(
         key=lambda d: (d.mac is not None, d.display_name.lower()),
     )
     suggested = await identity.suggestions(session)
+    discovery, placed = await topology.suggestions(session)
     snmp_read = (await identity.reports(session)).read_at.get(device.id)
 
     return templates.TemplateResponse(
@@ -307,6 +308,10 @@ async def device_page(
             "suggested_into": next(((x, identity.why(x)) for x in suggested
                                     if x.other.id == device.id), None),
             "snmp_read": snmp_read,
+            # Where the switches' MAC tables put it, and whether that is a
+            # suggestion still open (topology.py).
+            "seen": discovery.found.get(device.id),
+            "seen_open": any(f.device.id == device.id for f in placed),
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )

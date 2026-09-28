@@ -420,7 +420,7 @@ async def sync_snmp_jobs(
 
 
 def schedule_identity(config) -> bool:  # type: ignore[no-untyped-def]
-    """Read every polled device's own addresses and ARP table, every 15 minutes.
+    """Read every polled device's addresses, ARP, MAC table and LLDP, every 15 minutes.
 
     Less often than polling: addresses and ARP entries change on the scale of
     DHCP leases, and a router's ARP table can be the largest walk it serves.
@@ -441,7 +441,7 @@ def schedule_identity(config) -> bool:  # type: ignore[no-untyped-def]
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_RUN_SECONDS),
-        name="Read SNMP addresses and ARP tables",
+        name="Read SNMP addresses, ARP and MAC tables",
     )
     return True
 

@@ -926,6 +926,33 @@ class SnmpAddress(Base):
     seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class SnmpNeighbour(Base):
+    """What a polled switch says is on each of its ports.
+
+    `fdb`: a MAC learned on a port (the switch's MAC table). `self`: one of
+    the switch's own MACs, with no port. `lldp`: a neighbour LLDP heard on a
+    port, by MAC and/or name.
+
+    Read every 15 minutes with the addresses (identity.py) and replaced
+    whole, like snmp_address. topology.py works out the map from it; nothing
+    here changes a device's place on its own (migration 12).
+    """
+
+    __tablename__ = "snmp_neighbour"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(8))          # "fdb", "self" or "lldp"
+    if_index: Mapped[int | None] = mapped_column(Integer)
+    mac: Mapped[str | None] = mapped_column(String(17), index=True)
+    vlan: Mapped[int | None] = mapped_column(Integer)
+    name: Mapped[str | None] = mapped_column(String(255))     # LLDP: the neighbour's name
+    port: Mapped[str | None] = mapped_column(String(128))     # LLDP: the neighbour's port
+    seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class SnmpHealthSample(Base):
     """One poll's health reading; the SNMP counterpart of check_result.
 
@@ -1098,6 +1125,11 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     # Merge suggestions from SNMP answered "Not the same", as
     # "<kept device id>:<address>" (identity.py).
     "merge_dismissed": {
+        "pairs": [],
+    },
+    # Map suggestions answered "Not right", as "<device id>:<parent id>"
+    # (topology.py).
+    "map_dismissed": {
         "pairs": [],
     },
     # Preferences. Empty time zone means "not chosen yet": prefs.py falls

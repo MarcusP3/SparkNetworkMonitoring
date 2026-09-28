@@ -26,6 +26,54 @@
   </div>
 
   <div id="live">
+  {% if accepted is not none %}
+  <div class="alert ok">Placed {{ accepted }} device{{ 's' if accepted != 1 }} from SNMP.</div>
+  {% endif %}
+  {% if suggested %}
+  <section class="card suggest-card" id="suggested">
+    <div class="card-head">
+      <div>
+        <h2>Found by SNMP</h2>
+        <p class="card-sub">
+          Where your switches' MAC tables{% if discovery.found | selectattr('source', 'equalto', 'lldp') | list %} and LLDP{% endif %} put
+          {{ suggested | length }} device{{ 's' if suggested | length != 1 }} that {{ 'are' if suggested | length != 1 else 'is' }} not placed yet.
+          Nothing changes until you accept it, and a place set by hand is never replaced.
+        </p>
+      </div>
+      {% if suggested | length > 1 %}
+      <form method="post" action="/map/suggestions/accept-all">
+        <button type="submit" class="btn-quiet" title="Accept every suggestion below">Accept all {{ suggested | length }}</button>
+      </form>
+      {% endif %}
+    </div>
+    <ul class="suggest-list">
+      {% for f in suggested %}
+      <li>
+        <div>
+          <span>
+            <a href="/devices/{{ f.device.id }}">{{ f.device.display_name }}</a>
+            {% if f.parent and not f.device.parent_device_id %}→ <a href="/devices/{{ f.parent.id }}">{{ f.parent.display_name }}</a>{% endif %}
+            {% if f.role and f.device.role == 'unknown' %}<span class="pill neutral">as {{ f.role_label | lower }}</span>{% endif %}
+          </span>
+          <span class="muted small">Seen: {{ f.where() }}.</span>
+        </div>
+        <div class="suggest-actions">
+          <form method="post" action="/map/suggestions/{{ f.device.id }}/accept">
+            <input type="hidden" name="back" value="/map#suggested">
+            <button type="submit" class="btn-quiet">Accept</button>
+          </form>
+          <form method="post" action="/map/suggestions/{{ f.device.id }}/dismiss">
+            <input type="hidden" name="back" value="/map#suggested">
+            <button type="submit" class="btn-quiet" title="Stop suggesting this">Not right</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% elif discovery.reason %}
+  <div class="alert info">{{ discovery.reason }}</div>
+  {% endif %}
   <section class="card">
     <div class="card-head">
       <div>

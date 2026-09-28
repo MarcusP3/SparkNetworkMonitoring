@@ -239,6 +239,23 @@
         </p>
       </div>
     </div>
+    {% if seen %}
+    <div class="seen-by-snmp">
+      <p class="small"><span class="muted">SNMP sees it:</span> {{ seen.where() }}.</p>
+      {% if seen_open %}
+      <div class="suggest-actions">
+        <form method="post" action="/map/suggestions/{{ device.id }}/accept">
+          <input type="hidden" name="back" value="/devices/{{ device.id }}#place">
+          <button type="submit" class="btn-quiet">Use this{% if seen.parent and not device.parent_device_id %}: connected to {{ seen.parent.display_name }}{% endif %}{% if seen.role and device.role == 'unknown' %}, as {{ seen.role_label | lower }}{% endif %}</button>
+        </form>
+        <form method="post" action="/map/suggestions/{{ device.id }}/dismiss">
+          <input type="hidden" name="back" value="/devices/{{ device.id }}#place">
+          <button type="submit" class="btn-quiet" title="Stop suggesting this">Not right</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
     <form method="post" action="/devices/{{ device.id }}/place" class="place-form save-when-changed">
       <input type="hidden" name="back" value="{{ back }}">
       <label class="stack-field">

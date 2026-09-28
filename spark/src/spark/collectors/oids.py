@@ -164,17 +164,26 @@ ENT_CLASS_CHASSIS = 3
 # Topology - collected here, used when the map is built
 # --------------------------------------------------------------------------
 
-# BRIDGE-MIB - which MAC is on which bridge port
+# BRIDGE-MIB - which MAC is on which bridge port (index: the MAC's 6 octets)
 DOT1D_TP_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
+DOT1D_TP_FDB_STATUS = "1.3.6.1.2.1.17.4.3.1.3"
 DOT1D_BASE_PORT_IFINDEX = "1.3.6.1.2.1.17.1.4.1.2"
 # Q-BRIDGE-MIB - the VLAN-aware version most modern switches use instead
+# (index: FDB id, usually the VLAN, then the MAC's 6 octets)
 DOT1Q_TP_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"
+DOT1Q_TP_FDB_STATUS = "1.3.6.1.2.1.17.7.1.2.2.1.3"
+# Both status columns: 1 other, 2 invalid, 3 learned, 4 self, 5 mgmt.
+FDB_LEARNED = 3
+FDB_SELF = 4
 
 # LLDP-MIB - neighbours, which give switch-to-switch links directly
+# (index: timeMark.localPortNum.remIndex)
+LLDP_REM_CHASSIS_SUBTYPE = "1.0.8802.1.1.2.1.4.1.1.4"   # 4 = a MAC address
 LLDP_REM_SYS_NAME = "1.0.8802.1.1.2.1.4.1.1.9"
 LLDP_REM_PORT_ID = "1.0.8802.1.1.2.1.4.1.1.7"
 LLDP_REM_PORT_DESC = "1.0.8802.1.1.2.1.4.1.1.8"
 LLDP_REM_CHASSIS_ID = "1.0.8802.1.1.2.1.4.1.1.5"
+LLDP_CHASSIS_MAC = 4
 
 # IP-MIB - the ARP table. On a router this is the fix for routed VLANs:
 # it returns MAC-to-IP for every segment the device routes, which SPARK

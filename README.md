@@ -295,6 +295,32 @@ infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be
 connected to itself or to anything below it.
 
+**Found by SNMP.** With your switches on the SNMP list, SPARK reads their MAC
+tables (BRIDGE-MIB and Q-BRIDGE-MIB) and any LLDP neighbours every 15
+minutes, and works out which switch port each device is on. The map page
+lists what that finds under **Found by SNMP**, to **Accept** one at a time,
+**Accept all**, or mark **Not right**; each device's page says where SNMP
+sees it ("ZachSwitch, Port 5"). Nothing is placed until you accept it, and a
+parent set by hand is never replaced. How it works:
+
+- The gateway (the device whose Role is Gateway / router, or else the polled
+  device holding the most addresses of its own) is the top. Each switch's
+  uplink is the port it learned the gateway's MAC on.
+- A device is on the nearest switch that sees it on a port leading away from
+  the gateway. A switch no other switch sees hangs off the gateway.
+- When one switch port has several devices and exactly one of them is
+  infrastructure (polled over SNMP, or a gateway, switch, access point or
+  server by role), the rest are behind it: wireless clients behind their
+  access point, VMs behind their host.
+- LLDP, where a switch has it, is exact and wins over the MAC tables.
+
+What it cannot see: unmanaged switches (what is behind one lands on the
+port above it), and which of two access points on one port is the wired
+one, as with a mesh AP. Set the mesh AP's parent by hand once and its
+clients follow. Devices on the gateway's own ports show as on the gateway.
+The SNMP **Test** lists "MAC address table" and "LLDP neighbours" when a
+device has them.
+
 **Duplicates.** A firewall with a gateway address on several VLANs shows up
 once per address: across a router SPARK sees no MAC, so each address looks
 like a device of its own. On the real device's page, **Addresses → Same
@@ -711,6 +737,7 @@ spark/
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
     identity.py         SNMP own addresses and ARP tables: merge suggestions, MACs across routers
+    topology.py         the map from SNMP MAC tables and LLDP: where each device is plugged in
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -763,6 +790,7 @@ spark/
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in
+    test_topology.py    the map from MAC tables and LLDP across network shapes; accept, dismiss, never overwrite
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file

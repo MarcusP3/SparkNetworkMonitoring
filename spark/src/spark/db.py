@@ -38,6 +38,7 @@ from .models import (
     SnmpInterface,
     SnmpInterfaceRollup,
     SnmpInterfaceSample,
+    SnmpNeighbour,
     SnmpPoll,
     SnmpProfile,
     Subnet,
@@ -269,7 +270,13 @@ async def _add_snmp_address(session: AsyncSession) -> None:
     await connection.run_sync(SnmpAddress.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 11
+@migration(12, "SNMP MAC tables and LLDP neighbours, for the map")
+async def _add_snmp_neighbour(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(SnmpNeighbour.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 12
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

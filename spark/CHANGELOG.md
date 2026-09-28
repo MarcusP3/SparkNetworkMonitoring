@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased — the map from SNMP, as suggestions (2026-09-28)
+
+### Added
+
+- **MAC tables and LLDP.** With the addresses and ARP table, every 15
+  minutes, each polled device is now asked for its MAC table (Q-BRIDGE-MIB,
+  or BRIDGE-MIB) and its LLDP neighbours. Learned entries only, plus the
+  switch's own MACs; bridge ports are mapped to interfaces.
+- **Found by SNMP** on the map page: where those tables put each device not
+  placed yet, with **Accept**, **Accept all** and **Not right**. A switch
+  with a MAC table is also offered the Switch role, and a gateway found by
+  its addresses the Gateway role.
+  - The top is the device whose role is Gateway, or else the polled device
+    with the most addresses of its own.
+  - A device is on the nearest switch that sees it away from the gateway,
+    on the port it was learned on.
+  - Several devices on one port with exactly one piece of infrastructure
+    among them are behind it (wireless clients and their AP, VMs and their
+    host). Two access points on one port stay on the switch until one is
+    placed under the other by hand.
+  - LLDP, where there is any, wins over the MAC tables.
+  - Contradictory tables (stale entries, loops) place nothing rather than
+    guess.
+- Each device's **On the service map** card says where SNMP sees it, with
+  **Use this** while that is still a suggestion.
+- Nothing is placed without being accepted, and a parent set by hand is
+  never replaced; accepting a role leaves the parent alone.
+
+### Changed
+
+- Migration 12: the `snmp_neighbour` table. A new `map_dismissed` setting.
+- The 15-minute job is now "Read SNMP addresses, ARP and MAC tables".
+
+### Tests
+
+37 new (`test_topology.py`): the inference against a UniFi home network
+(MAC tables, no LLDP, a mesh AP), an LLDP network, a gateway with its own MAC table, and stale or
+contradictory tables; parsing; the pages. Twenty-six deliberate breaks each
+caught. The form-cap test now covers the map routes. A browser run in both
+themes and at phone width. `pytest` 854 passed with the agent,
+`smoke_test.py` 76 passed.
+
 ## Unreleased — merge suggestions from SNMP (2026-09-28)
 
 ### Added

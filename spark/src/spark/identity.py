@@ -1,6 +1,8 @@
 """Recognising one device at several addresses, from what SNMP devices report.
 
-Every 15 minutes each device on the SNMP list is asked two things:
+Every 15 minutes each device on the SNMP list is asked for its own addresses,
+its ARP table, its MAC table and its LLDP neighbours. The last two are for the
+map (topology.py); this module is about the first two:
 
   * **its own addresses** (IP-MIB). A firewall lists its gateway on every
     VLAN. A device SPARK found at one of those addresses is the firewall seen
@@ -106,25 +108,37 @@ async def refresh_one(config, row_id: int) -> bool:  # type: ignore[no-untyped-d
     collector = SnmpCollector(address, credential)
     own: list[str] | None = None
     arp: dict[str, str] | None = None
+    fdb = lldp = None
     try:
         try:
             own = await collector.own_addresses()
         except Exception as exc:  # noqa: BLE001
             log.info("%s: no address list over SNMP (%s)", address, exc)
-        if own is not None:   # no answer at all: do not wait out a second timeout
-            try:
-                arp = await collector.arp_table()
-            except Exception as exc:  # noqa: BLE001
-                log.info("%s: no ARP table over SNMP (%s)", address, exc)
+        if own is not None:   # no answer at all: do not wait out more timeouts
+            arp = await _ask(collector.arp_table, address, "ARP table")
+            fdb = await _ask(collector.bridge_table, address, "MAC table")
+            lldp = await _ask(collector.lldp_neighbours, address, "LLDP neighbours")
     finally:
         await collector.close()
     log.debug("Read addresses from %s in %.1fs", address, time.monotonic() - started)
+
+    from . import topology
 
     async with session_scope() as session:
         if await session.get(SnmpDevice, row_id) is None:
             return False
         await store(session, row_id, own=own, arp=arp)
+        await topology.store(session, row_id, fdb=fdb, lldp=lldp)
     return own is not None
+
+
+async def _ask(method, address: str, what: str):  # type: ignore[no-untyped-def]
+    """One table; None (keep the last answer) if it could not be read."""
+    try:
+        return await method()
+    except Exception as exc:  # noqa: BLE001
+        log.info("%s: no %s over SNMP (%s)", address, what, exc)
+        return None
 
 
 async def store(session: AsyncSession, row_id: int, *, own: list[str] | None,
