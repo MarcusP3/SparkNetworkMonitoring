@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — merge duplicate devices (2026-09-28)
+
+### Added
+
+- **Addresses** card on each device's page: its primary address, any extra
+  addresses, and **Same device as this one** to merge a duplicate in. It is
+  for a firewall with a gateway address on each VLAN (identified by IP on
+  routed VLANs, so one device per address) and for multi-homed servers.
+- A **preview page** says exactly what the merge will do before anything
+  changes. Merging then:
+  - makes the duplicate's addresses extra addresses of the kept device;
+  - moves its targets, history included, and its services (a port both have
+    is kept once, and its watcher follows the kept copy);
+  - moves devices connected below it on the service map, and its SNMP
+    polling if the kept device has none;
+  - fills in only the name, MAC and role the kept device lacks;
+  - deletes the duplicate, and its mute entry with it.
+- **Sweeps respect it.** An address listed as a device's extra address is
+  counted as that device (primary address unchanged), not a new device. If
+  a device with its own MAC turns up at that address, the listing is dropped
+  and the new device keeps it. **Remove** beside an address undoes a merge.
+- The Devices list shows "+N" beside a device's address when it has extra
+  ones.
+- Refused: merging a device into itself, two devices with different MACs,
+  or two that are both polled over SNMP.
+
+### Changed
+
+- Migration 10: the `device_address` table.
+
+### Tests
+
+16 new (`test_merge.py`). Eleven deliberate breaks each caught. A browser
+run merges three gateway duplicates into one firewall. The migration-9 test
+now checks against the current schema version. `pytest` 785 passed with the
+agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — service map (2026-09-27)
 
 ### Added

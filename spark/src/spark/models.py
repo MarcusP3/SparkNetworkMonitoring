@@ -313,6 +313,30 @@ class Device(Base, TimestampMixin):
         return self.friendly_name or self.hostname or self.primary_ip or self.mac or "unknown"
 
 
+class DeviceAddress(Base):
+    """Another address a device answers at, besides its primary one.
+
+    A firewall has a gateway address on every VLAN. On routed VLANs SPARK
+    cannot see MACs and so identifies by IP, and each of those addresses
+    became a device of its own. Merging one into the real device moves its
+    address here, and a sweep that finds anything at an address listed here
+    records it against that device instead of creating it again.
+    """
+
+    __tablename__ = "device_address"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(
+        ForeignKey("device.id", ondelete="CASCADE"), index=True
+    )
+    ip: Mapped[str] = mapped_column(String(45), unique=True)
+    # "merged" (by hand) for now; room for "snmp" when a device's own
+    # interface list says which addresses are its.
+    source: Mapped[str] = mapped_column(String(16), default="merged")
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
 class Interface(Base, TimestampMixin):
     __tablename__ = "interface"
 

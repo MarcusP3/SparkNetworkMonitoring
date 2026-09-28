@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, hierarchy, limits, snmp_alerts
+from .. import alerts, hierarchy, limits, merge, snmp_alerts
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -22,6 +22,7 @@ from ..models import (
     ROLE_LABELS,
     AlertMute,
     Device,
+    DeviceAddress,
     DeviceRole,
     SnmpDevice,
     SnmpInterface,
@@ -247,6 +248,7 @@ async def device_page(
     device_id: ItemId,
     range: str = "",  # noqa: A002 - the query parameter's name in the URL
     port: str = "",
+    merged: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -267,6 +269,14 @@ async def device_page(
     has_profiles = bool(await session.scalar(select(func.count(SnmpProfile.id))))
     muted = await alerts.is_muted(session, device_id=device.id)
     placement = await _placement(session, device)
+    addresses = await merge.addresses_of(session, device.id)
+    merge_choices = sorted(
+        (d for d in (await session.execute(
+            select(Device).where(Device.id != device.id, Device.ignored.is_(False))
+        )).scalars()),
+        # Devices known only by address first: those are the usual duplicates.
+        key=lambda d: (d.mac is not None, d.display_name.lower()),
+    )
 
     return templates.TemplateResponse(
         request,
@@ -286,6 +296,9 @@ async def device_page(
             "port": port_id,
             "muted": muted,
             "placement": placement,
+            "addresses": addresses,
+            "merge_choices": merge_choices,
+            "merged": merged if merged.isdigit() else "",
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
@@ -409,3 +422,66 @@ async def place_device(
     device.parent_device_id = new_parent
     await session.commit()
     return redirect(_back_to_device(device_id, back))
+
+
+
+@router.get("/devices/{device_id}/merge")
+async def merge_preview(
+    request: Request,
+    device_id: ItemId,
+    other: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Say exactly what merging would do, before doing it."""
+    other_id = limits.as_id(other)
+    if other_id is None:
+        return redirect(f"/devices/{device_id}#merge")
+    try:
+        plan = await merge.plan(session, device_id, other_id)
+        error = None
+    except merge.MergeError as exc:
+        plan, error = None, str(exc)
+    return templates.TemplateResponse(
+        request, "merge.html",
+        {"config": config, "user": user, "title": "Merge devices", "plan": plan,
+         "error": error, "device_id": device_id},
+        status_code=400 if error else 200,
+    )
+
+
+@router.post("/devices/{device_id}/merge")
+async def merge_devices(
+    device_id: ItemId,
+    other_id: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Fold another device into this one. See merge.py for what moves."""
+    other = limits.as_id(other_id)
+    if other is None:
+        return redirect(f"/devices/{device_id}")
+    try:
+        done = await merge.apply(session, device_id, other)
+    except merge.MergeError:
+        # The preview said why; a stale form resubmitted changes nothing.
+        return redirect(f"/devices/{device_id}")
+    await session.commit()
+    return redirect(f"/devices/{device_id}?merged={len(done.addresses)}#addresses")
+
+
+@router.post("/devices/{device_id}/addresses/{address_id}/delete")
+async def remove_address(
+    device_id: ItemId,
+    address_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Stop treating an address as this device's. The next sweep that finds
+    something there records it as a device of its own."""
+    row = await session.get(DeviceAddress, address_id)
+    if row is not None and row.device_id == device_id:
+        await session.delete(row)
+        await session.commit()
+    return redirect(f"/devices/{device_id}#addresses")

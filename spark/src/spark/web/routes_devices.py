@@ -27,6 +27,7 @@ from ..discovery.services import services_for
 from ..models import (
     CheckType,
     Device,
+    DeviceAddress,
     HealthStatus,
     Service,
     SnmpDevice,
@@ -311,6 +312,13 @@ async def list_devices(
         ).all()
     }
 
+    # Extra addresses merged into each device (merge.py), for the Address cell.
+    extra_ips: dict[int, list[str]] = {}
+    for device_id, ip in (await session.execute(
+        select(DeviceAddress.device_id, DeviceAddress.ip).order_by(DeviceAddress.ip)
+    )).all():
+        extra_ips.setdefault(device_id, []).append(ip)
+
     # The last Find SNMP: devices that answered, or refused the credentials,
     # and are not on the SNMP list yet.
     find_state = await snmp_discover.load_state(session)
@@ -334,6 +342,7 @@ async def list_devices(
                 # there.
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
                 "snmp": snmp_state(*snmp_rows.get(device.id, (None, None))),
+                "extra_ips": extra_ips.get(device.id, []),
                 "snmp_found": found.get(device.id),
                 "snmp_refused": refused.get(device.id),
                 "services": [],

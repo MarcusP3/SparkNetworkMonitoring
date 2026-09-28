@@ -368,6 +368,7 @@
           </td>
           <td>
             <code>{{ device.primary_ip or '—' }}</code>
+            {% if row.extra_ips %}<span class="muted small" title="Also answers at {{ row.extra_ips | join(', ') }}">+{{ row.extra_ips | length }}</span>{% endif %}
             {# The subnet a device is on now, matched by address, rather than
                the label recorded whenever it was first seen. #}
             {% if row.subnet %}

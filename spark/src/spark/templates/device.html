@@ -24,6 +24,7 @@
           {% else %} · <span title="No MAC: this subnet is routed, so ARP
                 cannot reach it. Identity falls back to IP.">IP identity</span>{% endif %}
           {% if device.vendor %} · {{ device.vendor }}{% endif %}
+          {% if addresses %} · <a href="#addresses">+{{ addresses | length }} more address{{ 'es' if addresses | length != 1 }}</a>{% endif %}
           {% if muted %} · <span class="pill neutral" title="On the mute list: checked and shown as usual, but no alerts are sent for it">alerts muted</span>{% endif %}
         </p>
       </div>
@@ -245,6 +246,47 @@
         <button type="submit" class="btn-primary">Save</button>
       </div>
     </form>
+  </section>
+
+  <section class="card" id="addresses">
+    <div class="card-head">
+      <div>
+        <h2>Addresses</h2>
+        <p class="card-sub">
+          A firewall or server with a leg in several VLANs can show up once per
+          address. Merge those duplicates into this device and later sweeps
+          count them as this one.
+        </p>
+      </div>
+    </div>
+    {% if merged %}<div class="alert ok">Merged. {{ merged }} address{{ 'es are' if merged != '1' else ' is' }} now part of this device.</div>{% endif %}
+    <ul class="address-list">
+      <li><code>{{ device.primary_ip or '—' }}</code> <span class="muted small">primary</span></li>
+      {% for a in addresses %}
+      <li>
+        <code>{{ a.ip }}</code>
+        <span class="muted small">{% if a.last_seen %}seen {{ a.last_seen | local }}{% else %}merged {{ a.added_at | local }}{% endif %}</span>
+        <form method="post" action="/devices/{{ device.id }}/addresses/{{ a.id }}/delete">
+          <button type="submit" class="btn-quiet"
+                  title="Stop counting this address as {{ device.display_name }}. The next sweep finds it as a device of its own.">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if merge_choices %}
+    <form method="get" action="/devices/{{ device.id }}/merge" class="row-form merge-form" id="merge">
+      <label class="inline-field">
+        <span class="muted small">Same device as this one:</span>
+        <select name="other" required>
+          <option value="">Choose the duplicate…</option>
+          {% for d in merge_choices %}
+          <option value="{{ d.id }}">{{ d.display_name }}{% if d.primary_ip and d.primary_ip != d.display_name %} — {{ d.primary_ip }}{% endif %}{% if not d.mac %} (by IP){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn-quiet">Review merge…</button>
+    </form>
+    {% endif %}
   </section>
 
   <section class="card">

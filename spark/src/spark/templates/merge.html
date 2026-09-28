@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page narrow">
+  <div class="page-head">
+    <div class="page-title">
+      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v6a6 6 0 0 0 6 6h6M18 21v-6M6 21V15"/><path d="m15 12 3 3-3 3"/></svg></span>
+      <div>
+        <p class="crumb"><a href="/devices">Devices</a> / <a href="/devices/{{ device_id }}">{{ plan.keep.display_name if plan else 'device' }}</a> /</p>
+        <h1>Merge devices</h1>
+        <p class="page-sub">Nothing has changed yet. This is what merging would do.</p>
+      </div>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="alert error">{{ error }}</div>
+  <p><a href="/devices/{{ device_id }}">Back to the device</a></p>
+  {% else %}
+  {% set k, o = plan.keep, plan.other %}
+  <section class="card">
+    <p>
+      <strong>{{ o.display_name }}</strong>{% if o.primary_ip and o.primary_ip != o.display_name %} <code>{{ o.primary_ip }}</code>{% endif %}
+      will be merged into <strong>{{ k.display_name }}</strong>{% if k.primary_ip and k.primary_ip != k.display_name %} <code>{{ k.primary_ip }}</code>{% endif %},
+      and then removed from the device list.
+    </p>
+    <ul class="merge-plan">
+      {% if plan.addresses %}
+      <li>{{ plan.addresses | join(', ') }} become{{ 's' if plan.addresses | length == 1 }} an extra address of
+        {{ k.display_name }}. Sweeps that find anything there count it as {{ k.display_name }}.</li>
+      {% endif %}
+      {% if plan.targets %}
+      <li>{{ plan.targets | length }} target{{ 's move' if plan.targets | length != 1 else ' moves' }} across, history included:
+        {{ plan.targets | map(attribute='name') | join(', ') }}.</li>
+      {% endif %}
+      {% if plan.services %}
+      <li>{{ plan.services | length }} service{{ 's move' if plan.services | length != 1 else ' moves' }} across
+        ({% for s in plan.services %}{{ s.name or s.port }}{{ ', ' if not loop.last }}{% endfor %}).</li>
+      {% endif %}
+      {% if plan.services_dropped %}
+      <li>{{ plan.services_dropped | length }} service{{ 's' if plan.services_dropped | length != 1 }} it shares with
+        {{ k.display_name }} ({% for s in plan.services_dropped %}{{ s.port }}{{ ', ' if not loop.last }}{% endfor %})
+        {{ 'are' if plan.services_dropped | length != 1 else 'is' }} kept once.</li>
+      {% endif %}
+      {% if plan.children %}
+      <li>{{ plan.children }} device{{ 's' if plan.children != 1 }} connected below it on the map
+        will be connected to {{ k.display_name }}.</li>
+      {% endif %}
+      {% if plan.takes_snmp %}<li>Its SNMP polling, with its history, moves across.</li>{% endif %}
+      {% if plan.takes_mac %}<li>{{ k.display_name }} takes its MAC address, {{ o.mac }}.</li>{% endif %}
+      {% if plan.takes_name %}<li>{{ k.display_name }} takes its name, “{{ o.friendly_name }}”.</li>{% endif %}
+    </ul>
+    <p class="muted small">
+      To undo it later, remove the address from {{ k.display_name }}'s page; the next sweep
+      finds it again as a device of its own (without the moved targets).
+    </p>
+    <div class="form-actions">
+      <form method="post" action="/devices/{{ k.id }}/merge">
+        <input type="hidden" name="other_id" value="{{ o.id }}">
+        <button type="submit" class="btn-primary">Merge</button>
+      </form>
+      <a href="/devices/{{ k.id }}" class="btn-quiet">Cancel</a>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

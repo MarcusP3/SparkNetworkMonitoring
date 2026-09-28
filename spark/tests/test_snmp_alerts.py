@@ -445,5 +445,5 @@ def test_migration_9_from_a_version_8_database():
 
     fresh = run(shape(False))
     migrated = run(shape(True))
-    assert migrated == fresh and fresh[1] == 9
+    assert migrated == fresh and fresh[1] == D.CURRENT_VERSION >= 9
     assert "starred" in fresh[0]["snmp_interface"]

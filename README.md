@@ -291,6 +291,16 @@ infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be
 connected to itself or to anything below it.
 
+**Duplicates.** A firewall with a gateway address on several VLANs shows up
+once per address: across a router SPARK sees no MAC, so each address looks
+like a device of its own. On the real device's page, **Addresses → Same
+device as this one** merges a duplicate in. A preview says exactly what will
+happen first. Its address becomes an extra address of the device, its
+targets (with their history), services and anything connected below it move
+across, and later sweeps count that address as the same device. Removing
+the address undoes it: the next sweep finds it as a device of its own. Two
+devices with different MACs, or both polled over SNMP, are not merged.
+
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a
 target shows that target's status.
@@ -686,6 +696,7 @@ spark/
     snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
     servicemap.py       the service map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
+    merge.py            merging a duplicate device into the real one; what moves, what is refused
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -736,6 +747,7 @@ spark/
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
+    test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file

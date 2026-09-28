@@ -28,6 +28,7 @@ from .models import (
     AlertState,
     Base,
     CheckRollup,
+    DeviceAddress,
     Notification,
     Setting,
     SnmpDevice,
@@ -255,7 +256,13 @@ async def _add_alert_rules(session: AsyncSession) -> None:
         await connection.run_sync(model.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 9
+@migration(10, "extra addresses for a device, so duplicates can be merged")
+async def _add_device_address(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(DeviceAddress.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 10
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

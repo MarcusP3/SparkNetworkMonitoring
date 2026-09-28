@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Device, utcnow
+from ..models import Device, DeviceAddress
 from .sweep import Observation
 
 log = logging.getLogger(__name__)
@@ -26,6 +26,17 @@ async def record(session: AsyncSession, observation: Observation) -> tuple[Devic
     """Upsert one observation. Returns the device and whether it is new."""
     device = await _match(session, observation)
     created = device is None
+
+    # Seen at one of its extra addresses (merged in by hand): the same
+    # device, and its primary address and subnet stay what they are.
+    if device is None and observation.mac is None:
+        alias = await _by_extra_address(session, observation.ip)
+        if alias is not None:
+            device, row = alias
+            row.last_seen = observation.seen_at
+            device.last_seen = observation.seen_at
+            await session.flush()
+            return device, False
 
     if device is None:
         device = Device(
@@ -44,6 +55,13 @@ async def record(session: AsyncSession, observation: Observation) -> tuple[Devic
         )
         device.mac = observation.mac
 
+    if (created or device.primary_ip != observation.ip) and observation.ip:
+        # This address is now this device's own. If it was listed as an
+        # extra address of some other device, that listing is out of date.
+        stale = delete(DeviceAddress).where(DeviceAddress.ip == observation.ip)
+        if device.id is not None:
+            stale = stale.where(DeviceAddress.device_id != device.id)
+        await session.execute(stale)
     device.primary_ip = observation.ip
     device.last_seen = observation.seen_at
     if observation.subnet:
@@ -79,6 +97,16 @@ async def _match(session: AsyncSession, observation: Observation) -> Device | No
     # device whether or not that row has a MAC -- creating a second one would
     # split its history in half.
     return await session.scalar(select(Device).where(Device.primary_ip == observation.ip))
+
+
+async def _by_extra_address(session: AsyncSession, ip: str | None):  # type: ignore[no-untyped-def]
+    if not ip:
+        return None
+    row = await session.scalar(select(DeviceAddress).where(DeviceAddress.ip == ip))
+    if row is None:
+        return None
+    device = await session.get(Device, row.device_id)
+    return (device, row) if device is not None else None
 
 
 async def record_all(
