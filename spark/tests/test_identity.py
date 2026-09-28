@@ -388,6 +388,7 @@ class TestPages:
         page = flat(site.get("/devices").text)
         assert '<section class="card suggest-card" id="suggested">' in page
         assert page.count("Review merge…") == 4
+        assert f'<form method="post" action="/devices/{FIREWALL}/merge/dismiss" data-stay>' in page
 
     def test_the_preview_says_why_and_merging_is_the_usual_merge(self, site):
         preview = flat(site.get(f"/devices/{FIREWALL}/merge?other={GW20}").text)

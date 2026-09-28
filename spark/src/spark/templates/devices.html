@@ -154,7 +154,7 @@
         </div>
         <div class="suggest-actions">
           <a class="btn-quiet" href="/devices/{{ s.keep.id }}/merge?other={{ s.other.id }}">Review merge…</a>
-          <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss">
+          <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss" data-stay>
             <input type="hidden" name="other_id" value="{{ s.other.id }}">
             <input type="hidden" name="back" value="/devices#suggested">
             <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>

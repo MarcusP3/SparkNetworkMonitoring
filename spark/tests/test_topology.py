@@ -430,6 +430,15 @@ class TestPages:
         assert "Seen: behind SPRK-AP01 on ZachSwitch, Port 8." in page
         assert "as switch" in page
 
+    def test_the_buttons_keep_the_page_where_it_was(self, site):
+        # Sent in the background and #live swapped (base.html), rather than
+        # a redirect that jumps to an anchor.
+        page = site.get("/map").text
+        assert '<form method="post" action="/map/suggestions/accept-all" data-stay>' in page
+        assert '<form method="post" action="/map/suggestions/3/accept" data-stay>' in page
+        assert '<form method="post" action="/map/suggestions/3/dismiss" data-stay>' in page
+        assert "form.hasAttribute('data-stay')" in page and "live.innerHTML = next.innerHTML" in page
+
     def test_accept_all(self, site):
         response = site.post("/map/suggestions/accept-all")
         assert response.headers["location"] == "/map?accepted=4#suggested"

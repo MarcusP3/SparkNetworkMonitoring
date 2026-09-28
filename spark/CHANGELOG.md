@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — suggestion buttons stay put (2026-09-28)
+
+### Fixed
+
+- **Accept**, **Not right** and **Accept all** on the map, and **Not the
+  same** on Devices, no longer jump the page down to the suggestions card.
+  They are sent in the background and the page's live region is swapped for
+  the answer, so the page stays where it was scrolled to. Without
+  JavaScript they post and redirect as before.
+
+### Tests
+
+1 new in `test_topology.py`, one assertion in `test_identity.py`. A browser
+run checks the scroll position is unchanged after each button. `pytest` 859
+passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — a foldable map, and quieter ports on it (2026-09-28)
 
 ### Changed

@@ -164,6 +164,37 @@
       form.addEventListener('input', update);
       update();
     });
+    // Forms marked data-stay (the suggestion buttons on the map and on
+    // Devices) are sent in the background and the page's #live region is
+    // swapped for the answer, so the page stays exactly where it was scrolled
+    // to. The redirect they would otherwise follow jumps to an anchor. Without
+    // JavaScript they post and redirect as usual. No X-Requested-With: this
+    // is a person clicking, and counts as activity for the sign-in timeout.
+    document.addEventListener('submit', function (event) {
+      var form = event.target;
+      var live = document.getElementById('live');
+      if (!form.hasAttribute('data-stay') || !live || !window.fetch) return;
+      event.preventDefault();
+      var buttons = form.querySelectorAll('button');
+      buttons.forEach(function (b) { b.disabled = true; });
+      fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) })
+        .then(function (r) {
+          if (r.redirected && new URL(r.url).pathname === '/login') {
+            window.location.href = r.url;
+            return Promise.reject('signed out');
+          }
+          return r.ok ? r.text() : Promise.reject(r.status);
+        })
+        .then(function (html) {
+          var next = new DOMParser().parseFromString(html, 'text/html').getElementById('live');
+          if (!next) { window.location.reload(); return; }
+          live.innerHTML = next.innerHTML;
+          document.dispatchEvent(new CustomEvent('spark:live-updated'));
+        })
+        .catch(function (reason) {
+          if (reason !== 'signed out') form.submit();   // the plain way, as a fallback
+        });
+    });
     // A list marked data-autosubmit (the interface picker on a device page)
     // shows its choice as soon as it is made; its Show button is for when
     // JavaScript is off.
