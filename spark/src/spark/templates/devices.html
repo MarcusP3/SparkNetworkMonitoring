@@ -135,6 +135,37 @@
   </section>
   {% endif %}
 
+  {% if suggested %}
+  <section class="card suggest-card" id="suggested">
+    <div class="card-head">
+      <div>
+        <h2>Possible duplicates</h2>
+        <p class="card-sub">SNMP devices report these as one device seen at several
+          addresses. Nothing is merged until you confirm it.</p>
+      </div>
+    </div>
+    <ul class="suggest-list">
+      {% for s, reason in suggested %}
+      <li>
+        <div>
+          <span><a href="/devices/{{ s.other.id }}">{{ s.other.display_name }}</a>
+            is part of <a href="/devices/{{ s.keep.id }}">{{ s.keep.display_name }}</a>?</span>
+          <span class="muted small">{{ reason }}</span>
+        </div>
+        <div class="suggest-actions">
+          <a class="btn-quiet" href="/devices/{{ s.keep.id }}/merge?other={{ s.other.id }}">Review merge…</a>
+          <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss">
+            <input type="hidden" name="other_id" value="{{ s.other.id }}">
+            <input type="hidden" name="back" value="/devices#suggested">
+            <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value %}
   <section class="card filter-bar">
     {# A GET form, so the filter lands in the URL and survives a reload, a

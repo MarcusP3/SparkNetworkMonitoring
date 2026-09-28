@@ -25,6 +25,7 @@
                 cannot reach it. Identity falls back to IP.">IP identity</span>{% endif %}
           {% if device.vendor %} · {{ device.vendor }}{% endif %}
           {% if addresses %} · <a href="#addresses">+{{ addresses | length }} more address{{ 'es' if addresses | length != 1 }}</a>{% endif %}
+          {% if suggested %} · <a href="#suggested">{{ suggested | length }} possible duplicate{{ 's' if suggested | length != 1 }}</a>{% endif %}
           {% if muted %} · <span class="pill neutral" title="On the mute list: checked and shown as usual, but no alerts are sent for it">alerts muted</span>{% endif %}
         </p>
       </div>
@@ -49,6 +50,21 @@
       {% endif %}
     </div>
   </div>
+
+  {% if suggested_into %}
+  {% set s, reason = suggested_into %}
+  <div class="alert info suggest-into">
+    <p>Looks like part of <a href="/devices/{{ s.keep.id }}">{{ s.keep.display_name }}</a>: {{ reason }}</p>
+    <div class="suggest-actions">
+      <a class="btn-quiet" href="/devices/{{ s.keep.id }}/merge?other={{ device.id }}">Review merge…</a>
+      <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss">
+        <input type="hidden" name="other_id" value="{{ device.id }}">
+        <input type="hidden" name="back" value="/devices/{{ device.id }}#addresses">
+        <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   {% if snmp %}
   {% set poll = snmp.poll %}
@@ -256,10 +272,36 @@
           A firewall or server with a leg in several VLANs can show up once per
           address. Merge those duplicates into this device and later sweeps
           count them as this one.
+          {% if snmp_read %}Over SNMP it reports {{ snmp_read.own }} address{{ 'es' if snmp_read.own != 1 }} of its own
+          and {{ snmp_read.arp }} ARP entr{{ 'ies' if snmp_read.arp != 1 else 'y' }}, read {{ snmp_read.at | local('%H:%M %Z') }}.{% endif %}
         </p>
       </div>
     </div>
     {% if merged %}<div class="alert ok">Merged. {{ merged }} address{{ 'es are' if merged != '1' else ' is' }} now part of this device.</div>{% endif %}
+    {% if suggested %}
+    <div class="suggest-block" id="suggested">
+      <h3>Possible duplicates</h3>
+      <p class="muted small">From what SNMP devices report. Nothing is merged until you confirm it.</p>
+      <ul class="suggest-list">
+        {% for s, reason in suggested %}
+        <li>
+          <div>
+            <a href="/devices/{{ s.other.id }}">{{ s.other.display_name }}</a>{% if s.other.primary_ip and s.other.primary_ip != s.other.display_name %} <code>{{ s.other.primary_ip }}</code>{% endif %}
+            <span class="muted small">{{ reason }}</span>
+          </div>
+          <div class="suggest-actions">
+            <a class="btn-quiet" href="/devices/{{ device.id }}/merge?other={{ s.other.id }}">Review merge…</a>
+            <form method="post" action="/devices/{{ device.id }}/merge/dismiss">
+              <input type="hidden" name="other_id" value="{{ s.other.id }}">
+              <input type="hidden" name="back" value="/devices/{{ device.id }}#addresses">
+              <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     <ul class="address-list">
       <li><code>{{ device.primary_ip or '—' }}</code> <span class="muted small">primary</span></li>
       {% for a in addresses %}

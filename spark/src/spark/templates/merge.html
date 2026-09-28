@@ -23,6 +23,7 @@
       will be merged into <strong>{{ k.display_name }}</strong>{% if k.primary_ip and k.primary_ip != k.display_name %} <code>{{ k.primary_ip }}</code>{% endif %},
       and then removed from the device list.
     </p>
+    {% if reason %}<p class="muted small">Suggested by SNMP: {{ reason }}</p>{% endif %}
     <ul class="merge-plan">
       {% if plan.addresses %}
       <li>{{ plan.addresses | join(', ') }} become{{ 's' if plan.addresses | length == 1 }} an extra address of
@@ -59,6 +60,12 @@
         <button type="submit" class="btn-primary">Merge</button>
       </form>
       <a href="/devices/{{ k.id }}" class="btn-quiet">Cancel</a>
+      {% if reason %}
+      <form method="post" action="/devices/{{ k.id }}/merge/dismiss">
+        <input type="hidden" name="other_id" value="{{ o.id }}">
+        <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
+      </form>
+      {% endif %}
     </div>
   </section>
   {% endif %}

@@ -330,8 +330,7 @@ class DeviceAddress(Base):
         ForeignKey("device.id", ondelete="CASCADE"), index=True
     )
     ip: Mapped[str] = mapped_column(String(45), unique=True)
-    # "merged" (by hand) for now; room for "snmp" when a device's own
-    # interface list says which addresses are its.
+    # "merged": by hand, or by accepting what SNMP suggested (identity.py).
     source: Mapped[str] = mapped_column(String(16), default="merged")
     added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -897,6 +896,36 @@ class SnmpInterface(Base):
         return self.alias or self.name or self.descr or f"if{self.if_index}"
 
 
+class SnmpAddress(Base):
+    """What a polled device says about addresses: its own, and its ARP table.
+
+    `own`: an address the device holds on one of its interfaces. A firewall
+    lists its gateway on every VLAN, so a device SPARK found at one of those
+    addresses is the firewall seen again, and the page says so.
+
+    `arp`: an IP and the MAC the device last saw answering at it. Across a
+    router SPARK sees no MACs; the router's ARP table has them.
+
+    Read every 15 minutes (identity.py) and replaced whole each time, so it is
+    what the device said last, not a history. Only ever suggests: nothing here
+    merges devices on its own (migration 11).
+    """
+
+    __tablename__ = "snmp_address"
+    __table_args__ = (
+        UniqueConstraint("snmp_device_id", "kind", "ip", name="uq_snmp_address"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(8))          # "own" or "arp"
+    ip: Mapped[str] = mapped_column(String(45), index=True)
+    mac: Mapped[str | None] = mapped_column(String(17))
+    seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class SnmpHealthSample(Base):
     """One poll's health reading; the SNMP counterpart of check_result.
 
@@ -1065,6 +1094,11 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     },
     "snmp": {
         "poll_interval_seconds": 60,
+    },
+    # Merge suggestions from SNMP answered "Not the same", as
+    # "<kept device id>:<address>" (identity.py).
+    "merge_dismissed": {
+        "pairs": [],
     },
     # Preferences. Empty time zone means "not chosen yet": prefs.py falls
     # back to the zone quiet hours used before this existed, then UTC.

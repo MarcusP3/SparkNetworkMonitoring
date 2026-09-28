@@ -1679,5 +1679,18 @@ a.pill:hover { filter: brightness(1.12); }
 .address-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
 .address-list form { margin: 0; }
 .merge-form select { max-width: 22rem; }
+/* Merge suggestions from SNMP (identity.py): on Devices and a device page. */
+.suggest-block { margin: 0 0 1rem; padding: .75rem .9rem; border: 1px solid var(--border);
+                 border-radius: var(--radius-sm); background: var(--surface-2); }
+.suggest-block h3 { margin: 0 0 .15rem; font-size: .9375rem; }
+.suggest-block > p { margin: 0 0 .6rem; }
+.suggest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .7rem; }
+.suggest-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; }
+.suggest-list li > div:first-child { min-width: 0; flex: 1 1 18rem; }
+.suggest-list .muted { display: block; margin-top: .1rem; }
+.suggest-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.suggest-actions form { margin: 0; }
+.suggest-into p { margin: 0 0 .5rem; }
+.suggest-list a:not(.btn-quiet), .suggest-into a:not(.btn-quiet) { color: var(--accent); }
 .merge-plan { margin: .5rem 0 1rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .4rem; }
 .form-actions form { margin: 0; }

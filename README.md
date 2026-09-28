@@ -191,8 +191,12 @@ segments, and device identity keys on MAC address. Across a router SPARK can
 ping a host but cannot learn its MAC, so devices on routed VLANs fall back to
 IP-based identity — which breaks the moment DHCP hands out a different address.
 
-Two ways to fix it: give the SPARK VM an interface in each VLAN, or wait for
-SNMP collection, which reads MAC-to-IP off the switch for every VLAN at once.
+Two ways to fix it: give the SPARK VM an interface in each VLAN, or put the
+router on the SNMP list. Every 15 minutes SPARK reads the router's ARP table,
+which has the MAC for every VLAN it routes, and fills in the MAC of each
+device there that lacks one. A device that later turns up at a new address is
+listed under **Possible duplicates** (see Duplicates under [Service map](#service-map)) rather
+than followed automatically.
 
 `vlan:` is a display label; nothing reads it functionally. It is editable at
 `/settings` and shows in its own column on the Devices page, which also filters
@@ -300,6 +304,15 @@ targets (with their history), services and anything connected below it move
 across, and later sweeps count that address as the same device. Removing
 the address undoes it: the next sweep finds it as a device of its own. Two
 devices with different MACs, or both polled over SNMP, are not merged.
+
+**Suggested by SNMP.** With the firewall (or any router or multi-homed
+server) on the SNMP list, SPARK reads its own addresses and its ARP table
+every 15 minutes, and a device found at one of its addresses, or at a MAC
+another device already has, is listed under **Possible duplicates**: on the
+Devices page and on both devices' pages. Nothing is merged until you press
+**Merge** on the usual preview. **Not the same** stops that suggestion for
+good. The SNMP **Test** lists "Its own IP addresses" and "ARP table" when the
+device supports them.
 
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a
@@ -697,6 +710,7 @@ spark/
     servicemap.py       the service map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
+    identity.py         SNMP own addresses and ARP tables: merge suggestions, MACs across routers
     charts.py           server-rendered SVG charts; no chart library
     vault.py            encryption for stored credentials (key from secret.key)
     port_catalogue.py   which ports the scan looks at, and what they cost
@@ -748,6 +762,7 @@ spark/
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
+    test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file

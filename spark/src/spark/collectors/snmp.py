@@ -18,6 +18,7 @@ Two things are load-bearing:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import time
 from dataclasses import dataclass, field
@@ -237,6 +238,39 @@ def _format_mac(value: Any) -> str | None:
     return None
 
 
+def usable_ip(ip: str | None) -> bool:
+    """An IPv4 address a sweep could find a device at."""
+    try:
+        address = ipaddress.IPv4Address(ip or "")
+    except ValueError:
+        return False
+    return not (address.is_loopback or address.is_link_local or address.is_multicast
+                or address.is_unspecified or address == ipaddress.IPv4Address("255.255.255.255"))
+
+
+def usable_mac(mac: str | None) -> bool:
+    """A MAC that belongs to one device: not all-zero, broadcast or multicast."""
+    if not mac or mac == "00:00:00:00:00:00":
+        return False
+    return not int(mac[:2], 16) & 1       # the group bit; covers ff:ff:ff:ff:ff:ff
+
+
+def _ipv4_from_typed_index(parts: list[str]) -> str | None:
+    """a.b.c.d from an InetAddress index: type 1 (IPv4), length 4, four octets."""
+    if len(parts) == 6 and parts[0] == "1" and parts[1] == "4":
+        return ".".join(parts[2:])
+    return None
+
+
+def _ip_key(ip: str) -> int:
+    return int(ipaddress.IPv4Address(ip))
+
+
+def _add_pair(pairs: dict[str, str], ip: str | None, mac: str | None) -> None:
+    if ip and usable_ip(ip) and usable_mac(mac):
+        pairs[ip] = mac  # type: ignore[assignment]
+
+
 def scale_sensor_value(raw: float, scale: int | None, precision: int | None) -> float:
     """Apply ENTITY-SENSOR-MIB scaling (RFC 3433).
 
@@ -386,6 +420,51 @@ class SnmpCollector:
                 if count >= max_rows:
                     return results
         return results
+
+    # ---------------- identity ----------------
+
+    async def own_addresses(self) -> list[str]:
+        """The IPv4 addresses the device holds itself, one per interface.
+
+        ipAddrTable first; ipAddressTable if that is empty, keeping unicast
+        only, since it also lists each subnet's broadcast address. Loopback,
+        link-local and the like are left out: no sweep ever finds a device
+        there, so they identify nothing.
+        """
+        found = [str(ip) for ip in (await self.walk(O.IP_AD_ENT_ADDR)).values()]
+        if not found:
+            for index, kind in (await self.walk(O.IP_ADDRESS_TYPE)).items():
+                ip = _ipv4_from_typed_index(index.split("."))
+                if ip and kind == O.IP_ADDRESS_UNICAST:
+                    found.append(ip)
+        return sorted({ip for ip in found if usable_ip(ip)}, key=_ip_key)
+
+    async def arp_table(self) -> dict[str, str]:
+        """IPv4 address -> MAC, from the device's ARP table.
+
+        ipNetToMediaTable (indexed ifIndex.a.b.c.d) first, then its
+        replacement ipNetToPhysicalTable (ifIndex.type.length.octets).
+        Entries marked invalid, incomplete ones with no MAC yet, and
+        broadcast or multicast MACs are skipped.
+        """
+        pairs: dict[str, str] = {}
+        phys = await self.walk_raw(O.IP_NET_TO_MEDIA_PHYS)
+        if phys:
+            kinds = await self.walk(O.IP_NET_TO_MEDIA_TYPE)
+            for index, value in phys.items():
+                parts = index.split(".")
+                ip = ".".join(parts[1:]) if len(parts) == 5 else None
+                if kinds.get(index) != O.ARP_INVALID:
+                    _add_pair(pairs, ip, _format_mac(value))
+            return pairs
+        phys = await self.walk_raw(O.IP_NET_TO_PHYSICAL_PHYS)
+        if phys:
+            kinds = await self.walk(O.IP_NET_TO_PHYSICAL_TYPE)
+            for index, value in phys.items():
+                ip = _ipv4_from_typed_index(index.split(".")[1:])
+                if kinds.get(index) != O.ARP_INVALID:
+                    _add_pair(pairs, ip, _format_mac(value))
+        return pairs
 
     # ---------------- health ----------------
 

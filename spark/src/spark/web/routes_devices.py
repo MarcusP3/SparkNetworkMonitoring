@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
-from .. import events, snmp_config, snmp_discover
+from .. import events, identity, snmp_config, snmp_discover
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
@@ -422,6 +422,8 @@ async def list_devices(
                 "listed": len(snmp_rows) + len(found),
             },
             "snmp_find": await _find_summary(session, find_state, found, refused, now),
+            # Merges SNMP points to, waiting for a yes or no (identity.py).
+            "suggested": [(x, identity.why(x)) for x in await identity.suggestions(session)],
             # How many "Watch selected" just added; None when it was not used.
             "any_watchable": any(r["watchable"] for r in rows),
             "just_watched": int(watched) if watched.isdigit() and len(watched) < 6 else None,

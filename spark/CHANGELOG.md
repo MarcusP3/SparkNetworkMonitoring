@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — merge suggestions from SNMP (2026-09-28)
+
+### Added
+
+- **Every 15 minutes, each device on the SNMP list is asked for its own
+  addresses** (IP-MIB `ipAddrTable`, or `ipAddressTable` on newer agents)
+  **and its ARP table** (`ipNetToMediaTable`, or `ipNetToPhysicalTable`).
+  45 seconds after start, and again shortly after a device joins the SNMP
+  list, rather than a full 15 minutes later.
+- **Possible duplicates**, from those answers. Nothing merges on its own:
+  - a device at one of a polled device's own addresses (the firewall's
+    gateway on each VLAN) is suggested as part of it;
+  - a device with no MAC whose address the ARP table puts at a MAC another
+    device has (a server with VLAN interfaces on one NIC) is suggested as
+    part of that device;
+  - two MAC-less devices at one MAC nobody has yet are suggested as one.
+  Listed on the Devices page, on the kept device's Addresses card, and on
+  the duplicate's own page. **Review merge…** opens the usual preview, which
+  now says why it was suggested. **Not the same** stops that suggestion for
+  good.
+- **MACs across a router.** A device with no MAC gets the one the ARP table
+  gives for its address, when exactly one device is there and no device has
+  that MAC yet. Never for an address a polled device says is its own: that
+  device is a duplicate, and a MAC would block its merge.
+- The device page says how many addresses and ARP entries a polled device
+  reported, and when.
+- SNMP **Test** lists "Its own IP addresses (IP-MIB)".
+
+### Not suggested
+
+Anything the merge would refuse (two different MACs, both polled over SNMP),
+ignored devices, and addresses two routers disagree about.
+
+### Changed
+
+- Migration 11: the `snmp_address` table. A new `merge_dismissed` setting.
+
+### Tests
+
+32 new (`test_identity.py`), including a read of the real net-snmp agent.
+Twenty deliberate breaks each caught. A browser run in both themes and at
+phone width. `pytest` 817 passed with the agent, `smoke_test.py` 76 passed.
+
 ## Unreleased — merge duplicate devices (2026-09-28)
 
 ### Added

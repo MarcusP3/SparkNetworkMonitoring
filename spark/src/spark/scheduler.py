@@ -412,7 +412,38 @@ async def sync_snmp_jobs(
             next_run_time=now + timedelta(seconds=3 + (started * 2) % interval),
         )
         started += 1
+    if started:
+        from .identity import next_run_soon
+
+        next_run_soon(scheduler)
     return len(row_ids)
+
+
+def schedule_identity(config) -> bool:  # type: ignore[no-untyped-def]
+    """Read every polled device's own addresses and ARP table, every 15 minutes.
+
+    Less often than polling: addresses and ARP entries change on the scale of
+    DHCP leases, and a router's ARP table can be the largest walk it serves.
+    Not under the "snmp:" prefix, which sync_snmp_jobs owns.
+    """
+    from .identity import FIRST_RUN_SECONDS, JOB_ID, REFRESH_MINUTES, refresh
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        refresh,
+        "interval",
+        minutes=REFRESH_MINUTES,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_RUN_SECONDS),
+        name="Read SNMP addresses and ARP tables",
+    )
+    return True
 
 
 def snmp_next_runs() -> dict[int, datetime]:

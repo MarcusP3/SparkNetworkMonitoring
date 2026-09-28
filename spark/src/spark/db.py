@@ -31,6 +31,7 @@ from .models import (
     DeviceAddress,
     Notification,
     Setting,
+    SnmpAddress,
     SnmpDevice,
     SnmpHealthRollup,
     SnmpHealthSample,
@@ -262,7 +263,13 @@ async def _add_device_address(session: AsyncSession) -> None:
     await connection.run_sync(DeviceAddress.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 10
+@migration(11, "SNMP-reported addresses, for merge suggestions")
+async def _add_snmp_address(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(SnmpAddress.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 11
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

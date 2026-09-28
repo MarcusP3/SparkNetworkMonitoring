@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, hierarchy, limits, merge, snmp_alerts
+from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -277,6 +277,8 @@ async def device_page(
         # Devices known only by address first: those are the usual duplicates.
         key=lambda d: (d.mac is not None, d.display_name.lower()),
     )
+    suggested = await identity.suggestions(session)
+    snmp_read = (await identity.reports(session)).read_at.get(device.id)
 
     return templates.TemplateResponse(
         request,
@@ -299,6 +301,12 @@ async def device_page(
             "addresses": addresses,
             "merge_choices": merge_choices,
             "merged": merged if merged.isdigit() else "",
+            # SNMP says these are this device (merge them in), or that this
+            # device is part of another (merge it there).
+            "suggested": [(x, identity.why(x)) for x in suggested if x.keep.id == device.id],
+            "suggested_into": next(((x, identity.why(x)) for x in suggested
+                                    if x.other.id == device.id), None),
+            "snmp_read": snmp_read,
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
@@ -443,10 +451,12 @@ async def merge_preview(
         error = None
     except merge.MergeError as exc:
         plan, error = None, str(exc)
+    reason = next((identity.why(x) for x in await identity.suggestions(session)
+                   if x.keep.id == device_id and x.other.id == other_id), None)
     return templates.TemplateResponse(
         request, "merge.html",
         {"config": config, "user": user, "title": "Merge devices", "plan": plan,
-         "error": error, "device_id": device_id},
+         "error": error, "device_id": device_id, "reason": reason},
         status_code=400 if error else 200,
     )
 
@@ -469,6 +479,26 @@ async def merge_devices(
         return redirect(f"/devices/{device_id}")
     await session.commit()
     return redirect(f"/devices/{device_id}?merged={len(done.addresses)}#addresses")
+
+
+@router.post("/devices/{device_id}/merge/dismiss")
+async def dismiss_suggestion(
+    device_id: ItemId,
+    other_id: str = Form("", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """"Not the same": this suggestion is not offered again."""
+    other = await session.get(Device, limits.as_id(other_id) or 0)
+    if other is not None and other.primary_ip:
+        await identity.dismiss(session, device_id, other.primary_ip)
+        await session.commit()
+    # Back to where the button was: the Devices list, or either device's page.
+    allowed = {"/devices#suggested", f"/devices/{device_id}#addresses"}
+    if other is not None:
+        allowed.add(f"/devices/{other.id}#addresses")
+    return redirect(back if back in allowed else f"/devices/{device_id}#addresses")
 
 
 @router.post("/devices/{device_id}/addresses/{address_id}/delete")

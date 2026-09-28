@@ -180,7 +180,19 @@ LLDP_REM_CHASSIS_ID = "1.0.8802.1.1.2.1.4.1.1.5"
 # it returns MAC-to-IP for every segment the device routes, which SPARK
 # cannot learn on its own from across a router boundary.
 IP_NET_TO_MEDIA_PHYS = "1.3.6.1.2.1.4.22.1.2"
+IP_NET_TO_MEDIA_TYPE = "1.3.6.1.2.1.4.22.1.4"      # 2 = invalid (a dead entry)
 IP_NET_TO_PHYSICAL_PHYS = "1.3.6.1.2.1.4.35.1.4"
+IP_NET_TO_PHYSICAL_TYPE = "1.3.6.1.2.1.4.35.1.6"   # same values
+ARP_INVALID = 2
+
+# IP-MIB - the device's own addresses, one per interface. A firewall with a
+# gateway on every VLAN lists them all here, which is how SPARK knows those
+# addresses are one device. ipAddrTable (IPv4, indexed a.b.c.d) is the old
+# table and the one nearly every agent still serves; ipAddressTable (indexed
+# type.length.octets) replaced it and is the fallback.
+IP_AD_ENT_ADDR = "1.3.6.1.2.1.4.20.1.1"
+IP_ADDRESS_TYPE = "1.3.6.1.2.1.4.34.1.4"          # 1 unicast, 2 anycast, 3 broadcast
+IP_ADDRESS_UNICAST = 1
 
 # --------------------------------------------------------------------------
 # Vendor identification by sysObjectID prefix
@@ -276,4 +288,7 @@ CAPABILITY_PROBES: list[CapabilityProbe] = [
     CapabilityProbe("arp", "ARP table",
                     (IP_NET_TO_MEDIA_PHYS,),
                     notes="On a router this supplies MAC-to-IP for every VLAN"),
+    CapabilityProbe("own_addresses", "Its own IP addresses (IP-MIB)",
+                    (IP_AD_ENT_ADDR,),
+                    notes="Recognises this device at its other addresses"),
 ]
