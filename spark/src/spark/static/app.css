@@ -402,6 +402,14 @@ button { font: inherit; cursor: pointer; }
   font-size: .8125rem;
 }
 .btn-quiet:hover { background: var(--surface-2); color: var(--text); }
+/* "Watched" on the devices list: a status, not a button, but the same box as
+   its neighbours so the row keeps one shape. Status green, no hover. */
+.btn-quiet.is-watched, .btn-quiet.is-watched:hover {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+  cursor: default;
+}
 
 /* ---------- Alerts ---------- */
 

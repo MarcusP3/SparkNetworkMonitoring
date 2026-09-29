@@ -466,7 +466,7 @@
           <td class="actions">
             <a class="btn-quiet" href="/devices/{{ device.id }}">Details</a>
             {% if row.watched %}
-              <span class="pill ok" title="A target is watching this device">watched</span>
+              <span class="btn-quiet is-watched" title="A target is watching this device">Watched</span>
             {% else %}
               <form method="post" action="/devices/{{ device.id }}/watch">
                 <button type="submit" class="btn-quiet">Watch</button>

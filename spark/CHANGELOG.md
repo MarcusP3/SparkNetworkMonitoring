@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased — larger icons in their tiles (2026-09-29)
+## Unreleased — larger tile icons, and Watched as a button-shaped status (2026-09-29)
 
 ### Changed
 
+- "Watched" on the Devices list is the same box as Details, Watch and
+  Ignore, in status green, instead of a rounded pill that changed the row's
+  shape.
 - The icons in the tinted tiles were half the tile's width and read as
   specks. Now about two thirds: 26 px in a card's 40 px tile, 28 px in a
   page's 44 px, 22 px in a dashboard tile's 36 px.
