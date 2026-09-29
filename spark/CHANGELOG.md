@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — larger icons in their tiles (2026-09-29)
+
+### Changed
+
+- The icons in the tinted tiles were half the tile's width and read as
+  specks. Now about two thirds: 26 px in a card's 40 px tile, 28 px in a
+  page's 44 px, 22 px in a dashboard tile's 36 px.
+
 ## Unreleased — drive health and TrueNAS alerts over the API (2026-09-29)
 
 ### Added

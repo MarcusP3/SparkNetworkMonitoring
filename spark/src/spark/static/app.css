@@ -325,7 +325,9 @@ main.centered {
   height: 20px;
   display: block;
 }
-.stat-icon .icon { width: 18px; height: 18px; }
+/* Icons fill about two thirds of their tile: at half, they read as specks. */
+.card-icon .icon { width: 26px; height: 26px; }
+.stat-icon .icon { width: 22px; height: 22px; }
 
 .card-head h2 { margin: 0; font-size: 1.0625rem; font-weight: 650; }
 .card-sub { margin: .1rem 0 0; font-size: .8125rem; color: var(--text-muted); }
@@ -666,7 +668,7 @@ a.stat:hover {
   background: var(--tile-1);
   color: var(--accent);
 }
-.page-icon .icon { width: 22px; height: 22px; }
+.page-icon .icon { width: 28px; height: 28px; }
 
 .page-head h1 {
   margin: 0;
