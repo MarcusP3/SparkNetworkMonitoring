@@ -297,7 +297,18 @@ async def _add_api_credential(session: AsyncSession) -> None:
     await connection.run_sync(ApiCredential.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 15
+@migration(16, "Drive health and TrueNAS alerts read over the API")
+async def _add_api_readings(session: AsyncSession) -> None:
+    """A column, so tolerant of it already being there (see migration 4)."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("api_credential")}
+    )
+    if "readings" not in existing:
+        await session.execute(text("ALTER TABLE api_credential ADD COLUMN readings JSON"))
+
+
+CURRENT_VERSION = 16
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

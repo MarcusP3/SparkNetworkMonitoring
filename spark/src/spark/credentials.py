@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts, truenas
+from . import alerts, snmp_alerts, truenas, truenas_health
 from .db import session_scope
 from .engine.state import human_duration
 from .models import AlertState, ApiCredential, Device, utcnow
@@ -146,7 +146,7 @@ async def update(session: AsyncSession, vault: Vault, row: ApiCredential, *, nam
     key = (api_key or "").strip()
     if address != row.host or key:
         row.cert_sha256 = row.pending_sha256 = None
-        row.last_ok_at = row.last_info = None
+        row.last_ok_at = row.last_info = row.readings = None
         row.last_error = None
         # No longer checked until trusted again: an alert about the old
         # address or key would otherwise stand for ever.
@@ -182,6 +182,14 @@ async def test(session: AsyncSession, vault: Vault, row: ApiCredential) -> bool:
     row.last_checked_at = row.last_ok_at = now
     row.last_error = row.pending_sha256 = None
     row.last_info = {"version": info.version, "hostname": info.hostname}
+    # Each part only if TrueNAS answered it: one it would not leaves the last
+    # reading of that part standing.
+    readings = dict(row.readings or {})
+    for part, value in info.readings.items():
+        if value is not None:
+            readings[part] = value
+    readings["read_at"] = now.isoformat()
+    row.readings = readings
     return True
 
 
@@ -240,10 +248,12 @@ def _alert_key(cred_id: int) -> str:
 
 
 async def forget_alert(session: AsyncSession, cred_id: int) -> None:
-    """Drop the alert state, silently: removed, or no longer checked."""
+    """Drop its alert states, silently: removed, or no longer checked. The
+    API's own, and its drives' and TrueNAS alerts' (truenas_health.py)."""
     found = await session.get(AlertState, _alert_key(cred_id))
     if found is not None:
         await session.delete(found)
+    await truenas_health.forget(session, cred_id)
 
 
 async def check_all(config) -> int:  # type: ignore[no-untyped-def]
@@ -270,8 +280,12 @@ async def check_one(config, cred_id: int) -> bool:  # type: ignore[no-untyped-de
         row = await session.get(ApiCredential, cred_id)
         if row is None or not row.enabled or row.cert_sha256 is None:
             return False
+        before = dict(row.readings or {})
         worked = await test(session, vault_for(config), row)
-        await evaluate(session, row, worked, utcnow())
+        now = utcnow()
+        await evaluate(session, row, worked, now)
+        if worked:
+            await truenas_health.evaluate(session, row, before, now)
     return worked
 
 

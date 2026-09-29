@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — drive health and TrueNAS alerts over the API (2026-09-29)
+
+### Added
+
+- **Drive health from the TrueNAS API**, read by the 5-minute credential
+  check over the same login, with query methods only. Checked first with a
+  read-only probe against a real TrueNAS 25.10.6 box and a Read-only
+  Administrator key: `pool.query` (status, last scrub, and the topology,
+  whose DISK leaves carry each drive's state and read/write/checksum error
+  counts), `disk.query`, `disk.temperatures`, `alert.list`. `disk.query`'s
+  own `pool` is empty on 25.10, so a drive's pool comes from the topology.
+- **The Storage card** gains a drive table (model, size, pool and vdev,
+  state, errors r/w/c, temperature), a Last scrub column, and TrueNAS's
+  current alerts. Shown on devices without SNMP too. Serials are not kept.
+- **Two rules** under Settings → Alerts → APIs, on by default: a drive not
+  ONLINE or with any errors (again once ONLINE with none); TrueNAS's own
+  alerts at WARNING and above, once each, and again when cleared or
+  dismissed in TrueNAS.
+
+### Changed
+
+- Migration 16: `api_credential.readings`.
+- A TrueNAS call that times out or loses its connection is now a
+  TrueNASError with a readable message, so it shows on the credential
+  rather than stopping the check.
+
+### Tests
+
+22 new (`test_truenas_health.py`), with fixtures in the shapes the real box
+returned; nineteen deliberate breaks each caught. `pytest` 1110 passed with
+the agent, `smoke_test.py` 76 passed. Checked in a browser in both themes
+and at phone width.
+
 ## Unreleased — the API on the device page, checked every 5 minutes (2026-09-29)
 
 ### Added

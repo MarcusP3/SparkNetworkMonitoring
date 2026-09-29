@@ -138,6 +138,8 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
                                   "Drive temperature minutes"),
         # API credentials (credentials.py).
         "api_down": bool(form.get("api_down")),
+        "drive_errors": bool(form.get("drive_errors")),
+        "truenas_alerts": bool(form.get("truenas_alerts")),
     }
     rules.update(checked)
     await save_setting(session, SETTING, rules)

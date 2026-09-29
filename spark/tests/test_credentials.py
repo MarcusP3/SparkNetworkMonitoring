@@ -33,6 +33,7 @@ from spark.models import ApiCredential, Device
 from spark.vault import vault_for
 
 PASSWORD = "correct horse battery"
+DENIED = object()
 GOOD_KEY = "1-goodkeygoodkeygoodkey"
 
 
@@ -63,6 +64,8 @@ class FakeTrueNAS:
         self.tmp = Path(tempfile.mkdtemp(prefix="spark-tn-"))
         self.received: list[dict] = []
         self.paths: list[str] = []
+        # method -> result, or DENIED; anything else is "Method not found".
+        self.answers: dict = {}
         self.use("first")
 
     def use(self, name: str) -> None:
@@ -81,6 +84,12 @@ class FakeTrueNAS:
                 result = msg["params"] == [GOOD_KEY]
             elif msg["method"] == "system.info":
                 result = {"version": "25.10.1", "hostname": "truenas"}
+            elif msg["method"] in self.answers and self.answers[msg["method"]] is not DENIED:
+                result = self.answers[msg["method"]]
+            elif msg["method"] in self.answers:
+                await ws.send(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "error": {
+                    "code": 13, "message": "Not authorized", "data": {"reason": "Not authorized"}}}))
+                continue
             else:
                 await ws.send(json.dumps({"jsonrpc": "2.0", "id": msg["id"],
                                           "error": {"code": -32601, "message": "Method not found"}}))
@@ -131,6 +140,7 @@ def fake():
 @pytest.fixture(autouse=True)
 def _fresh(fake):
     fake.received.clear()
+    fake.answers = {}
     fake.use("first")
 
 

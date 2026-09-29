@@ -914,6 +914,8 @@ async def save_alert_rules(
     drive_celsius: str = Form("", max_length=limits.SHORT),
     drive_minutes: str = Form("", max_length=limits.SHORT),
     api_down: str = Form("", max_length=limits.SHORT),
+    drive_errors: str = Form("", max_length=limits.SHORT),
+    truenas_alerts: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -931,7 +933,7 @@ async def save_alert_rules(
             "pool_space_percent": pool_space_percent, "disk_space": disk_space,
             "disk_space_percent": disk_space_percent, "drive_temperature": drive_temperature,
             "drive_celsius": drive_celsius, "drive_minutes": drive_minutes,
-            "api_down": api_down,
+            "api_down": api_down, "drive_errors": drive_errors, "truenas_alerts": truenas_alerts,
         })
     except snmp_alerts.RuleError as exc:
         return await _render(request, session, config, user, section="alerts",

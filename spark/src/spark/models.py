@@ -1039,6 +1039,9 @@ class ApiCredential(Base, TimestampMixin):
     last_ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_error: Mapped[str | None] = mapped_column(Text)
     last_info: Mapped[dict | None] = mapped_column(JSON)       # version, hostname
+    # What the last good check read: pools, drives, TrueNAS's alerts, and
+    # read_at (truenas.parse; migration 16).
+    readings: Mapped[dict | None] = mapped_column(JSON)
 
 
 class SnmpHealthSample(Base):
@@ -1213,6 +1216,10 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "drive_temperature": True, "drive_celsius": 50, "drive_minutes": 10,
         # API credentials (credentials.py): two failed checks in a row.
         "api_down": True,
+        # Over the TrueNAS API (truenas_health.py): a drive not ONLINE or with
+        # any errors; TrueNAS's own alerts at WARNING or above.
+        "drive_errors": True,
+        "truenas_alerts": True,
     },
     "snmp": {
         "poll_interval_seconds": 60,

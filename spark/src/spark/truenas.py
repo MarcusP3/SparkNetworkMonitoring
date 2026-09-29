@@ -14,6 +14,21 @@ the first Test fetches it and sends nothing else, a person presses Trust
 after reading its SHA-256 fingerprint, and from then on SPARK sends the key
 only down a connection whose certificate matches. A replaced certificate
 stops everything until it is trusted again.
+
+Each Test (and the 5-minute check, credentials.py) also reads storage over
+the same login, with query methods only, which a Read-only Administrator
+may call -- checked against a real 25.10 box:
+
+  * ``pool.query``: each pool's status and last scrub, and its topology,
+    whose DISK leaves carry each drive's status and read/write/checksum
+    error counts, and which pool and vdev it belongs to;
+  * ``disk.query``: model, size, type and bus of every disk;
+  * ``disk.temperatures``: {"sda": 43.0, ...}, None for a disk with no sensor;
+  * ``alert.list``: TrueNAS's own alerts (SMART failures among them).
+
+A method that fails (a role without the right, an older TrueNAS) leaves its
+part out rather than failing the check. `parse` turns the answers into the
+small, plain shape stored on the credential (`ApiCredential.readings`).
 """
 
 from __future__ import annotations
@@ -21,12 +36,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
+
+log = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10.0
 CALL_TIMEOUT = 30.0
@@ -81,6 +100,7 @@ class Info:
     version: str | None
     hostname: str | None
     fingerprint: str
+    readings: dict = field(default_factory=dict)
 
 
 class Client:
@@ -96,16 +116,21 @@ class Client:
         ident = self._next
         await self.ws.send(json.dumps({"jsonrpc": "2.0", "id": ident, "method": method,
                                        "params": list(params)}))
-        async with asyncio.timeout(CALL_TIMEOUT):
-            while True:
-                message = json.loads(await self.ws.recv())
-                if message.get("id") != ident:
-                    continue            # an event notification; not ours
-                if "error" in message:
-                    error = message["error"] or {}
-                    detail = (error.get("data") or {}).get("reason") or error.get("message")
-                    raise TrueNASError(f"{method}: {detail or 'error'}")
-                return message.get("result")
+        try:
+            async with asyncio.timeout(CALL_TIMEOUT):
+                while True:
+                    message = json.loads(await self.ws.recv())
+                    if message.get("id") != ident:
+                        continue            # an event notification; not ours
+                    if "error" in message:
+                        error = message["error"] or {}
+                        detail = (error.get("data") or {}).get("reason") or error.get("message")
+                        raise TrueNASError(f"{method}: {detail or 'error'}")
+                    return message.get("result")
+        except TimeoutError:
+            raise TrueNASError(f"{method}: no answer within {CALL_TIMEOUT:.0f} seconds.") from None
+        except WebSocketException as exc:
+            raise TrueNASError(f"{method}: the connection closed ({exc}).") from None
 
 
 class session:  # noqa: N801 - used as `async with truenas.session(...)`
@@ -149,8 +174,136 @@ class session:  # noqa: N801 - used as `async with truenas.session(...)`
 
 
 async def test(host: str, api_key: str, pinned: str | None) -> Info:
-    """Log in and read who answered. Raises TrueNASError (or a subclass)."""
+    """Log in, read who answered, and read storage. Raises TrueNASError (or
+    a subclass) if the login or system.info fails; storage it cannot read
+    is left out of `readings` instead."""
     async with session(host, api_key, pinned) as client:
         info = await client.call("system.info") or {}
+        readings = await read_storage(client)
         return Info(version=info.get("version"), hostname=info.get("hostname"),
-                    fingerprint=client.fingerprint)
+                    fingerprint=client.fingerprint, readings=readings)
+
+
+# --------------------------------------------------------------------------
+# Storage
+# --------------------------------------------------------------------------
+
+# TrueNAS's alert levels, least to most severe.
+LEVELS = ("INFO", "NOTICE", "WARNING", "ERROR", "CRITICAL", "ALERT", "EMERGENCY")
+MAX_ALERTS = 50
+MAX_TEXT = 500
+
+
+async def _optional(client: Client, method: str) -> Any:
+    try:
+        return await client.call(method)
+    except TrueNASError as exc:
+        log.info("TrueNAS: %s", exc)
+        return None
+
+
+async def read_storage(client: Client) -> dict:
+    return parse(pools=await _optional(client, "pool.query"),
+                 disks=await _optional(client, "disk.query"),
+                 temperatures=await _optional(client, "disk.temperatures"),
+                 alerts=await _optional(client, "alert.list"))
+
+
+def _when(value: Any) -> str | None:
+    """TrueNAS dates arrive as {"$date": milliseconds}. ISO 8601, UTC."""
+    if isinstance(value, dict):
+        value = value.get("$date")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _text(value: Any, limit: int = 128) -> str | None:
+    return str(value)[:limit] if value not in (None, "") else None
+
+
+def _members(node: Any, *, pool: str, group: str, vdev: str | None, out: dict) -> None:
+    """The DISK leaves under one topology node."""
+    if not isinstance(node, dict):
+        return
+    if str(node.get("type", "")).upper() == "DISK":
+        name = _text(node.get("disk")) or _text(node.get("name")) or "?"
+        stats = node.get("stats") or {}
+        out[name] = {"pool": pool, "group": group, "vdev": vdev,
+                     "status": _text(node.get("status"), 32),
+                     "read_errors": _count(stats.get("read_errors")),
+                     "write_errors": _count(stats.get("write_errors")),
+                     "checksum_errors": _count(stats.get("checksum_errors"))}
+        return
+    for child in node.get("children") or []:
+        _members(child, pool=pool, group=group, vdev=_text(node.get("name")), out=out)
+
+
+def parse(*, pools: Any, disks: Any, temperatures: Any, alerts: Any) -> dict:
+    """The answers, cut down to what SPARK shows and alerts on. A part is
+    None when TrueNAS did not answer it; an empty list when it had none."""
+    out: dict[str, Any] = {"pools": None, "drives": None, "alerts": None}
+    members: dict[str, dict] = {}
+    if isinstance(pools, list):
+        out["pools"] = []
+        for p in pools:
+            if not isinstance(p, dict) or not p.get("name"):
+                continue
+            name = str(p["name"])[:128]
+            scan = p.get("scan") if isinstance(p.get("scan"), dict) else {}
+            out["pools"].append({
+                "name": name, "status": _text(p.get("status"), 32), "healthy": p.get("healthy") is True,
+                "scrub": {"function": _text(scan.get("function"), 32), "state": _text(scan.get("state"), 32),
+                          "end": _when(scan.get("end_time")), "errors": _count(scan.get("errors"))}
+                         if scan else None})
+            topology = p.get("topology") if isinstance(p.get("topology"), dict) else {}
+            for group, nodes in topology.items():
+                for node in nodes or []:
+                    _members(node, pool=name, group=str(group)[:32], vdev=None, out=members)
+
+    temps = temperatures if isinstance(temperatures, dict) else {}
+    if isinstance(disks, list) or members:
+        drives: dict[str, dict] = {}
+        for d in disks if isinstance(disks, list) else []:
+            if not isinstance(d, dict) or not d.get("name"):
+                continue
+            size = d.get("size")
+            drives[str(d["name"])[:128]] = {
+                "model": _text(d.get("model")), "type": _text(d.get("type"), 16),
+                "bus": _text(d.get("bus"), 16),
+                "size": size if isinstance(size, int) and not isinstance(size, bool) else None}
+        for name, member in members.items():
+            drives.setdefault(name, {"model": None, "type": None, "bus": None, "size": None})
+            drives[name].update(member)
+        out["drives"] = []
+        for name in sorted(drives):
+            drive = {"name": name, "pool": None, "group": None, "vdev": None, "status": None,
+                     "read_errors": 0, "write_errors": 0, "checksum_errors": 0, **drives[name]}
+            celsius = temps.get(name)
+            drive["celsius"] = float(celsius) if isinstance(celsius, (int, float)) \
+                and not isinstance(celsius, bool) else None
+            out["drives"].append(drive)
+
+    if isinstance(alerts, list):
+        kept = []
+        for a in alerts:
+            if not isinstance(a, dict) or a.get("dismissed"):
+                continue
+            level = str(a.get("level") or "INFO").upper()
+            kept.append({
+                "uuid": _text(a.get("uuid") or a.get("id"), 40)
+                        or f"{a.get('klass')}:{a.get('key')}"[:40],
+                "level": level if level in LEVELS else "INFO",
+                "klass": _text(a.get("klass"), 64),
+                "text": _text(a.get("formatted") or a.get("text"), MAX_TEXT) or "",
+                "at": _when(a.get("datetime"))})
+        kept.sort(key=lambda a: -LEVELS.index(a["level"]))
+        out["alerts"] = kept[:MAX_ALERTS]
+    return out

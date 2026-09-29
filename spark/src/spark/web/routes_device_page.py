@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
+from .. import truenas_health
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -282,6 +283,10 @@ async def device_page(
     discovery, placed = await topology.suggestions(session)
     snmp_read = (await identity.reports(session)).read_at.get(device.id)
     now = utcnow()
+    apis = [dict(a, ago=_ago(a["row"].last_checked_at, now))
+            for a in await credentials.for_device(session, device)]
+    hot = float((await snmp_alerts.load(session)).get("drive_celsius") or 50)
+    api_storage = next((v for a in apis if (v := truenas_health.view(a["row"], hot=hot))), None)
 
     return templates.TemplateResponse(
         request,
@@ -317,8 +322,9 @@ async def device_page(
             "map_mode": await topology.get_mode(session),
             "auto_placed": await topology.placed_automatically(session, device),
             # Its API credentials and whether they work (credentials.py).
-            "apis": [dict(a, ago=_ago(a["row"].last_checked_at, now))
-                     for a in await credentials.for_device(session, device)],
+            "apis": apis,
+            # Drive health and TrueNAS's alerts, for the Storage card.
+            "api_storage": api_storage,
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )

@@ -1,5 +1,118 @@
 {% extends "base.html" %}
 {% block content %}
+{% macro storage_card(st, api) %}
+  <section class="card" id="storage">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span>
+      <div>
+        <h2>Storage</h2>
+        <p class="card-sub">
+          Read every 5 minutes{% if st.read_at %}, last at {{ st.read_at | local('%H:%M %Z') }}{% endif %}{% if api %};
+          drive health from the TrueNAS API{% if api.read_at %}, last at {{ api.read_at | local('%H:%M %Z') }}{% endif %}{% endif %}.
+          Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
+        </p>
+      </div>
+    </div>
+    {% macro bar(pct, over) -%}
+    <svg class="space-bar{% if over %} over{% endif %}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="track" x="0" y="0" width="100" height="6" rx="3"/><rect class="fill" x="0" y="0" width="{{ pct }}" height="6" rx="3"/></svg>
+    {%- endmacro %}
+    {% set snmp_pools = st.pools | map(attribute='row.name') | list %}
+    {% set api_pools = api.pools if api else {} %}
+    {% macro scrub(name) -%}
+      {%- set a = api_pools.get(name) -%}
+      {%- if a and a.scrub_state -%}
+        {%- if a.scrub_state == 'FINISHED' and a.scrub_end -%}
+          {{ a.scrub_end | local('%b %-d') }} · <span class="{{ 'warn-text' if a.scrub_errors else 'muted' }}">{{ a.scrub_errors or 0 }} error{{ 's' if a.scrub_errors != 1 }}</span>
+        {%- else -%}<span class="muted">{{ a.scrub_state | lower }}</span>{%- endif -%}
+      {%- else -%}<span class="muted">—</span>{%- endif -%}
+    {%- endmacro %}
+    {% if st.pools or api_pools %}
+    <div class="table-scroll">
+    <table class="table compact storage-table">
+      <thead><tr><th>Pool</th><th>Health</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th>{% if api %}<th>Last scrub</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for p in st.pools %}
+        <tr>
+          <td>{{ p.row.name }}</td>
+          <td>{% if p.health %}<span class="pill {{ p.kind }}">{{ p.health }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
+          {% if p.pct is not none %}
+          <td>{{ p.used }} of {{ p.size }} <span class="{{ 'warn-text' if p.over else 'muted' }} small">({{ p.pct | round | int }}%)</span></td>
+          <td class="num">{{ p.free }}</td>
+          <td class="bar-col">{{ bar(p.bar, p.over) }}</td>
+          {% else %}
+          <td class="muted small" colspan="3">Health only (TrueNAS gives no space for this pool)</td>
+          {% endif %}
+          {% if api %}<td class="small">{{ scrub(p.row.name) }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+        {% for name, a in api_pools.items() if name not in snmp_pools %}
+        <tr>
+          <td>{{ name }}</td>
+          <td><span class="pill {{ 'ok' if a.healthy else 'bad' }}">{{ a.status or '—' }}</span></td>
+          <td class="muted small" colspan="3">Space is read over SNMP</td>
+          <td class="small">{{ scrub(name) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if api and api.drives %}
+    <div class="table-scroll">
+    <table class="table compact storage-table drive-table">
+      <thead><tr><th>Drive</th><th>Model</th><th class="num">Size</th><th>Pool</th><th>State</th><th class="num" title="Read / write / checksum errors counted by ZFS">Errors <span class="muted">r/w/c</span></th><th class="num">Temp</th></tr></thead>
+      <tbody>
+        {% for d in api.drives %}
+        <tr>
+          <td><code>{{ d.name }}</code></td>
+          <td class="muted small">{{ d.model or '—' }}</td>
+          <td class="num">{{ d.size_str }}</td>
+          <td class="small">{% if d.pool %}{{ d.pool }}{% if d.vdev %} <span class="muted">· {{ d.vdev }}</span>{% endif %}{% else %}<span class="muted">not in a pool</span>{% endif %}</td>
+          <td>{% if d.ok is none %}<span class="muted small">—</span>{% else %}<span class="pill {{ 'ok' if d.status == 'ONLINE' else 'bad' }}">{{ d.status or 'unknown' }}</span>{% endif %}</td>
+          <td class="num"><span class="{{ 'warn-text' if d.errors else 'muted' }}">{{ d.read_errors }} / {{ d.write_errors }} / {{ d.checksum_errors }}</span></td>
+          <td class="num">{% if d.celsius is not none %}<span class="{{ 'warn-text' if d.hot else '' }}">{{ '%.0f' | format(d.celsius) }}°C</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% elif st.drives %}
+    <div class="drive-temps">
+      <span class="muted small">Drives</span>
+      {% for d in st.drives %}
+      <span class="pill {{ 'warn' if d.hot else 'neutral' }}" title="{{ d.row.name }}: {{ '%.0f' | format(d.row.celsius) }}°C{% if d.hot %}, at or over {{ st.hot | int }}°C{% endif %}">{{ d.row.name }} <span class="muted">{{ '%.0f' | format(d.row.celsius) }}°C</span></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if st.filesystems %}
+    <div class="table-scroll">
+    <table class="table compact storage-table">
+      <thead><tr><th>Filesystem</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
+      <tbody>
+        {% for f in st.filesystems %}
+        <tr>
+          <td><code>{{ f.row.name }}</code></td>
+          <td>{{ f.used }} of {{ f.size }} <span class="{{ 'warn-text' if f.over else 'muted' }} small">({{ f.pct | round | int }}%)</span></td>
+          <td class="num">{{ f.free }}</td>
+          <td class="bar-col">{{ bar(f.bar, f.over) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if api and api.alerts %}
+    <div class="truenas-alerts">
+      <h3 class="sub-title">TrueNAS alerts</h3>
+      <ul>
+        {% for a in api.alerts %}
+        <li><span class="pill {{ a.pill }}">{{ a.level | lower }}</span> {{ a.text }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+{% endmacro %}
 <div class="page device-page">
   <div class="page-head">
     <div class="page-title">
@@ -157,70 +270,7 @@
   </section>
 
   {% set st = snmp.storage %}
-  {% if st.pools or st.drives or st.filesystems %}
-  <section class="card" id="storage">
-    <div class="card-head">
-      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span>
-      <div>
-        <h2>Storage</h2>
-        <p class="card-sub">
-          Read every 5 minutes{% if st.read_at %}, last at {{ st.read_at | local('%H:%M %Z') }}{% endif %}.
-          Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
-        </p>
-      </div>
-    </div>
-    {% macro bar(pct, over) -%}
-    <svg class="space-bar{% if over %} over{% endif %}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="track" x="0" y="0" width="100" height="6" rx="3"/><rect class="fill" x="0" y="0" width="{{ pct }}" height="6" rx="3"/></svg>
-    {%- endmacro %}
-    {% if st.pools %}
-    <div class="table-scroll">
-    <table class="table compact storage-table">
-      <thead><tr><th>Pool</th><th>Health</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
-      <tbody>
-        {% for p in st.pools %}
-        <tr>
-          <td>{{ p.row.name }}</td>
-          <td>{% if p.health %}<span class="pill {{ p.kind }}">{{ p.health }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
-          {% if p.pct is not none %}
-          <td>{{ p.used }} of {{ p.size }} <span class="{{ 'warn-text' if p.over else 'muted' }} small">({{ p.pct | round | int }}%)</span></td>
-          <td class="num">{{ p.free }}</td>
-          <td class="bar-col">{{ bar(p.bar, p.over) }}</td>
-          {% else %}
-          <td class="muted small" colspan="3">Health only (TrueNAS gives no space for this pool)</td>
-          {% endif %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% endif %}
-    {% if st.drives %}
-    <div class="drive-temps">
-      <span class="muted small">Drives</span>
-      {% for d in st.drives %}
-      <span class="pill {{ 'warn' if d.hot else 'neutral' }}" title="{{ d.row.name }}: {{ '%.0f' | format(d.row.celsius) }}°C{% if d.hot %}, at or over {{ st.hot | int }}°C{% endif %}">{{ d.row.name }} <span class="muted">{{ '%.0f' | format(d.row.celsius) }}°C</span></span>
-      {% endfor %}
-    </div>
-    {% endif %}
-    {% if st.filesystems %}
-    <div class="table-scroll">
-    <table class="table compact storage-table">
-      <thead><tr><th>Filesystem</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
-      <tbody>
-        {% for f in st.filesystems %}
-        <tr>
-          <td><code>{{ f.row.name }}</code></td>
-          <td>{{ f.used }} of {{ f.size }} <span class="{{ 'warn-text' if f.over else 'muted' }} small">({{ f.pct | round | int }}%)</span></td>
-          <td class="num">{{ f.free }}</td>
-          <td class="bar-col">{{ bar(f.bar, f.over) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% endif %}
-  </section>
-  {% endif %}
+  {% if st.pools or st.drives or st.filesystems or api_storage %}{{ storage_card(st, api_storage) }}{% endif %}
 
   <section class="card" id="interfaces">
     <div class="card-head">
@@ -351,6 +401,7 @@
     {% endif %}
   </section>
   {% else %}
+  {% if api_storage %}{{ storage_card({'pools': [], 'drives': [], 'filesystems': [], 'read_at': none}, api_storage) }}{% endif %}
   <section class="card">
     <div class="card-head">
       <div>

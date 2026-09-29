@@ -1006,6 +1006,16 @@
           <span>An API credential stops working</span></label>
         <span class="muted small rule-scope">Checked every 5 minutes once its certificate is trusted: two failed checks in a row, and again when it works. See <a href="/settings/credentials">Credentials</a>.</span>
       </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="drive_errors" value="1" {% if r.drive_errors %}checked{% endif %}>
+          <span>A drive is not ONLINE, or has errors</span></label>
+        <span class="muted small rule-scope">TrueNAS: any read, write or checksum errors in its pool. Again once it is ONLINE with none.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="truenas_alerts" value="1" {% if r.truenas_alerts %}checked{% endif %}>
+          <span>TrueNAS raises an alert</span></label>
+        <span class="muted small rule-scope">Warning and above, once each (SMART failures among them), and again when TrueNAS clears it. Info is shown on the device page only.</span>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">Save alert rules</button>
       </div>

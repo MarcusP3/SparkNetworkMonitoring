@@ -700,6 +700,28 @@ credential fails two checks in a row — a revoked key, a replaced
 certificate, TrueNAS down — SPARK alerts, and again when it works. The rule
 is under Settings → Alerts → APIs; the mute list applies.
 
+**Drive health and TrueNAS's own alerts.** The same 5-minute check reads,
+with query methods a Read-only Administrator may call (checked against a
+real 25.10 box): `pool.query` (each pool's status, last scrub, and its
+topology, whose disks carry ZFS's read/write/checksum error counts),
+`disk.query` (model, size), `disk.temperatures`, and `alert.list`. The
+device's Storage card then shows a drive table — pool and vdev, state,
+errors, temperature — the last scrub beside each pool, and TrueNAS's
+current alerts. Settings → Alerts → APIs has two more rules, both on by
+default:
+
+- **A drive is not ONLINE, or has errors** — any read, write or checksum
+  error in its pool; again once it is ONLINE with none (after the pool is
+  cleared in TrueNAS). Disks outside any pool, such as a boot stick, have no
+  ZFS state and are not alerted on.
+- **TrueNAS raises an alert** — WARNING and above, once each (SMART
+  failures arrive this way), and again when TrueNAS clears it or it is
+  dismissed there. INFO and NOTICE are shown on the page only.
+
+A method TrueNAS will not answer leaves that part as it was last read; an
+unanswered read is never taken as the all-clear. Serial numbers are not
+stored.
+
 ---
 
 ## Authentication
@@ -825,6 +847,7 @@ spark/
     storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
     truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
+    truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     servicemap.py       the service map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
@@ -882,6 +905,7 @@ spark/
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
     test_credentials.py  the TrueNAS client against a TLS fake: nothing sent before Trust, pins, renewals; the page
+    test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in
