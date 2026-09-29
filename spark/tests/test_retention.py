@@ -43,7 +43,7 @@ def db():
         D.init_engine(config)
         await D.init_db(config)
         async with D.session_scope() as session:
-            session.add(Target(name="gw", check_type=CheckType.PING, address="10.1.10.1"))
+            session.add(Target(name="gw", check_type=CheckType.PING, address="172.16.10.1"))
 
     asyncio.run(setup())
     yield

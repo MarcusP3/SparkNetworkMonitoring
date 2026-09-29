@@ -1,8 +1,8 @@
 """Storage over SNMP: TrueNAS pools and drives, filesystems on anything,
 and the alerts on them.
 
-The TrueNAS readings are the ones Marcus's box returned (TrueNAS SCALE 25.10,
-2026-09-29): pools Vault and boot-pool both ONLINE, Vault's root dataset at
+The TrueNAS readings are the ones a real box returned (TrueNAS SCALE 25.10,
+2026-09-29): pools tank and boot-pool both ONLINE, tank's root dataset at
 index 1 with 8344112829504 bytes used, drives sda-sdd at 41-43 C (reported in
 thousandths). The pool table there has no sizes -- its big numbers are I/O
 counters -- so space comes from the root dataset.
@@ -73,9 +73,9 @@ DS = "1.3.6.1.4.1.50536.1.6.1.1"
 HDD = "1.3.6.1.4.1.50536.3.1"
 
 TRUENAS = {
-    f"{P}.2": {"1": "Vault", "2": "boot-pool"},
+    f"{P}.2": {"1": "tank", "2": "boot-pool"},
     f"{P}.3": {"1": "ONLINE", "2": "ONLINE"},
-    f"{DS}.2": {"1": "Vault", "2": "Vault/proxmoxshare", "3": "Vault/plexshare"},
+    f"{DS}.2": {"1": "tank", "2": "tank/vms", "3": "tank/media"},
     f"{DS}.3": {"1": 8344112829504, "2": 515017137984, "3": 7682956009344},
     f"{DS}.4": {"1": 1055887170496, "2": 1, "3": 1},
     f"{HDD}.2": {"1": "sdb", "2": "sda", "3": "sdd", "4": "sdc", "5": "nvme0"},
@@ -104,7 +104,7 @@ class TestParsing:
         agent = FakeAgent(TRUENAS)
         assert run(agent.truenas_pools()) == [
             PoolReading("boot-pool", "ONLINE", None, None),
-            PoolReading("Vault", "ONLINE", 8344112829504, 8344112829504 + 1055887170496),
+            PoolReading("tank", "ONLINE", 8344112829504, 8344112829504 + 1055887170496),
         ]
         assert agent.gets == [(f"{DS}.3.1", f"{DS}.4.1")], "one GET, root datasets only"
 
@@ -148,7 +148,7 @@ def _config() -> Config:
     return config
 
 
-# 1 thoth (TrueNAS, polled as row 1), 2 a Linux server (row 2), 3 not answering (row 3).
+# 1 truenas (TrueNAS, polled as row 1), 2 a Linux server (row 2), 3 not answering (row 3).
 @pytest.fixture
 def db():
     config = _config()
@@ -157,9 +157,9 @@ def db():
         D.init_engine(config)
         await D.init_db(config)
         async with D.session_scope() as s:
-            s.add_all([Device(mac="aa:00:00:00:00:01", primary_ip="10.1.10.17", friendly_name="thoth"),
-                       Device(mac="aa:00:00:00:00:02", primary_ip="10.1.10.18", friendly_name="hermes"),
-                       Device(mac="aa:00:00:00:00:03", primary_ip="10.1.10.19", friendly_name="off")])
+            s.add_all([Device(mac="aa:00:00:00:00:01", primary_ip="172.16.10.17", friendly_name="truenas"),
+                       Device(mac="aa:00:00:00:00:02", primary_ip="172.16.10.18", friendly_name="linuxbox"),
+                       Device(mac="aa:00:00:00:00:03", primary_ip="172.16.10.19", friendly_name="off")])
             await s.flush()
             profile = await save_profile(s, vault_for(config), ProfileInput(
                 name="lab", version="v2c", community="x"))
@@ -177,7 +177,7 @@ def db():
 
 def pool(pct: float | None = 50, health: str = "ONLINE") -> PoolReading:
     size = 10 * TB
-    return PoolReading("Vault", health, int(size * pct / 100) if pct is not None else None,
+    return PoolReading("tank", health, int(size * pct / 100) if pct is not None else None,
                        size if pct is not None else None)
 
 
@@ -203,37 +203,37 @@ def at(minutes: int):  # type: ignore[no-untyped-def]
 class TestAlerts:
     def test_a_pool_that_is_not_online_alerts_at_once_and_recovers(self, db):
         run(read(1, at=at(0), pools=[pool(health="DEGRADED")]))
-        assert run(_sent()) == ["thoth: pool Vault is DEGRADED"]
+        assert run(_sent()) == ["truenas: pool tank is DEGRADED"]
         run(read(1, at=at(5), pools=[pool(health="DEGRADED")]))
         run(read(1, at=at(10), pools=[pool()]))
-        assert run(_sent())[1:] == ["thoth: pool Vault is ONLINE again"]
+        assert run(_sent())[1:] == ["truenas: pool tank is ONLINE again"]
 
     def test_pool_space_needs_two_reads_and_clears_below_the_margin(self, db):
         run(read(1, at=at(0), pools=[pool(86)]))
         assert run(_sent()) == [], "one read over the line is not news"
         run(read(1, at=at(5), pools=[pool(86)]))
-        assert run(_sent()) == ["thoth: pool Vault is 86% full"]
+        assert run(_sent()) == ["truenas: pool tank is 86% full"]
         run(read(1, at=at(10), pools=[pool(82)]))
         assert len(run(_sent())) == 1, "82% is under 85 but inside the margin"
         run(read(1, at=at(15), pools=[pool(79)]))
-        assert run(_sent())[1:] == ["thoth: pool Vault is back to 79% full"]
+        assert run(_sent())[1:] == ["truenas: pool tank is back to 79% full"]
 
     def test_a_disk_on_a_linux_server(self, db):
         fs = [FilesystemReading("/", 100 * 10 ** 9, 92 * 10 ** 9)]
         run(read(2, at=at(0), filesystems=fs))
         run(read(2, at=at(5), filesystems=fs))
-        assert run(_sent()) == ["hermes: disk / is 92% full"]
+        assert run(_sent()) == ["linuxbox: disk / is 92% full"]
 
     def test_a_hot_drive_must_stay_hot_for_its_minutes(self, db):
         for minute in (0, 5):
             run(read(1, at=at(minute), drives=[DriveReading("sda", 52)]))
         assert run(_sent()) == []
         run(read(1, at=at(10), drives=[DriveReading("sda", 52)]))
-        assert run(_sent()) == ["thoth: drive sda is running hot (52°C)"]
+        assert run(_sent()) == ["truenas: drive sda is running hot (52°C)"]
         run(read(1, at=at(15), drives=[DriveReading("sda", 46)]))
         assert len(run(_sent())) == 1, "46 is inside the 5-degree margin"
         run(read(1, at=at(20), drives=[DriveReading("sda", 44)]))
-        assert run(_sent())[1:] == ["thoth: drive sda is back to 44°C"]
+        assert run(_sent())[1:] == ["truenas: drive sda is back to 44°C"]
 
     def test_a_rule_switched_off_and_a_muted_device_are_quiet(self, db):
         async def quiet():
@@ -274,7 +274,7 @@ class TestReading:
     def test_truenas_gives_pools_and_drives_not_its_mounts(self, db, monkeypatch):
         ok, asked = self.run_one(monkeypatch, db, 1, pools=[pool()], drives=[DriveReading("sda", 40)])
         assert ok and asked == ["pools", "drives"]
-        assert run(self._rows()) == [(1, "drive", "sda"), (1, "pool", "Vault")]
+        assert run(self._rows()) == [(1, "drive", "sda"), (1, "pool", "tank")]
 
     def test_anything_else_gives_filesystems(self, db, monkeypatch):
         ok, asked = self.run_one(monkeypatch, db, 2, pools=[],
@@ -286,7 +286,7 @@ class TestReading:
         self.run_one(monkeypatch, db, 1, pools=[pool()])
         ok, asked = self.run_one(monkeypatch, db, 1, pools=[pool()], fails=True)
         assert not ok and asked == ["pools"]
-        assert run(self._rows()) == [(1, "pool", "Vault")]
+        assert run(self._rows()) == [(1, "pool", "tank")]
 
     def test_the_job_asks_only_devices_that_answer_their_polls(self, db, monkeypatch):
         seen: list[int] = []
@@ -339,7 +339,7 @@ class TestPages:
                  drives=[DriveReading("sda", 43), DriveReading("sdb", 51)]))
         page = flat(site.get("/devices/1").text)
         assert '<section class="card" id="storage">' in page
-        assert '<td>Vault</td> <td><span class="pill ok">ONLINE</span></td>' in page
+        assert '<td>tank</td> <td><span class="pill ok">ONLINE</span></td>' in page
         assert "8.6 TB of 10.0 TB" in page and '<span class="warn-text small">(86%)</span>' in page
         assert '<span class="pill warn">DEGRADED</span>' in page
         assert "Health only (TrueNAS gives no space for this pool)" in page

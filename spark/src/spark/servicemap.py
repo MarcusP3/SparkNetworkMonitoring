@@ -180,7 +180,7 @@ def _service_list(nodes: dict[int, Node], query: str) -> list[dict]:
     """Every service on every device, flat, filtered by `query`.
 
     Matched against the service's name, its port, the device's name and
-    address: "8080", "plex", "nas", "10.1.10." all do what you would expect.
+    address: "8080", "plex", "nas", "172.16.10." all do what you would expect.
     """
     words = query.lower().split()
     rows = []

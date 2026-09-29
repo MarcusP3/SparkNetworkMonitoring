@@ -80,7 +80,7 @@ class FakeTrueNAS:
             if msg["method"] == "auth.login_with_api_key":
                 result = msg["params"] == [GOOD_KEY]
             elif msg["method"] == "system.info":
-                result = {"version": "25.10.1", "hostname": "thoth"}
+                result = {"version": "25.10.1", "hostname": "truenas"}
             else:
                 await ws.send(json.dumps({"jsonrpc": "2.0", "id": msg["id"],
                                           "error": {"code": -32601, "message": "Method not found"}}))
@@ -148,7 +148,7 @@ class TestClientPinning:
 
     def test_the_pinned_certificate_logs_in(self, fake):
         info = run(truenas.test(fake.host, GOOD_KEY, fake.fingerprint))
-        assert (info.version, info.hostname) == ("25.10.1", "thoth")
+        assert (info.version, info.hostname) == ("25.10.1", "truenas")
         assert fake.paths[-1] == "/api/current"
         assert fake.logins() == [{"jsonrpc": "2.0", "id": 1, "method": "auth.login_with_api_key",
                                   "params": [GOOD_KEY]}]
@@ -170,7 +170,7 @@ class TestClientPinning:
             run(truenas.test("127.0.0.1:9", GOOD_KEY, None))
 
     def test_only_ever_https(self):
-        assert truenas.url_for("thoth") == "wss://thoth/api/current"
+        assert truenas.url_for("truenas") == "wss://truenas/api/current"
         source = Path(truenas.__file__).read_text()
         assert "ws://" not in source.replace("wss://", ""), "no plain-HTTP path at all"
 
@@ -198,8 +198,8 @@ def db():
         D.init_engine(config)
         await D.init_db(config)
         async with D.session_scope() as s:
-            s.add(Device(mac="aa:00:00:00:00:01", primary_ip="10.1.10.17", friendly_name="thoth"))
-            s.add(Device(mac="aa:00:00:00:00:02", primary_ip="10.1.10.99", ignored=True))
+            s.add(Device(mac="aa:00:00:00:00:01", primary_ip="172.16.10.17", friendly_name="truenas"))
+            s.add(Device(mac="aa:00:00:00:00:02", primary_ip="172.16.10.99", ignored=True))
     run(setup())
     yield config
     run(D.close_engine())
@@ -207,13 +207,13 @@ def db():
 
 class TestHosts:
     @pytest.mark.parametrize("raw, clean", [
-        ("10.1.10.17", "10.1.10.17"), (" thoth.home ", "thoth.home"), ("thoth:8443", "thoth:8443"),
+        ("172.16.10.17", "172.16.10.17"), (" truenas.lan ", "truenas.lan"), ("truenas:8443", "truenas:8443"),
         ("[fe80::1]:443", "[fe80::1]:443"), ("fe80::1", "fe80::1"),
     ])
     def test_good(self, raw, clean):
         assert credentials.clean_host(raw) == clean
 
-    @pytest.mark.parametrize("raw", ["https://thoth", "thoth/api", "thoth:0", "thoth:99999",
+    @pytest.mark.parametrize("raw", ["https://truenas", "truenas/api", "truenas:0", "truenas:99999",
                                      "bad host", "", "[nope]:1", "a" * 300])
     def test_refused(self, raw):
         with pytest.raises(credentials.CredentialError):
@@ -222,7 +222,7 @@ class TestHosts:
 
 async def _add(config, **over):  # type: ignore[no-untyped-def]
     async with D.session_scope() as s:
-        args = {"kind": "truenas", "name": "thoth", "device_id": 1, "host": "", "api_key": GOOD_KEY,
+        args = {"kind": "truenas", "name": "truenas", "device_id": 1, "host": "", "api_key": GOOD_KEY,
                 **over}
         return (await credentials.add(s, vault_for(config), **args)).id
 
@@ -235,7 +235,7 @@ async def _row(ident):  # type: ignore[no-untyped-def]
 class TestCredentials:
     def test_sealed_and_defaulting_to_the_devices_address(self, db):
         row = run(_row(run(_add(db))))
-        assert row.host == "10.1.10.17" and row.device_id == 1
+        assert row.host == "172.16.10.17" and row.device_id == 1
         assert GOOD_KEY not in row.key_sealed and vault_for(db).open(row.key_sealed) == GOOD_KEY
 
     @pytest.mark.parametrize("over, message", [
@@ -252,7 +252,7 @@ class TestCredentials:
     def test_names_are_unique_whatever_the_case(self, db):
         run(_add(db))
         with pytest.raises(credentials.CredentialError, match="already a credential"):
-            run(_add(db, name="THOTH"))
+            run(_add(db, name="TRUENAS"))
 
     def test_test_trust_test(self, db, fake):
         ident = run(_add(db, host=fake.host))
@@ -271,7 +271,7 @@ class TestCredentials:
         assert run(step(credentials.trust, fake.fingerprint)) is True
         row = run(_row(ident))
         assert row.cert_sha256 == fake.fingerprint and row.pending_sha256 is None
-        assert row.last_info == {"version": "25.10.1", "hostname": "thoth"} and row.last_error is None
+        assert row.last_info == {"version": "25.10.1", "hostname": "truenas"} and row.last_error is None
 
         fake.use("renewed")
         assert run(step(credentials.test)) is False
@@ -290,13 +290,13 @@ class TestCredentials:
             async with D.session_scope() as s:
                 row = await s.get(ApiCredential, ident)
                 await credentials.update(s, vault_for(db), row, **{
-                    "name": "thoth", "device_id": 1, "host": "", "api_key": "", **change})
+                    "name": "truenas", "device_id": 1, "host": "", "api_key": "", **change})
 
         run(pin_then())
         assert run(_row(ident)).cert_sha256 == "AA", "nothing changed: still trusted"
-        run(pin_then(host="thoth.home"))
+        run(pin_then(host="truenas.lan"))
         assert run(_row(ident)).cert_sha256 is None
-        run(pin_then(host="thoth.home", api_key="1-another"))      # same address, new key
+        run(pin_then(host="truenas.lan", api_key="1-another"))      # same address, new key
         row = run(_row(ident))
         assert row.cert_sha256 is None and vault_for(db).open(row.key_sealed) == "1-another"
 
@@ -327,7 +327,7 @@ class TestPage:
 
     def test_add_shows_the_certificate_then_trust_connects(self, site, fake):
         response = site.post("/settings/credentials", data={
-            "kind": "truenas", "name": "thoth", "device_id": "1", "host": fake.host, "api_key": GOOD_KEY})
+            "kind": "truenas", "name": "truenas", "device_id": "1", "host": fake.host, "api_key": GOOD_KEY})
         assert response.status_code == 303 and response.headers["location"] == "/settings/credentials#cred-1"
         assert fake.logins() == [], "saving tested without sending the key"
         page = flat(site.get("/settings/credentials").text)
@@ -335,14 +335,14 @@ class TestPage:
         assert "waiting for you" in page and GOOD_KEY not in page
         site.post("/settings/credentials/1/trust", data={"fingerprint": fake.fingerprint})
         page = flat(site.get("/settings/credentials").text)
-        assert '<span class="pill ok dot">connected</span> TrueNAS 25.10.1 · thoth' in page
+        assert '<span class="pill ok dot">connected</span> TrueNAS 25.10.1 · truenas' in page
         assert GOOD_KEY not in page
 
     def test_a_bad_add_says_why_and_keeps_what_was_typed_but_the_key(self, site):
         response = site.post("/settings/credentials", data={
-            "kind": "truenas", "name": "nas", "device_id": "", "host": "https://thoth", "api_key": GOOD_KEY})
+            "kind": "truenas", "name": "nas", "device_id": "", "host": "https://truenas", "api_key": GOOD_KEY})
         assert response.status_code == 400 and "no https://" in response.text
-        assert 'value="https://thoth"' in response.text and GOOD_KEY not in response.text
+        assert 'value="https://truenas"' in response.text and GOOD_KEY not in response.text
 
     def test_remove(self, site):
         site.post("/settings/credentials", data={"kind": "truenas", "name": "x", "device_id": "",

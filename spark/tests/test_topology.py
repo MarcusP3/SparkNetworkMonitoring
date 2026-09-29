@@ -202,12 +202,12 @@ class TestParsing:
             "1.0.8802.1.1.2.1.4.1.1.4": {"0.5.1": 4, "0.6.2": 7, "0.9.3": 7},
             # 0.6.2 is a local chassis id that happens to be six bytes: not a MAC.
             "1.0.8802.1.1.2.1.4.1.1.5": {"0.5.1": bytes.fromhex("02fc00000005"), "0.6.2": b"rack-1"},
-            "1.0.8802.1.1.2.1.4.1.1.9": {"0.5.1": "core", "0.6.2": "ZachSwitch"},
+            "1.0.8802.1.1.2.1.4.1.1.9": {"0.5.1": "core", "0.6.2": "office-switch"},
             "1.0.8802.1.1.2.1.4.1.1.8": {"0.5.1": "Port 24"},
         })
         assert run(agent.lldp_neighbours()) == [
             LldpNeighbour(5, "02:fc:00:00:00:05", "core", "Port 24"),
-            LldpNeighbour(6, None, "ZachSwitch", None),
+            LldpNeighbour(6, None, "office-switch", None),
         ], "a neighbour with neither a MAC nor a name is nothing"
 
     def test_nothing_to_read(self):
@@ -230,7 +230,7 @@ def _config() -> Config:
     return config
 
 
-# 1 firewall, 2 ZachSwitch (polled, MAC table), 3 the nas, 4 a laptop with a
+# 1 firewall, 2 office-switch (polled, MAC table), 3 the nas, 4 a laptop with a
 # parent set by hand, 5 an ignored device, 6 an access point (polled, no
 # table) with 7 a phone behind it.
 @pytest.fixture
@@ -242,14 +242,14 @@ def db():
         await D.init_db(config)
         async with D.session_scope() as s:
             s.add_all([
-                Device(mac="aa:00:00:00:00:01", primary_ip="10.1.10.1", friendly_name="SPRK-MDF-FW",
+                Device(mac="aa:00:00:00:00:01", primary_ip="172.16.10.1", friendly_name="edge-fw",
                        role=DeviceRole.GATEWAY),
-                Device(primary_ip="192.168.1.141", friendly_name="ZachSwitch"),
-                Device(mac="aa:00:00:00:00:03", primary_ip="10.1.10.17", friendly_name="thoth"),
-                Device(mac="aa:00:00:00:00:04", primary_ip="10.1.10.50", friendly_name="laptop"),
-                Device(mac="aa:00:00:00:00:05", primary_ip="10.1.10.60", ignored=True),
-                Device(mac="aa:00:00:00:00:06", primary_ip="192.168.1.190", friendly_name="SPRK-AP01"),
-                Device(mac="aa:00:00:00:00:07", primary_ip="10.1.30.9", friendly_name="phone"),
+                Device(primary_ip="192.168.1.2", friendly_name="office-switch"),
+                Device(mac="aa:00:00:00:00:03", primary_ip="172.16.10.17", friendly_name="truenas"),
+                Device(mac="aa:00:00:00:00:04", primary_ip="172.16.10.50", friendly_name="laptop"),
+                Device(mac="aa:00:00:00:00:05", primary_ip="172.16.10.60", ignored=True),
+                Device(mac="aa:00:00:00:00:06", primary_ip="192.168.1.31", friendly_name="ap-hall"),
+                Device(mac="aa:00:00:00:00:07", primary_ip="172.16.30.9", friendly_name="phone"),
             ])
             await s.flush()
             (await s.get(Device, 4)).parent_device_id = 1
@@ -289,10 +289,10 @@ async def _get(ident):  # type: ignore[no-untyped-def]
 class TestSuggestions:
     def test_what_is_suggested(self, db):
         assert run(_suggested()) == {
-            2: (1, DeviceRole.SWITCH, "its uplink, Port 1, leads to SPRK-MDF-FW"),
-            3: (2, None, "ZachSwitch, Port 5"),
-            6: (2, None, "ZachSwitch, Port 8"),
-            7: (6, None, "behind SPRK-AP01 on ZachSwitch, Port 8"),
+            2: (1, DeviceRole.SWITCH, "its uplink, Port 1, leads to edge-fw"),
+            3: (2, None, "office-switch, Port 5"),
+            6: (2, None, "office-switch, Port 8"),
+            7: (6, None, "behind ap-hall on office-switch, Port 8"),
         }
 
     def test_never_a_parent_set_by_hand_nor_an_ignored_device(self, db):
@@ -302,7 +302,7 @@ class TestSuggestions:
         async def seen():
             async with D.session_scope() as s:
                 return (await topology.discover(s)).found[4].where()
-        assert run(seen()) == "ZachSwitch, Port 5"
+        assert run(seen()) == "office-switch, Port 5"
 
     def test_the_gateway_is_found_by_its_addresses_when_no_role_says(self, db):
         from spark import identity
@@ -312,11 +312,11 @@ class TestSuggestions:
                 (await s.get(Device, 1)).role = DeviceRole.UNKNOWN
             async with D.session_scope() as s:
                 # One address of its own is any device, not a router.
-                await identity.store(s, 2, own=["192.168.1.190"], arp={})
+                await identity.store(s, 2, own=["192.168.1.31"], arp={})
             before = await _suggested()
             async with D.session_scope() as s:
                 row = await add_device(s, 1, 1)
-                await identity.store(s, row.id, own=["10.1.10.1", "10.1.20.1"], arp={})
+                await identity.store(s, row.id, own=["172.16.10.1", "172.16.20.1"], arp={})
             return before, await _suggested()
         before, after = run(go())
         assert before == {}, "no gateway known: nothing"
@@ -426,8 +426,8 @@ class TestPages:
         page = flat(site.get("/map").text)
         assert '<section class="card suggest-card" id="suggested">' in page
         assert "Accept all 4" in page
-        assert ('<a href="/devices/7">phone</a> → <a href="/devices/6">SPRK-AP01</a>' in page)
-        assert "Seen: behind SPRK-AP01 on ZachSwitch, Port 8." in page
+        assert ('<a href="/devices/7">phone</a> → <a href="/devices/6">ap-hall</a>' in page)
+        assert "Seen: behind ap-hall on office-switch, Port 8." in page
         assert "as switch" in page
 
     def test_the_buttons_keep_the_page_where_it_was(self, site):
@@ -448,13 +448,13 @@ class TestPages:
 
     def test_the_device_page(self, site):
         page = flat(site.get("/devices/3").text)
-        assert "SNMP sees it:</span> ZachSwitch, Port 5." in page
-        assert "Use this: connected to ZachSwitch" in page
+        assert "SNMP sees it:</span> office-switch, Port 5." in page
+        assert "Use this: connected to office-switch" in page
         response = site.post("/map/suggestions/3/accept", data={"back": "/devices/3#place"})
         assert response.headers["location"] == "/devices/3#place"
         assert run(_get(3)).parent_device_id == 2
         page = flat(site.get("/devices/3").text)
-        assert "SNMP sees it:</span> ZachSwitch, Port 5." in page and "Use this" not in page
+        assert "SNMP sees it:</span> office-switch, Port 5." in page and "Use this" not in page
 
     @pytest.mark.parametrize("back, lands", [
         ("/devices/3#place", "/devices/3#place"),

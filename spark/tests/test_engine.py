@@ -302,10 +302,10 @@ class TestAddressParsing:
         assert _split_host_port("host", 443) == ("host", 443)
 
     def test_host_colon_port(self):
-        assert _split_host_port("10.1.10.1:8006", None) == ("10.1.10.1", 8006)
+        assert _split_host_port("172.16.10.1:8006", None) == ("172.16.10.1", 8006)
 
     def test_bare_host_has_no_port(self):
-        assert _split_host_port("10.1.10.1", None) == ("10.1.10.1", None)
+        assert _split_host_port("172.16.10.1", None) == ("172.16.10.1", None)
 
     def test_bracketed_ipv6(self):
         assert _split_host_port("[::1]:8080", None) == ("::1", 8080)

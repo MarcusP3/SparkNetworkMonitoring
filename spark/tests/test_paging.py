@@ -52,8 +52,8 @@ def make_config(tmp: Path) -> Config:
             "app": {"data_dir": str(tmp / "data"), "port": 9704, "log_level": "WARNING"},
             "network": {
                 "subnets": [
-                    {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 10, "attached": True},
-                    {"name": "IoT", "cidr": "10.1.20.0/24", "vlan": 20, "attached": True},
+                    {"name": "LAN", "cidr": "172.16.10.0/24", "vlan": 10, "attached": True},
+                    {"name": "IoT", "cidr": "172.16.20.0/24", "vlan": 20, "attached": True},
                 ]
             },
         }
@@ -77,11 +77,11 @@ def client():
         async with D.session_scope() as s:
             for n in range(1, ON_LAN + 1):
                 s.add(Device(mac=f"aa:bb:cc:00:{n // 256:02x}:{n % 256:02x}",
-                             primary_ip=f"10.1.10.{n}",
+                             primary_ip=f"172.16.10.{n}",
                              friendly_name=f"lan{n:03d}", last_seen=seen))
             for n in range(1, ON_IOT + 1):
                 s.add(Device(mac=f"aa:bb:cc:11:{n // 256:02x}:{n % 256:02x}",
-                             primary_ip=f"10.1.20.{n}",
+                             primary_ip=f"172.16.20.{n}",
                              friendly_name=f"iot{n:03d}", last_seen=seen))
         await D.close_engine()
 

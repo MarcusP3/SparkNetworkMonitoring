@@ -37,13 +37,13 @@ def normalise_cidr(raw: str) -> str:
     """Parse a CIDR and return its canonical form.
 
     `strict=False` so that typing the address of the box you are standing on —
-    "10.1.10.7/24" — is accepted and stored as "10.1.10.0/24". That is what
+    "172.16.10.7/24" — is accepted and stored as "172.16.10.0/24". That is what
     people actually type, and rejecting it teaches them to distrust the field
     rather than to read the docs.
     """
     text = (raw or "").strip()
     if not text:
-        raise SubnetError("A CIDR is required, for example 10.1.10.0/24.")
+        raise SubnetError("A CIDR is required, for example 172.16.10.0/24.")
     if "/" not in text:
         raise SubnetError(
             f"{text!r} has no prefix length. Add one, for example {text}/24."

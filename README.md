@@ -178,11 +178,11 @@ Each subnet is either directly attached or routed:
 network:
   subnets:
     - name: LAN
-      cidr: 10.1.10.0/24
+      cidr: 172.16.10.0/24
       attached: true      # SPARK has an interface on this segment
 
     - name: Servers
-      cidr: 10.1.30.0/24
+      cidr: 172.16.30.0/24
       vlan: 30            # documentation only; nothing reads it
       attached: false     # reachable only through a router
 ```
@@ -225,10 +225,10 @@ no box.
 
 | Check | Address | Useful params |
 |---|---|---|
-| `ping` | `10.1.10.1` | `{"count": 3, "loss_warn_percent": 1}` |
-| `tcp` | `10.1.10.1:443`, or address plus `{"port": 443}` | — |
+| `ping` | `172.16.10.1` | `{"count": 3, "loss_warn_percent": 1}` |
+| `tcp` | `172.16.10.1:443`, or address plus `{"port": 443}` | — |
 | `http` | `https://host/path` | `{"expect_status": 200, "expect_body": "ok", "cert_warn_days": 14}` |
-| `dns` | `example.com` | `{"rdtype": "A", "server": "10.1.10.1", "expect": "10.1.10."}` |
+| `dns` | `example.com` | `{"rdtype": "A", "server": "172.16.10.1", "expect": "172.16.10."}` |
 
 Checks never raise. A poller that throws when the thing it polls is broken has
 failed at its only job, so every failure path returns a result with a reason
@@ -287,7 +287,7 @@ thirty.
 **`/map`** shows every device in its place — gateway, then switches, then
 what hangs off each — with its status and the services the port scan found
 on it, then a searchable list of every service on the network ("plex",
-"8080", "nas", "10.1.10." all work).
+"8080", "nas", "172.16.10." all work).
 
 **Placing a device** is done on its own page, in the **On the service map**
 card: a **Role** (gateway, switch, access point, server, client) and
@@ -301,7 +301,7 @@ tables (BRIDGE-MIB and Q-BRIDGE-MIB) and any LLDP neighbours every 15
 minutes, and works out which switch port each device is on. The map page
 lists what that finds under **Found by SNMP**, to **Accept** one at a time,
 **Accept all**, or mark **Not right**; each device's page says where SNMP
-sees it ("ZachSwitch, Port 5"). Nothing is placed until you accept it, and a
+sees it ("office-switch, Port 5"). Nothing is placed until you accept it, and a
 parent set by hand is never replaced. How it works:
 
 - The gateway (the device whose Role is Gateway / router, or else the polled
@@ -602,10 +602,10 @@ Vendor SNMP documentation is unreliable, and prosumer switches frequently omit
 standard MIBs — temperature especially. So don't guess:
 
 ```bash
-spark-probe 10.1.10.2 -c your-community
+spark-probe 172.16.10.2 -c your-community
 
 # inside Docker
-docker compose run --rm spark spark-probe 10.1.10.2 -c your-community
+docker compose run --rm spark spark-probe 172.16.10.2 -c your-community
 ```
 
 It reports the device's identity, live CPU/memory/temperature, a capability
@@ -744,7 +744,7 @@ auth:
   mode: proxy
   proxy:
     header: Remote-User
-    trusted_proxies: [10.1.10.5]
+    trusted_proxies: [172.16.10.5]
 ```
 
 SPARK refuses to start in proxy mode with an empty `trusted_proxies`. Trusting
@@ -881,6 +881,7 @@ spark/
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file
     test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
+    test_no_homelab_details.py  no real host names or address scheme in anything shipped
     test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
     test_watch_selected.py  tick devices and watch them all; skips, duplicates, junk, first checks queued
     local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3

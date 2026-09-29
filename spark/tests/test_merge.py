@@ -66,25 +66,25 @@ def db():
         await D.init_db(config)
         async with D.session_scope() as s:
             s.add_all([
-                Device(mac="aa:bb:cc:00:00:01", primary_ip="10.1.10.1", friendly_name="firewall",
+                Device(mac="aa:bb:cc:00:00:01", primary_ip="172.16.10.1", friendly_name="firewall",
                        role=DeviceRole.GATEWAY, last_seen=utcnow()),
-                Device(primary_ip="10.1.20.1", last_seen=utcnow()),
-                Device(primary_ip="10.1.30.1", friendly_name="iot gw", last_seen=utcnow()),
+                Device(primary_ip="172.16.20.1", last_seen=utcnow()),
+                Device(primary_ip="172.16.30.1", friendly_name="iot gw", last_seen=utcnow()),
             ])
             await s.flush()
             s.add_all([
-                Device(mac="aa:bb:cc:00:00:04", primary_ip="10.1.20.5", friendly_name="server",
+                Device(mac="aa:bb:cc:00:00:04", primary_ip="172.16.20.5", friendly_name="server",
                        parent_device_id=2, last_seen=utcnow()),
-                Device(mac="aa:bb:cc:00:00:05", primary_ip="10.1.10.9", friendly_name="other",
+                Device(mac="aa:bb:cc:00:00:05", primary_ip="172.16.10.9", friendly_name="other",
                        last_seen=utcnow()),
             ])
-            s.add(Target(name="vlan20 gw ping", check_type=CheckType.PING, address="10.1.20.1",
+            s.add(Target(name="vlan20 gw ping", check_type=CheckType.PING, address="172.16.20.1",
                          device_id=2))
             s.add(Service(device_id=1, port=443, name="https", state="open"))
             s.add(Service(device_id=2, port=443, name="https", state="open"))
             s.add(Service(device_id=2, port=53, name="dns", state="open"))
             await s.flush()
-            s.add(Target(name="vlan20 https", check_type=CheckType.TCP, address="10.1.20.1:443",
+            s.add(Target(name="vlan20 https", check_type=CheckType.TCP, address="172.16.20.1:443",
                          device_id=2, service_id=2))
             s.add(Incident(target_id=1, opened_at=utcnow(), cause="timeout"))
             s.add(AlertMute(device_id=2))
@@ -113,10 +113,10 @@ def do_merge(keep: int, other: int) -> merge.Plan:
 class TestMerging:
     def test_everything_moves_to_the_device_kept(self, db):
         done = do_merge(1, 2)
-        assert done.addresses == ["10.1.20.1"]
+        assert done.addresses == ["172.16.20.1"]
         assert run(_get(Device, 2)) is None, "the duplicate is gone"
         addresses = run(_all(DeviceAddress))
-        assert [(a.device_id, a.ip) for a in addresses] == [(1, "10.1.20.1")]
+        assert [(a.device_id, a.ip) for a in addresses] == [(1, "172.16.20.1")]
         targets = {t.name: t for t in run(_all(Target))}
         assert targets["vlan20 gw ping"].device_id == 1
         assert [i.target_id for i in run(_all(Incident))] == [1], "history came with it"
@@ -125,7 +125,7 @@ class TestMerging:
         assert targets["vlan20 https"].service_id == 1, "and its watcher follows the kept copy"
         assert run(_get(Device, 4)).parent_device_id == 1, "the map follows"
         assert run(_all(AlertMute)) == [], "the duplicate's mute went with it"
-        assert run(_get(Device, 1)).primary_ip == "10.1.10.1"
+        assert run(_get(Device, 1)).primary_ip == "172.16.10.1"
 
     def test_it_fills_in_only_what_the_kept_device_lacks(self, db):
         async def blank():
@@ -142,13 +142,13 @@ class TestMerging:
     def test_a_mac_only_the_duplicate_has_comes_across(self, db):
         do_merge(2, 1)
         kept = run(_get(Device, 2))
-        assert kept.mac == "aa:bb:cc:00:00:01" and kept.primary_ip == "10.1.20.1"
-        assert [a.ip for a in run(_all(DeviceAddress))] == ["10.1.10.1"]
+        assert kept.mac == "aa:bb:cc:00:00:01" and kept.primary_ip == "172.16.20.1"
+        assert [a.ip for a in run(_all(DeviceAddress))] == ["172.16.10.1"]
 
     def test_extra_addresses_travel_with_a_second_merge(self, db):
         do_merge(3, 2)
         do_merge(1, 3)
-        assert sorted(a.ip for a in run(_all(DeviceAddress))) == ["10.1.20.1", "10.1.30.1"]
+        assert sorted(a.ip for a in run(_all(DeviceAddress))) == ["172.16.20.1", "172.16.30.1"]
         assert {a.device_id for a in run(_all(DeviceAddress))} == {1}
 
     def test_snmp_polling_moves_but_two_polled_devices_are_refused(self, db):
@@ -184,21 +184,21 @@ class TestSweepsAfterAMerge:
 
     def test_the_address_is_counted_as_the_kept_device(self, db):
         do_merge(1, 2)
-        assert self.sweep("10.1.20.1") == (1, False), "not a new device again"
+        assert self.sweep("172.16.20.1") == (1, False), "not a new device again"
         kept = run(_get(Device, 1))
-        assert kept.primary_ip == "10.1.10.1", "its own address does not change"
+        assert kept.primary_ip == "172.16.10.1", "its own address does not change"
         assert run(_all(DeviceAddress))[0].last_seen is not None
 
     def test_a_real_device_turning_up_at_the_address_takes_it_back(self, db):
         do_merge(1, 2)
-        device_id, created = self.sweep("10.1.20.1", mac="aa:bb:cc:00:00:99")
+        device_id, created = self.sweep("172.16.20.1", mac="aa:bb:cc:00:00:99")
         assert created and device_id != 1
         assert run(_all(DeviceAddress)) == []
 
     def test_the_kept_device_seen_normally_keeps_its_addresses(self, db):
         do_merge(1, 2)
-        assert self.sweep("10.1.10.1", mac="aa:bb:cc:00:00:01") == (1, False)
-        assert [a.ip for a in run(_all(DeviceAddress))] == ["10.1.20.1"]
+        assert self.sweep("172.16.10.1", mac="aa:bb:cc:00:00:01") == (1, False)
+        assert [a.ip for a in run(_all(DeviceAddress))] == ["172.16.20.1"]
 
 
 # --------------------------------------------------------------------------
@@ -218,9 +218,9 @@ class TestPages:
     def test_the_device_page_offers_it_and_the_preview_changes_nothing(self, site):
         page = site.get("/devices/1").text
         assert '<form method="get" action="/devices/1/merge"' in page
-        assert '<option value="2">10.1.20.1 (by IP)</option>' in page
+        assert '<option value="2">172.16.20.1 (by IP)</option>' in page
         preview = site.get("/devices/1/merge?other=2").text
-        assert "10.1.20.1 becomes an extra address of" in preview.replace("\n", " ").replace("  ", " ")
+        assert "172.16.20.1 becomes an extra address of" in preview.replace("\n", " ").replace("  ", " ")
         assert "vlan20 gw ping" in preview and "dns" in preview
         assert run(_get(Device, 2)) is not None, "the preview did not merge"
 
@@ -229,9 +229,9 @@ class TestPages:
         assert response.headers["location"] == "/devices/1?merged=1#addresses"
         page = site.get("/devices/1?merged=1").text
         assert "Merged. 1 address is now part of this device." in page
-        assert "+1 more address" in page and "<code>10.1.20.1</code>" in page
+        assert "+1 more address" in page and "<code>172.16.20.1</code>" in page
         devices = site.get("/devices").text
-        assert 'title="Also answers at 10.1.20.1">+1</span>' in devices
+        assert 'title="Also answers at 172.16.20.1">+1</span>' in devices
         address = run(_all(DeviceAddress))[0]
         site.post(f"/devices/1/addresses/{address.id}/delete")
         assert run(_all(DeviceAddress)) == []

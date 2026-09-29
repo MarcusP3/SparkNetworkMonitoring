@@ -68,7 +68,7 @@ def row_for(page: str, name: str) -> str:
 @pytest.fixture
 def down_target():
     client = client_with([
-        Target(name="long-gone", check_type=CheckType.PING, address="10.1.10.9",
+        Target(name="long-gone", check_type=CheckType.PING, address="172.16.10.9",
                status=HealthStatus.DOWN, consecutive_failures=2613,
                failure_threshold=4, last_checked_at=utcnow()),
     ])
@@ -80,7 +80,7 @@ def down_target():
 @pytest.fixture
 def wobbling_target():
     client = client_with([
-        Target(name="flaky", check_type=CheckType.PING, address="10.1.10.8",
+        Target(name="flaky", check_type=CheckType.PING, address="172.16.10.8",
                status=HealthStatus.UP, consecutive_failures=2,
                failure_threshold=4, last_checked_at=utcnow()),
     ])
@@ -99,7 +99,7 @@ class TestPausedRowLayout:
 
     def test_the_pause_toggle_has_a_fixed_width_class(self):
         client = client_with([
-            Target(name="resting", check_type=CheckType.PING, address="10.1.10.6",
+            Target(name="resting", check_type=CheckType.PING, address="172.16.10.6",
                    status=HealthStatus.PAUSED, enabled=False, last_checked_at=utcnow()),
         ])
         try:
@@ -115,7 +115,7 @@ class TestPausedRowLayout:
 
     def test_a_paused_row_is_marked_so_the_stale_cells_can_be_dimmed(self):
         client = client_with([
-            Target(name="resting", check_type=CheckType.PING, address="10.1.10.6",
+            Target(name="resting", check_type=CheckType.PING, address="172.16.10.6",
                    status=HealthStatus.PAUSED, enabled=False, last_checked_at=utcnow()),
         ])
         try:
@@ -149,7 +149,7 @@ class TestFailureCount:
 
     def test_a_healthy_target_says_nothing_about_failures(self):
         client = client_with([
-            Target(name="fine", check_type=CheckType.PING, address="10.1.10.7",
+            Target(name="fine", check_type=CheckType.PING, address="172.16.10.7",
                    status=HealthStatus.UP, consecutive_failures=0,
                    failure_threshold=4, last_checked_at=utcnow()),
         ])
@@ -167,7 +167,7 @@ class TestFailureCount:
         now, which is worse than saying nothing.
         """
         client = client_with([
-            Target(name="resting", check_type=CheckType.PING, address="10.1.10.6",
+            Target(name="resting", check_type=CheckType.PING, address="172.16.10.6",
                    status=HealthStatus.PAUSED, consecutive_failures=7,
                    failure_threshold=4, enabled=False, last_checked_at=utcnow()),
         ])

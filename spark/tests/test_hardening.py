@@ -123,7 +123,7 @@ class TestSameOrigin:
 
     def test_matching_origin_passes(self):
         assert same_origin(self.h(host="spark.lan:9700", origin="http://spark.lan:9700"))
-        assert same_origin(self.h(host="10.1.10.7:9700", origin="HTTP://10.1.10.7:9700"))
+        assert same_origin(self.h(host="172.16.10.7:9700", origin="HTTP://172.16.10.7:9700"))
 
     def test_foreign_origin_is_refused(self):
         assert not same_origin(self.h(host="spark.lan:9700", origin="http://evil.example"))

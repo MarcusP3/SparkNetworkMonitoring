@@ -38,11 +38,11 @@ def make_client(status: HealthStatus | None, open_incident: bool, routed: bool =
         await D.init_db(cfg)
         if routed:
             async with D.session_scope() as s:
-                s.add(Subnet(cidr="10.1.20.0/24", name="IoT", attached=False, enabled=True))
+                s.add(Subnet(cidr="172.16.20.0/24", name="IoT", attached=False, enabled=True))
         if status is not None:
             async with D.session_scope() as s:
                 s.add(Target(name="gw", check_type=CheckType.PING,
-                             address="10.1.10.1", status=status, enabled=True))
+                             address="172.16.10.1", status=status, enabled=True))
             if open_incident:
                 async with D.session_scope() as s:
                     s.add(Incident(target_id=1, opened_at=utcnow(), cause="timeout"))

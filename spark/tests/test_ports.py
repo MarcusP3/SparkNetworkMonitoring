@@ -57,7 +57,7 @@ def db():
         D.init_engine(cfg)
         await D.init_db(cfg)
         async with D.session_scope() as session:
-            session.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50",
+            session.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.10.50",
                                last_seen=utcnow()))
 
     asyncio.run(setup())
@@ -197,7 +197,7 @@ def scan_with(*open_ports: int, covered: set[int] | None = None) -> P.HostScan:
     nothing.
     """
     return P.HostScan(
-        address="10.1.10.50",
+        address="172.16.10.50",
         device_id=1,
         probed=len(P.WELL_KNOWN),
         covered=frozenset(covered if covered is not None else P.WELL_KNOWN),
@@ -297,7 +297,7 @@ class TestRecording:
 
     def test_a_scan_with_no_device_records_nothing(self, db):
         async def go():
-            scan = P.HostScan(address="10.1.10.50", device_id=None,
+            scan = P.HostScan(address="172.16.10.50", device_id=None,
                               open_ports=[P.OpenPort(port=22)])
             async with D.session_scope() as s:
                 return await record_scan(s, scan)
@@ -307,11 +307,11 @@ class TestRecording:
     def test_record_all_totals_across_devices(self, db):
         async def go():
             async with D.session_scope() as s:
-                s.add(Device(mac="11:22:33:44:55:66", primary_ip="10.1.10.51",
+                s.add(Device(mac="11:22:33:44:55:66", primary_ip="172.16.10.51",
                              last_seen=utcnow()))
             async with D.session_scope() as s:
                 one = scan_with(22)
-                two = P.HostScan(address="10.1.10.51", device_id=2,
+                two = P.HostScan(address="172.16.10.51", device_id=2,
                                  open_ports=[P.OpenPort(port=80), P.OpenPort(port=443)])
                 return await record_all(s, [one, two])
 
@@ -360,23 +360,23 @@ async def _call_services_for(ids):
 class TestPickingControls:
     def test_known_addresses_are_excluded(self):
         picked = P.pick_control_addresses(
-            [f"10.1.10.{n}" for n in range(1, 20)],
-            known={f"10.1.10.{n}" for n in range(1, 18)},
+            [f"172.16.10.{n}" for n in range(1, 20)],
+            known={f"172.16.10.{n}" for n in range(1, 18)},
         )
-        assert set(picked) <= {"10.1.10.18", "10.1.10.19"}
+        assert set(picked) <= {"172.16.10.18", "172.16.10.19"}
 
     def test_too_few_free_addresses_means_no_controls(self):
         # One control cannot distinguish interception from a live host, so
         # rather than guess it declines to test at all.
         picked = P.pick_control_addresses(
-            ["10.1.10.1", "10.1.10.2"], known={"10.1.10.1", "10.1.10.2"}
+            ["172.16.10.1", "172.16.10.2"], known={"172.16.10.1", "172.16.10.2"}
         )
         assert picked == []
-        assert P.pick_control_addresses(["10.1.10.1"], known=set()) == []
+        assert P.pick_control_addresses(["172.16.10.1"], known=set()) == []
 
     def test_controls_are_spread_rather_than_clustered(self):
         picked = P.pick_control_addresses(
-            [f"10.1.10.{n}" for n in range(1, 101)], known=set(), count=3
+            [f"172.16.10.{n}" for n in range(1, 101)], known=set(), count=3
         )
         # The bottom of a subnet is where infrastructure lives and the top is
         # often the end of a DHCP pool; a cluster at either end is likelier to

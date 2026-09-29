@@ -60,9 +60,9 @@ class TestDeviceIdentity:
     def test_same_mac_at_a_new_address_is_the_same_device(self, session_factory):
         async def go():
             async with session_factory() as s:
-                await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 # DHCP moves it
-                device, created = await record(s, obs("10.1.10.99", "aa:bb:cc:dd:ee:ff"))
+                device, created = await record(s, obs("172.16.10.99", "aa:bb:cc:dd:ee:ff"))
                 total = await s.scalar(select(func.count()).select_from(Device))
                 return device.primary_ip, created, total
 
@@ -70,13 +70,13 @@ class TestDeviceIdentity:
         # The whole reason identity keys on MAC: a lease change must not look
         # like a new device and orphan the old row's history.
         assert total == 1 and not created
-        assert ip == "10.1.10.99"
+        assert ip == "172.16.10.99"
 
     def test_same_address_with_a_different_mac_is_a_different_device(self, session_factory):
         async def go():
             async with session_factory() as s:
-                await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
-                await record(s, obs("10.1.10.50", "11:22:33:44:55:66"))
+                await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
+                await record(s, obs("172.16.10.50", "11:22:33:44:55:66"))
                 return await s.scalar(select(func.count()).select_from(Device))
 
         # A recycled address is a different machine, not the same one renamed.
@@ -85,8 +85,8 @@ class TestDeviceIdentity:
     def test_a_mac_less_row_is_adopted_when_a_mac_appears(self, session_factory):
         async def go():
             async with session_factory() as s:
-                await record(s, obs("10.1.10.50"))          # routed: no ARP
-                device, created = await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                await record(s, obs("172.16.10.50"))          # routed: no ARP
+                device, created = await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 total = await s.scalar(select(func.count()).select_from(Device))
                 return device.mac, created, total
 
@@ -97,9 +97,9 @@ class TestDeviceIdentity:
     def test_a_known_device_seen_without_a_mac_is_not_duplicated(self, session_factory):
         async def go():
             async with session_factory() as s:
-                await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 # Seen again from across a router, so no MAC this time.
-                device, created = await record(s, obs("10.1.10.50"))
+                device, created = await record(s, obs("172.16.10.50"))
                 total = await s.scalar(select(func.count()).select_from(Device))
                 return device.mac, created, total
 
@@ -110,11 +110,11 @@ class TestDeviceIdentity:
     def test_a_user_set_name_survives_rediscovery(self, session_factory):
         async def go():
             async with session_factory() as s:
-                device, _ = await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                device, _ = await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 device.friendly_name = "sw-core"
                 await s.flush()
                 again, _ = await record(
-                    s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff", hostname="dhcp-50.lan")
+                    s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff", hostname="dhcp-50.lan")
                 )
                 return again.friendly_name, again.hostname
 
@@ -125,7 +125,7 @@ class TestDeviceIdentity:
     def test_discovery_does_not_claim_a_device_is_up(self, session_factory):
         async def go():
             async with session_factory() as s:
-                device, _ = await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                device, _ = await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 return device.status, device.last_seen
 
         status, last_seen = asyncio.run(go())
@@ -136,9 +136,9 @@ class TestDeviceIdentity:
     def test_first_seen_is_not_moved_by_later_sightings(self, session_factory):
         async def go():
             async with session_factory() as s:
-                first, _ = await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                first, _ = await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 original = first.first_seen
-                again, _ = await record(s, obs("10.1.10.50", "aa:bb:cc:dd:ee:ff"))
+                again, _ = await record(s, obs("172.16.10.50", "aa:bb:cc:dd:ee:ff"))
                 return original, again.first_seen
 
         original, later = asyncio.run(go())
@@ -147,12 +147,12 @@ class TestDeviceIdentity:
     def test_record_all_reports_only_genuinely_new_devices(self, session_factory):
         async def go():
             async with session_factory() as s:
-                await record_all(s, [obs("10.1.10.1", "aa:aa:aa:aa:aa:aa")])
+                await record_all(s, [obs("172.16.10.1", "aa:aa:aa:aa:aa:aa")])
                 seen, new = await record_all(
                     s,
                     [
-                        obs("10.1.10.1", "aa:aa:aa:aa:aa:aa"),   # known
-                        obs("10.1.10.2", "bb:bb:bb:bb:bb:bb"),   # new
+                        obs("172.16.10.1", "aa:aa:aa:aa:aa:aa"),   # known
+                        obs("172.16.10.2", "bb:bb:bb:bb:bb:bb"),   # new
                     ],
                 )
                 return seen, len(new)
@@ -175,16 +175,16 @@ class TestArpTable:
     def test_parses_complete_entries(self):
         table = read_arp_table(self._write(
             "IP address       HW type     Flags       HW address            Mask     Device\n"
-            "10.1.10.1        0x1         0x2         AA:BB:CC:DD:EE:FF     *        ens18\n"
+            "172.16.10.1        0x1         0x2         AA:BB:CC:DD:EE:FF     *        ens18\n"
         ))
-        assert table == {"10.1.10.1": "aa:bb:cc:dd:ee:ff"}
+        assert table == {"172.16.10.1": "aa:bb:cc:dd:ee:ff"}
 
     def test_skips_incomplete_entries(self):
         # Flags 0x0 means "we asked and nobody answered". Recording that as a
         # device's MAC would invent a device at every unused address we probed.
         table = read_arp_table(self._write(
             "IP address       HW type     Flags       HW address            Mask     Device\n"
-            "10.1.10.7        0x1         0x0         00:00:00:00:00:00     *        ens18\n"
+            "172.16.10.7        0x1         0x0         00:00:00:00:00:00     *        ens18\n"
         ))
         assert table == {}
 
@@ -203,16 +203,16 @@ class TestArpTable:
 
 class TestHostsIn:
     def test_a_24_excludes_network_and_broadcast(self):
-        hosts = hosts_in("10.1.10.0/24")
+        hosts = hosts_in("172.16.10.0/24")
         assert len(hosts) == 254
-        assert "10.1.10.0" not in hosts and "10.1.10.255" not in hosts
+        assert "172.16.10.0" not in hosts and "172.16.10.255" not in hosts
 
     def test_an_oversized_subnet_is_refused_rather_than_swept(self):
         # Silently probing 65k addresses would be a worse answer than none.
         assert hosts_in("10.0.0.0/16") == []
 
     def test_the_cap_boundary(self):
-        assert len(hosts_in("10.1.0.0/22")) <= MAX_HOSTS_PER_SUBNET
+        assert len(hosts_in("172.16.0.0/22")) <= MAX_HOSTS_PER_SUBNET
 
 
 # --------------------------------------------------------------------------
@@ -260,12 +260,12 @@ class TestSweepReport:
 
     def test_icmp_failure_is_distinguishable_from_silence(self):
         unavailable = SweepReport(
-            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254,
+            subnets=[SubnetResult("LAN", "172.16.10.0/24", True, probed=254,
                                   skipped="ICMP unavailable")],
             icmp_available=False,
         )
         silent = SweepReport(
-            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254, answered=0)],
+            subnets=[SubnetResult("LAN", "172.16.10.0/24", True, probed=254, answered=0)],
         )
         assert unavailable.as_dict()["icmp_available"] is False
         assert silent.as_dict()["icmp_available"] is True
@@ -274,8 +274,8 @@ class TestSweepReport:
 
     def test_totals_sum_across_subnets(self):
         report = SweepReport(subnets=[
-            SubnetResult("LAN", "10.1.10.0/24", True, probed=254, answered=9, with_mac=8),
-            SubnetResult("IoT", "10.1.20.0/24", False, probed=254, answered=4, with_mac=0),
+            SubnetResult("LAN", "172.16.10.0/24", True, probed=254, answered=9, with_mac=8),
+            SubnetResult("IoT", "172.16.20.0/24", False, probed=254, answered=4, with_mac=0),
         ])
         assert (report.probed, report.answered, report.with_mac) == (508, 13, 8)
 
@@ -283,7 +283,7 @@ class TestSweepReport:
         import json
 
         report = SweepReport(subnets=[
-            SubnetResult("LAN", "10.1.10.0/24", True, probed=4, answered=1)
+            SubnetResult("LAN", "172.16.10.0/24", True, probed=4, answered=1)
         ])
         report.finished_at = report.started_at
         # It is stored as JSON in the settings table; a datetime in there would
@@ -293,7 +293,7 @@ class TestSweepReport:
     def test_a_never_run_sweep_is_not_the_same_as_an_empty_one(self):
         never = {}
         empty = SweepReport(
-            subnets=[SubnetResult("LAN", "10.1.10.0/24", True, probed=254)]
+            subnets=[SubnetResult("LAN", "172.16.10.0/24", True, probed=254)]
         ).as_dict()
         assert not never
         assert empty["probed"] == 254

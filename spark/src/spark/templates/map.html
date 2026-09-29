@@ -194,7 +194,7 @@
       </div>
     </div>
     <form method="get" action="/map" class="row-form service-search">
-      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="plex, 8080, nas, 10.1.10." aria-label="Search services">
+      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="plex, 8080, nas, 192.168.1." aria-label="Search services">
       <button type="submit" class="btn-quiet">Search</button>
       {% if q %}<a href="/map" class="btn-quiet">Clear</a>{% endif %}
       <span class="muted small">{{ map.services | length }} service{{ 's' if map.services | length != 1 }}{% if q %} match{% endif %}</span>

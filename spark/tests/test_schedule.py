@@ -31,7 +31,7 @@ from spark.discovery.runner import JOB_ID, SWEEP_INTERVAL_CHOICES
 from spark.main import create_app
 from spark.models import Device, Subnet, utcnow
 
-SUBNET = {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1, "attached": True}
+SUBNET = {"name": "LAN", "cidr": "172.16.10.0/24", "vlan": 1, "attached": True}
 
 
 def make_config(tmp: Path, *, subnets: bool = True) -> Config:
@@ -60,7 +60,7 @@ def config():
         D.init_engine(cfg)
         await D.init_db(cfg)
         async with D.session_scope() as session:
-            session.add(Subnet(cidr="10.1.10.0/24", name="LAN", vlan=1, attached=True))
+            session.add(Subnet(cidr="172.16.10.0/24", name="LAN", vlan=1, attached=True))
 
     asyncio.run(setup())
     yield cfg
@@ -327,7 +327,7 @@ def client_with_device():
         D.init_engine(cfg)
         await D.init_db(cfg)
         async with D.session_scope() as session:
-            session.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50",
+            session.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.10.50",
                                hostname="nas.lan", friendly_name="nas",
                                subnet="LAN", last_seen=utcnow()))
         await D.close_engine()

@@ -72,14 +72,14 @@ def db():
         await D.init_db(config)
         async with D.session_scope() as s:
             s.add_all([
-                Device(mac=MAC[FW], primary_ip="10.1.10.1", friendly_name="SPRK-MDF-FW",
+                Device(mac=MAC[FW], primary_ip="172.16.10.1", friendly_name="edge-fw",
                        role=DeviceRole.GATEWAY),
-                Device(primary_ip="192.168.1.141", friendly_name="ZachSwitch"),
-                Device(mac=MAC[NAS], primary_ip="10.1.10.17", friendly_name="thoth"),
-                Device(mac=MAC[LAPTOP], primary_ip="10.1.10.50", friendly_name="laptop"),
-                Device(mac=MAC[IGNORED], primary_ip="10.1.10.60", ignored=True),
-                Device(mac=MAC[AP], primary_ip="192.168.1.190", friendly_name="SPRK-AP01"),
-                Device(mac=MAC[PHONE], primary_ip="10.1.30.9", friendly_name="phone"),
+                Device(primary_ip="192.168.1.2", friendly_name="office-switch"),
+                Device(mac=MAC[NAS], primary_ip="172.16.10.17", friendly_name="truenas"),
+                Device(mac=MAC[LAPTOP], primary_ip="172.16.10.50", friendly_name="laptop"),
+                Device(mac=MAC[IGNORED], primary_ip="172.16.10.60", ignored=True),
+                Device(mac=MAC[AP], primary_ip="192.168.1.31", friendly_name="ap-hall"),
+                Device(mac=MAC[PHONE], primary_ip="172.16.30.9", friendly_name="phone"),
             ])
             await s.flush()
             (await s.get(Device, LAPTOP)).parent_device_id = FW
@@ -223,7 +223,7 @@ class TestWipe:
     def test_it_clears_the_map_and_nothing_else(self, db):
         async def extra():
             async with D.session_scope() as s:
-                s.add(Target(name="nas ping", check_type=CheckType.PING, address="10.1.10.17",
+                s.add(Target(name="nas ping", check_type=CheckType.PING, address="172.16.10.17",
                              device_id=NAS))
                 _d, found = await topology.suggestions(s)
                 await topology.dismiss(s, next(f for f in found if f.device.id == PHONE))
@@ -245,7 +245,7 @@ class TestWipe:
             async with D.session_scope() as s:
                 profile_id = 1
                 row = await add_device(s, FW, profile_id)
-                await identity.store(s, row.id, own=["10.1.10.1", "10.1.20.1"], arp={})
+                await identity.store(s, row.id, own=["172.16.10.1", "172.16.20.1"], arp={})
         run(own_addresses())
         _counts, applied = run(_do(topology.wipe))
         assert applied.placed == 5, "the laptop's hand-set place went with the wipe"
@@ -297,7 +297,7 @@ class TestPages:
         page = flat(site.get("/preferences/wipe-map").text)
         assert "1 device loses its role" in page and "1 device is taken off the map" in page
         # The firewall is the gateway by its role alone: say so before it goes.
-        assert "SPARK knows SPRK-MDF-FW is your gateway only from its role." in page
+        assert "SPARK knows edge-fw is your gateway only from its role." in page
         assert '<form method="post" action="/preferences/wipe-map">' in page
         assert run(_parents())[LAPTOP] == FW, "asking changed nothing"
         response = site.post("/preferences/wipe-map")
@@ -309,7 +309,7 @@ class TestPages:
         async def own_addresses():
             async with D.session_scope() as s:
                 row = await add_device(s, FW, 1)
-                await identity.store(s, row.id, own=["10.1.10.1", "10.1.20.1"], arp={})
+                await identity.store(s, row.id, own=["172.16.10.1", "172.16.20.1"], arp={})
         run(own_addresses())
         page = flat(site.get("/preferences/wipe-map").text)
         assert "only from its role" not in page

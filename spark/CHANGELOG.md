@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — no homelab details in anything shipped (2026-09-29)
+
+### Changed
+
+- Placeholders and examples are generic now. The Credentials form suggests
+  `truenas` and `192.168.1.20 or truenas.lan`; Targets, Subnets and the map
+  search use `192.168.1.x`. The README, code comments, smoke test and tests
+  use generic names (truenas, office-switch, ap-hall, pool `tank`) and
+  generic ranges (`192.168.1.0/24`, `172.16.x.0/24`) in place of real ones.
+
+### Tests
+
+- `test_no_homelab_details.py` fails if a real host, device or pool name, or
+  the real address scheme, appears in any shipped file (code, templates,
+  docs, tests). It lists them only as SHA-256 hashes. Checked by planting a
+  name, an address and a range: each was caught.
+
 ## Unreleased — Settings → Credentials, and the TrueNAS API client (2026-09-29)
 
 ### Added
@@ -1946,7 +1963,7 @@ through the browser; subnets were the largest thing still contradicting that.
   that looks configured and never runs.
 
 - CIDRs are canonicalised on the way in, so typing the address of the box you
-  are standing on — `10.1.10.7/24` — is accepted and stored as `10.1.10.0/24`.
+  are standing on — `172.16.10.7/24` — is accepted and stored as `172.16.10.0/24`.
 
 ### Tests
 

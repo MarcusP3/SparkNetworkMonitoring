@@ -252,14 +252,14 @@ def main() -> int:
 
                 async def _seed():
                     async with _db.session_scope() as ses:
-                        await _record(ses, _Obs(ip="10.1.10.77", mac="b8:27:eb:01:02:03",
+                        await _record(ses, _Obs(ip="172.16.10.77", mac="b8:27:eb:01:02:03",
                                                 hostname="pi.lan", vendor="Raspberry Pi",
                                                 subnet="LAN"))
                 _asyncio.get_event_loop().run_until_complete(_seed()) \
                     if False else _asyncio.run(_seed())
 
                 r = client.get("/devices")
-                check("a discovered device is listed", "10.1.10.77" in r.text)
+                check("a discovered device is listed", "172.16.10.77" in r.text)
                 # Vendor moved off the list onto the device's own page.
                 import re as _re
                 link = _re.search(r'href="(/devices/\d+)"', r.text)
@@ -273,31 +273,31 @@ def main() -> int:
                       r.status_code == 303 and r.headers.get("location") == "/targets",
                       f"got {r.status_code} -> {r.headers.get('location')}")
                 r = client.get("/targets")
-                check("the new target is watching that address", "10.1.10.77" in r.text)
+                check("the new target is watching that address", "172.16.10.77" in r.text)
                 r = client.get("/devices")
                 check("the device now reads as watched", "watched" in r.text)
 
                 r = client.post(f"/devices/{dev_id}/watch")
                 check("watching twice does not make a second target",
-                      client.get("/targets").text.count("10.1.10.77") == 1)
+                      client.get("/targets").text.count("172.16.10.77") == 1)
 
                 # Tidy up: later sections count targets, and leaving this one
                 # behind makes their arithmetic wrong rather than their logic.
                 rows = client.get("/targets").text
                 watched_id = int(re.search(
-                    r"10\.1\.10\.77.*?/targets/(\d+)/edit", rows, re.S).group(1))
+                    r"172\.16\.10\.77.*?/targets/(\d+)/edit", rows, re.S).group(1))
                 client.post(f"/targets/{watched_id}/delete")
                 check("cleanup left the other targets alone",
-                      client.get("/targets").text.count("10.1.10.77") == 0)
+                      client.get("/targets").text.count("172.16.10.77") == 0)
 
                 print("\nReview state is separate from naming")
                 # Two fresh ones. The device seeded earlier was watched, and
                 # watching is review, so it is no longer flagged.
                 async def _seed2():
                     async with _db.session_scope() as ses:
-                        await _record(ses, _Obs(ip="10.1.10.78", mac="bc:24:11:00:00:01",
+                        await _record(ses, _Obs(ip="172.16.10.78", mac="bc:24:11:00:00:01",
                                                 hostname="second.lan", subnet="LAN"))
-                        await _record(ses, _Obs(ip="10.1.10.79", mac="bc:24:11:00:00:02",
+                        await _record(ses, _Obs(ip="172.16.10.79", mac="bc:24:11:00:00:02",
                                                 hostname="third.lan", subnet="LAN"))
                 _asyncio.run(_seed2())
 

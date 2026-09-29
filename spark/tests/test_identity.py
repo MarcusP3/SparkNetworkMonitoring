@@ -60,17 +60,17 @@ def db():
         await D.init_db(config)
         async with D.session_scope() as s:
             s.add_all([
-                Device(mac=FW_MAC, primary_ip="10.1.10.1", friendly_name="firewall"),
-                Device(primary_ip="10.1.20.1"),                       # GW20: by IP
-                Device(primary_ip="10.1.30.1", friendly_name="iot gw"),
-                Device(mac=SERVER_MAC, primary_ip="10.1.10.20", friendly_name="nas"),
-                Device(primary_ip="10.1.20.20"),                      # the nas on VLAN 20
-                Device(primary_ip="10.1.40.5"),                       # HOST40
-                Device(primary_ip="10.1.50.5"),                       # TWIN_A
-                Device(primary_ip="10.1.50.6"),                       # TWIN_B
+                Device(mac=FW_MAC, primary_ip="172.16.10.1", friendly_name="firewall"),
+                Device(primary_ip="172.16.20.1"),                       # GW20: by IP
+                Device(primary_ip="172.16.30.1", friendly_name="iot gw"),
+                Device(mac=SERVER_MAC, primary_ip="172.16.10.20", friendly_name="nas"),
+                Device(primary_ip="172.16.20.20"),                      # the nas on VLAN 20
+                Device(primary_ip="172.16.40.5"),                       # HOST40
+                Device(primary_ip="172.16.50.5"),                       # TWIN_A
+                Device(primary_ip="172.16.50.6"),                       # TWIN_B
                 # At a firewall address, but a different real device.
-                Device(mac="aa:bb:cc:00:00:99", primary_ip="10.1.60.1"),
-                Device(primary_ip="10.1.70.1", ignored=True),         # SKIPPED
+                Device(mac="aa:bb:cc:00:00:99", primary_ip="172.16.60.1"),
+                Device(primary_ip="172.16.70.1", ignored=True),         # SKIPPED
             ])
             await s.flush()
             profile = await save_profile(s, vault_for(config), ProfileInput(
@@ -78,11 +78,11 @@ def db():
             await add_device(s, FIREWALL, profile.id)
             await identity.store(
                 s, 1,
-                own=["10.1.10.1", "10.1.20.1", "10.1.30.1", "10.1.60.1", "10.1.70.1"],
-                arp={"10.1.10.20": SERVER_MAC, "10.1.20.20": SERVER_MAC,
-                     "10.1.20.1": "aa:bb:cc:00:00:77",    # never used: own address
-                     "10.1.40.5": "aa:bb:cc:00:00:40",
-                     "10.1.50.5": "aa:bb:cc:00:00:50", "10.1.50.6": "aa:bb:cc:00:00:50"},
+                own=["172.16.10.1", "172.16.20.1", "172.16.30.1", "172.16.60.1", "172.16.70.1"],
+                arp={"172.16.10.20": SERVER_MAC, "172.16.20.20": SERVER_MAC,
+                     "172.16.20.1": "aa:bb:cc:00:00:77",    # never used: own address
+                     "172.16.40.5": "aa:bb:cc:00:00:40",
+                     "172.16.50.5": "aa:bb:cc:00:00:50", "172.16.50.6": "aa:bb:cc:00:00:50"},
             )
     run(setup())
     yield config
@@ -126,10 +126,10 @@ class TestSuggestions:
     def test_a_dismissed_suggestion_stays_gone(self, db):
         async def dismiss():
             async with D.session_scope() as s:
-                await identity.dismiss(s, FIREWALL, "10.1.20.1")
-                await identity.dismiss(s, FIREWALL, "10.1.20.1")
+                await identity.dismiss(s, FIREWALL, "172.16.20.1")
+                await identity.dismiss(s, FIREWALL, "172.16.20.1")
                 return (await D.get_setting(s, identity.DISMISSED))["pairs"]
-        assert run(dismiss()) == [f"{FIREWALL}:10.1.20.1"], "once, not twice"
+        assert run(dismiss()) == [f"{FIREWALL}:172.16.20.1"], "once, not twice"
         assert (FIREWALL, GW20, "own") not in run(_suggestions())
         assert (FIREWALL, GW30, "own") in run(_suggestions())
 
@@ -146,7 +146,7 @@ class TestSuggestions:
             async with D.session_scope() as s:
                 profile_id = (await s.get(SnmpDevice, 1)).profile_id
                 row = await add_device(s, STRANGER, profile_id)
-                await identity.store(s, row.id, own=[], arp={"10.1.20.20": "aa:bb:cc:00:00:22"})
+                await identity.store(s, row.id, own=[], arp={"172.16.20.20": "aa:bb:cc:00:00:22"})
         run(second_router())
         assert (SERVER, SERVER20, "arp") not in run(_suggestions())
 
@@ -162,8 +162,8 @@ class TestSuggestions:
             async with D.session_scope() as s:
                 return {x.other.id: identity.why(x) for x in await identity.suggestions(s)}
         said = run(reasons())
-        assert said[GW20] == "firewall reports 10.1.20.1 as one of its own addresses."
-        assert said[SERVER20] == ("firewall's ARP table shows 10.1.20.20 and 10.1.10.20 "
+        assert said[GW20] == "firewall reports 172.16.20.1 as one of its own addresses."
+        assert said[SERVER20] == ("firewall's ARP table shows 172.16.20.20 and 172.16.10.20 "
                                   f"at the same MAC, {SERVER_MAC}.")
 
 
@@ -197,8 +197,8 @@ class TestStore:
         async def again(own, arp):  # type: ignore[no-untyped-def]
             async with D.session_scope() as s:
                 await identity.store(s, 1, own=own, arp=arp)
-        run(again(["10.1.10.1"], None))
-        assert run(self._rows("own")) == [("10.1.10.1", None)]
+        run(again(["172.16.10.1"], None))
+        assert run(self._rows("own")) == [("172.16.10.1", None)]
         assert len(run(self._rows("arp"))) == 6, "the ARP walk failed: keep the last one"
         run(again(None, {}))
         assert run(self._rows("arp")) == [] and len(run(self._rows("own"))) == 1
@@ -227,32 +227,32 @@ MAC = bytes.fromhex("02fc00000005")
 class TestParsing:
     def test_own_addresses_from_the_old_table(self):
         agent = FakeAgent({"1.3.6.1.2.1.4.20.1.1": {
-            "127.0.0.1": "127.0.0.1", "10.1.20.1": "10.1.20.1", "10.1.3.1": "10.1.3.1",
+            "127.0.0.1": "127.0.0.1", "172.16.20.1": "172.16.20.1", "172.16.3.1": "172.16.3.1",
             "169.254.1.1": "169.254.1.1"}})
-        assert run(agent.own_addresses()) == ["10.1.3.1", "10.1.20.1"]
+        assert run(agent.own_addresses()) == ["172.16.3.1", "172.16.20.1"]
 
     def test_own_addresses_from_the_new_table_unicast_only(self):
         agent = FakeAgent({"1.3.6.1.2.1.4.34.1.4": {
-            "1.4.10.1.20.1": 1, "1.4.10.1.20.255": 3, "1.4.127.0.0.1": 1,
+            "1.4.172.16.20.1": 1, "1.4.172.16.20.255": 3, "1.4.127.0.0.1": 1,
             "2.16.254.128.0.0.0.0.0.0.0.0.0.0.0.0.0.1": 1}})
-        assert run(agent.own_addresses()) == ["10.1.20.1"]
+        assert run(agent.own_addresses()) == ["172.16.20.1"]
 
     def test_arp_from_the_old_table(self):
         agent = FakeAgent({
             "1.3.6.1.2.1.4.22.1.2": {
-                "4.10.1.20.5": MAC, "4.10.1.20.6": MAC,       # 6 is marked invalid
-                "4.10.1.20.7": b"",                          # incomplete
-                "4.10.1.20.8": bytes.fromhex("ffffffffffff"),
-                "4.10.1.20.9": bytes.fromhex("01005e000001"),  # multicast
-                "4.10.1.20.10": bytes(6)},
-            "1.3.6.1.2.1.4.22.1.4": {"4.10.1.20.5": 3, "4.10.1.20.6": 2},
+                "4.172.16.20.5": MAC, "4.172.16.20.6": MAC,       # 6 is marked invalid
+                "4.172.16.20.7": b"",                          # incomplete
+                "4.172.16.20.8": bytes.fromhex("ffffffffffff"),
+                "4.172.16.20.9": bytes.fromhex("01005e000001"),  # multicast
+                "4.172.16.20.10": bytes(6)},
+            "1.3.6.1.2.1.4.22.1.4": {"4.172.16.20.5": 3, "4.172.16.20.6": 2},
         })
-        assert run(agent.arp_table()) == {"10.1.20.5": "02:fc:00:00:00:05"}
+        assert run(agent.arp_table()) == {"172.16.20.5": "02:fc:00:00:00:05"}
 
     def test_arp_from_the_new_table(self):
         agent = FakeAgent({"1.3.6.1.2.1.4.35.1.4": {
-            "4.1.4.10.1.20.5": MAC, "4.2.16.254.128.0.0.0.0.0.0.0.0.0.0.0.0.0.1": MAC}})
-        assert run(agent.arp_table()) == {"10.1.20.5": "02:fc:00:00:00:05"}
+            "4.1.4.172.16.20.5": MAC, "4.2.16.254.128.0.0.0.0.0.0.0.0.0.0.0.0.0.1": MAC}})
+        assert run(agent.arp_table()) == {"172.16.20.5": "02:fc:00:00:00:05"}
 
     def test_usable(self):
         assert usable_ip("10.0.0.1") and not usable_ip("0.0.0.0") and not usable_ip("fe80::1")
@@ -376,7 +376,7 @@ class TestPages:
         page = flat(site.get(f"/devices/{FIREWALL}").text)
         assert '<a href="#suggested">2 possible duplicates</a>' in page
         assert f'href="/devices/{FIREWALL}/merge?other={GW20}">Review merge…</a>' in page
-        assert "firewall reports 10.1.30.1 as one of its own addresses." in page
+        assert "firewall reports 172.16.30.1 as one of its own addresses." in page
         assert "Over SNMP it reports 5 addresses of its own and 6 ARP entries" in page
 
     def test_the_duplicate_says_what_it_is_part_of(self, site):
@@ -392,7 +392,7 @@ class TestPages:
 
     def test_the_preview_says_why_and_merging_is_the_usual_merge(self, site):
         preview = flat(site.get(f"/devices/{FIREWALL}/merge?other={GW20}").text)
-        assert "Suggested by SNMP: firewall reports 10.1.20.1 as one of its own addresses." in preview
+        assert "Suggested by SNMP: firewall reports 172.16.20.1 as one of its own addresses." in preview
         site.post(f"/devices/{FIREWALL}/merge", data={"other_id": str(GW20)})
         assert run(_get(Device, GW20)) is None
         assert "1 possible duplicate<" in flat(site.get(f"/devices/{FIREWALL}").text)

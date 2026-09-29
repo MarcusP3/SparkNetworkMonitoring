@@ -46,7 +46,7 @@ def make_config(tmp: Path) -> Config:
     config = Config.model_validate(
         {
             "app": {"data_dir": str(tmp / "data"), "port": 9705, "log_level": "WARNING"},
-            "network": {"subnets": [{"name": "LAN", "cidr": "10.1.10.0/24",
+            "network": {"subnets": [{"name": "LAN", "cidr": "172.16.10.0/24",
                                      "vlan": 10, "attached": True}]},
         }
     )
@@ -63,7 +63,7 @@ def db():
         D.init_engine(cfg)
         await D.init_db(cfg)
         async with D.session_scope() as s:
-            s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50",
+            s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.10.50",
                          friendly_name="nas", last_seen=utcnow()))
 
     asyncio.run(setup())
@@ -238,14 +238,14 @@ class TestUnscannedPortsAreNotClosed:
             async with D.session_scope() as s:
                 # Found on 445 and 22 by a scan of the full list...
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN),
                     open_ports=[P.OpenPort(445, "smb"), P.OpenPort(22, "ssh")],
                 ))
             async with D.session_scope() as s:
                 # ...then 445 is switched off, so the next scan never looks.
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1,
+                    address="172.16.10.50", device_id=1,
                     probed=len(P.WELL_KNOWN) - 1,
                     covered=frozenset(P.WELL_KNOWN) - {445},
                     open_ports=[P.OpenPort(22, "ssh")],
@@ -262,13 +262,13 @@ class TestUnscannedPortsAreNotClosed:
         async def go():
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN),
                     open_ports=[P.OpenPort(445, "smb")],
                 ))
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN),
                     open_ports=[],
                 ))
@@ -281,7 +281,7 @@ class TestUnscannedPortsAreNotClosed:
         async def go():
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN),
                     open_ports=[P.OpenPort(22, "ssh")],
                 ))
@@ -296,13 +296,13 @@ class TestUnscannedPortsAreNotClosed:
         async def go():
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN),
                     open_ports=[P.OpenPort(53, "dns")],
                 ))
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1,
+                    address="172.16.10.50", device_id=1,
                     probed=len(P.WELL_KNOWN) - 1,
                     covered=frozenset(P.WELL_KNOWN) - {53},
                     open_ports=[],
@@ -320,7 +320,7 @@ class TestUnscannedPortsAreNotClosed:
                               state=OPEN, first_seen=utcnow(), last_seen=utcnow()))
             async with D.session_scope() as s:
                 await record_scan(s, P.HostScan(
-                    address="10.1.10.50", device_id=1, probed=len(P.WELL_KNOWN),
+                    address="172.16.10.50", device_id=1, probed=len(P.WELL_KNOWN),
                     covered=frozenset(P.WELL_KNOWN), open_ports=[],
                 ))
         asyncio.run(go())

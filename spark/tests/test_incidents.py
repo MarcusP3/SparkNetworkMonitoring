@@ -59,7 +59,7 @@ def db():
         await D.init_db(cfg)
         async with D.session_scope() as session:
             session.add(Target(name="pi", check_type=CheckType.PING,
-                               address="10.1.10.14", failure_threshold=2,
+                               address="172.16.10.14", failure_threshold=2,
                                recovery_threshold=2))
 
     asyncio.run(setup())
@@ -221,7 +221,7 @@ class TestMigration:
             await D.init_db(cfg)
             async with D.session_scope() as session:
                 session.add(Target(name="pi", check_type=CheckType.PING,
-                                   address="10.1.10.14"))
+                                   address="172.16.10.14"))
             async with D.session_scope() as session:
                 for minutes in (60, 40, 20):
                     session.add(Incident(target_id=1,

@@ -68,18 +68,18 @@ class TestCidrValidation:
     def test_a_host_address_is_accepted_and_canonicalised(self):
         # What people actually type is the address of the box they are on.
         # Rejecting it teaches them to distrust the field.
-        assert S.normalise_cidr("10.1.10.7/24") == "10.1.10.0/24"
+        assert S.normalise_cidr("172.16.10.7/24") == "172.16.10.0/24"
 
     def test_whitespace_is_forgiven(self):
         assert S.normalise_cidr("  192.168.1.0/24 ") == "192.168.1.0/24"
 
     def test_a_missing_prefix_says_what_to_add(self):
         with pytest.raises(S.SubnetError) as caught:
-            S.normalise_cidr("10.1.10.0")
+            S.normalise_cidr("172.16.10.0")
         assert "/24" in str(caught.value), "the message should show the fix"
 
     def test_nonsense_is_refused(self):
-        for bad in ("", "not a network", "10.1.10.0/33", "999.1.1.0/24"):
+        for bad in ("", "not a network", "172.16.10.0/33", "999.1.1.0/24"):
             with pytest.raises(S.SubnetError):
                 S.normalise_cidr(bad)
 
@@ -115,7 +115,7 @@ class TestOversized:
         assert S.too_large_to_sweep("10.0.0.0/16")
 
     def test_a_24_is_fine(self):
-        assert not S.too_large_to_sweep("10.1.10.0/24")
+        assert not S.too_large_to_sweep("172.16.10.0/24")
 
 
 # --------------------------------------------------------------------------
@@ -125,12 +125,12 @@ class TestOversized:
 
 class TestMembership:
     def test_an_address_inside_matches(self):
-        subnet = Subnet(cidr="10.1.10.0/24")
-        assert subnet.contains("10.1.10.50")
-        assert not subnet.contains("10.1.20.50")
+        subnet = Subnet(cidr="172.16.10.0/24")
+        assert subnet.contains("172.16.10.50")
+        assert not subnet.contains("172.16.20.50")
 
     def test_a_missing_or_junk_address_is_not_a_match_and_does_not_raise(self):
-        subnet = Subnet(cidr="10.1.10.0/24")
+        subnet = Subnet(cidr="172.16.10.0/24")
         assert not subnet.contains(None)
         assert not subnet.contains("")
         assert not subnet.contains("not-an-ip")
@@ -140,16 +140,16 @@ class TestMembership:
         # Devices page down with a 500.
         subnet = Subnet(cidr="garbage")
         assert subnet.network is None
-        assert not subnet.contains("10.1.10.50")
+        assert not subnet.contains("172.16.10.50")
 
     def test_the_most_specific_subnet_wins(self):
         wide = Subnet(id=1, cidr="10.0.0.0/8", name="everything")
-        narrow = Subnet(id=2, cidr="10.1.10.0/24", name="LAN")
-        chosen = S.subnet_for([wide, narrow], "10.1.10.50")
+        narrow = Subnet(id=2, cidr="172.16.10.0/24", name="LAN")
+        chosen = S.subnet_for([wide, narrow], "172.16.10.50")
         assert chosen is narrow, "a documented supernet must not swallow its children"
 
     def test_an_address_in_no_subnet_returns_none(self):
-        assert S.subnet_for([Subnet(cidr="10.1.10.0/24")], "192.168.0.5") is None
+        assert S.subnet_for([Subnet(cidr="172.16.10.0/24")], "192.168.0.5") is None
 
 
 # --------------------------------------------------------------------------
@@ -161,22 +161,22 @@ class TestCrud:
     def test_create_and_list_sorted_by_address(self, db):
         async def go():
             async with D.session_scope() as s:
-                await S.create(s, cidr="10.1.30.0/24", name="Servers")
-                await S.create(s, cidr="10.1.10.0/24", name="LAN")
-                await S.create(s, cidr="10.1.20.0/24", name="IoT")
+                await S.create(s, cidr="172.16.30.0/24", name="Servers")
+                await S.create(s, cidr="172.16.10.0/24", name="LAN")
+                await S.create(s, cidr="172.16.20.0/24", name="IoT")
             async with D.session_scope() as s:
                 return [x.cidr for x in await S.list_subnets(s)]
 
         # Sorted by address, so the list reads like a network diagram rather
         # than like an insertion log.
-        assert asyncio.run(go()) == ["10.1.10.0/24", "10.1.20.0/24", "10.1.30.0/24"]
+        assert asyncio.run(go()) == ["172.16.10.0/24", "172.16.20.0/24", "172.16.30.0/24"]
 
     def test_a_duplicate_cidr_is_refused_with_the_existing_name(self, db):
         async def go():
             async with D.session_scope() as s:
-                await S.create(s, cidr="10.1.10.0/24", name="LAN")
+                await S.create(s, cidr="172.16.10.0/24", name="LAN")
                 try:
-                    await S.create(s, cidr="10.1.10.7/24", name="LAN again")
+                    await S.create(s, cidr="172.16.10.7/24", name="LAN again")
                 except S.SubnetError as exc:
                     return str(exc)
             return None
@@ -189,23 +189,23 @@ class TestCrud:
     def test_update_changes_the_vlan_without_touching_anything_else(self, db):
         async def go():
             async with D.session_scope() as s:
-                created = await S.create(s, cidr="10.1.10.0/24", name="LAN", vlan=10)
+                created = await S.create(s, cidr="172.16.10.0/24", name="LAN", vlan=10)
                 subnet_id = created.id
             async with D.session_scope() as s:
-                await S.update(s, subnet_id, cidr="10.1.10.0/24", name="LAN", vlan="99")
+                await S.update(s, subnet_id, cidr="172.16.10.0/24", name="LAN", vlan="99")
             async with D.session_scope() as s:
                 subnet = await s.get(Subnet, subnet_id)
                 return subnet.vlan, subnet.name, subnet.cidr
 
-        assert asyncio.run(go()) == (99, "LAN", "10.1.10.0/24")
+        assert asyncio.run(go()) == (99, "LAN", "172.16.10.0/24")
 
     def test_a_vlan_can_be_cleared_back_to_nothing(self, db):
         async def go():
             async with D.session_scope() as s:
-                created = await S.create(s, cidr="10.1.10.0/24", vlan=10)
+                created = await S.create(s, cidr="172.16.10.0/24", vlan=10)
                 subnet_id = created.id
             async with D.session_scope() as s:
-                await S.update(s, subnet_id, cidr="10.1.10.0/24", vlan="")
+                await S.update(s, subnet_id, cidr="172.16.10.0/24", vlan="")
             async with D.session_scope() as s:
                 return (await s.get(Subnet, subnet_id)).vlan
 
@@ -214,12 +214,12 @@ class TestCrud:
     def test_update_will_not_collide_with_another_subnet(self, db):
         async def go():
             async with D.session_scope() as s:
-                await S.create(s, cidr="10.1.10.0/24", name="LAN")
-                other = await S.create(s, cidr="10.1.20.0/24", name="IoT")
+                await S.create(s, cidr="172.16.10.0/24", name="LAN")
+                other = await S.create(s, cidr="172.16.20.0/24", name="IoT")
                 other_id = other.id
             async with D.session_scope() as s:
                 try:
-                    await S.update(s, other_id, cidr="10.1.10.0/24")
+                    await S.update(s, other_id, cidr="172.16.10.0/24")
                 except S.SubnetError as exc:
                     return str(exc)
             return None
@@ -229,9 +229,9 @@ class TestCrud:
     def test_deleting_a_subnet_keeps_the_devices_found_on_it(self, db):
         async def go():
             async with D.session_scope() as s:
-                created = await S.create(s, cidr="10.1.10.0/24", name="LAN")
+                created = await S.create(s, cidr="172.16.10.0/24", name="LAN")
                 subnet_id = created.id
-                s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50"))
+                s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.10.50"))
             async with D.session_scope() as s:
                 await S.delete(s, subnet_id)
             async with D.session_scope() as s:
@@ -268,8 +268,8 @@ class TestSeeding:
 
     def test_yaml_subnets_are_copied_in_on_the_first_run(self):
         cfg = self._fresh([
-            {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1, "attached": True},
-            {"name": "IoT", "cidr": "10.1.20.0/24", "vlan": 20, "attached": False},
+            {"name": "LAN", "cidr": "172.16.10.0/24", "vlan": 1, "attached": True},
+            {"name": "IoT", "cidr": "172.16.20.0/24", "vlan": 20, "attached": False},
         ])
         try:
             async def go():
@@ -280,8 +280,8 @@ class TestSeeding:
                             for x in await S.list_subnets(s)]
 
             assert asyncio.run(go()) == [
-                ("10.1.10.0/24", "LAN", 1, True),
-                ("10.1.20.0/24", "IoT", 20, False),
+                ("172.16.10.0/24", "LAN", 1, True),
+                ("172.16.20.0/24", "IoT", 20, False),
             ]
         finally:
             asyncio.run(D.close_engine())
@@ -293,7 +293,7 @@ class TestSeeding:
         every subnet in the UI works right up until the next restart puts them
         all back, and the delete button becomes something you stop trusting.
         """
-        cfg = self._fresh([{"name": "LAN", "cidr": "10.1.10.0/24", "attached": True}])
+        cfg = self._fresh([{"name": "LAN", "cidr": "172.16.10.0/24", "attached": True}])
         try:
             async def go():
                 async with D.session_scope() as s:
@@ -311,7 +311,7 @@ class TestSeeding:
             asyncio.run(D.close_engine())
 
     def test_seeding_twice_in_a_row_does_not_duplicate(self):
-        cfg = self._fresh([{"name": "LAN", "cidr": "10.1.10.0/24", "attached": True}])
+        cfg = self._fresh([{"name": "LAN", "cidr": "172.16.10.0/24", "attached": True}])
         try:
             async def go():
                 async with D.session_scope() as s:
@@ -327,7 +327,7 @@ class TestSeeding:
 
     def test_an_unparseable_yaml_subnet_is_skipped_not_fatal(self):
         cfg = self._fresh([
-            {"name": "broken", "cidr": "10.1.10.0/24", "attached": True},
+            {"name": "broken", "cidr": "172.16.10.0/24", "attached": True},
         ])
         # Bypass pydantic's own validation to simulate a row that got in.
         cfg.network.subnets[0].cidr = "not-a-network"
@@ -382,7 +382,7 @@ class TestMigration:
                 ).first()
                 # Writing through the ORM proves the columns match the model,
                 # not merely that a table with that name exists.
-                await S.create(s, cidr="10.1.10.0/24", name="LAN", vlan=10)
+                await S.create(s, cidr="172.16.10.0/24", name="LAN", vlan=10)
             await D.close_engine()
             return version, has_table is not None
 
@@ -405,15 +405,15 @@ class TestUpgradeEndToEnd:
         """
         tmp = Path(tempfile.mkdtemp(prefix="spark-upgrade-"))
         cfg = make_config(tmp, [
-            {"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1, "attached": True},
-            {"name": "IoT", "cidr": "10.1.20.0/24", "vlan": 20, "attached": False},
+            {"name": "LAN", "cidr": "172.16.10.0/24", "vlan": 1, "attached": True},
+            {"name": "IoT", "cidr": "172.16.20.0/24", "vlan": 20, "attached": False},
         ])
 
         async def build_old():
             D.init_engine(cfg)
             await D.init_db(cfg)
             async with D.session_scope() as s:
-                s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.20.60",
+                s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.20.60",
                              friendly_name="sensor", last_seen=utcnow()))
             async with D.session_scope() as s:
                 await s.execute(text("DROP TABLE IF EXISTS subnet"))
@@ -427,7 +427,7 @@ class TestUpgradeEndToEnd:
             client.post("/setup", data={"username": "admin", "password": PASSWORD,
                                         "password_confirm": PASSWORD})
             settings = client.get("/settings").text
-            assert "10.1.10.0/24" in settings and "10.1.20.0/24" in settings
+            assert "172.16.10.0/24" in settings and "172.16.20.0/24" in settings
 
             # And the device that predates the subnet table is classified by it.
             devices = client.get("/devices?subnet=2").text
@@ -442,16 +442,16 @@ class TestUpgradeEndToEnd:
 @pytest.fixture
 def client():
     tmp = Path(tempfile.mkdtemp(prefix="spark-subnets-web-"))
-    cfg = make_config(tmp, [{"name": "LAN", "cidr": "10.1.10.0/24", "vlan": 1,
+    cfg = make_config(tmp, [{"name": "LAN", "cidr": "172.16.10.0/24", "vlan": 1,
                              "attached": True}])
 
     async def seed_devices():
         D.init_engine(cfg)
         await D.init_db(cfg)
         async with D.session_scope() as s:
-            s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="10.1.10.50",
+            s.add(Device(mac="aa:bb:cc:dd:ee:ff", primary_ip="172.16.10.50",
                          friendly_name="nas", last_seen=utcnow()))
-            s.add(Device(mac="b8:27:eb:11:22:33", primary_ip="10.1.20.60",
+            s.add(Device(mac="b8:27:eb:11:22:33", primary_ip="172.16.20.60",
                          friendly_name="sensor", last_seen=utcnow()))
             s.add(Device(mac="52:54:00:aa:bb:cc", primary_ip="172.16.5.5",
                          friendly_name="stray", last_seen=utcnow()))
@@ -472,32 +472,32 @@ def device_names(page: str) -> set[str]:
 class TestSettingsPage:
     def test_the_seeded_subnet_is_listed(self, client):
         page = client.get("/settings").text
-        assert "10.1.10.0/24" in page and "LAN" in page
+        assert "172.16.10.0/24" in page and "LAN" in page
 
     def test_adding_a_subnet(self, client):
         client.post("/settings/subnets",
-                    data={"cidr": "10.1.20.0/24", "name": "IoT", "vlan": "20",
+                    data={"cidr": "172.16.20.0/24", "name": "IoT", "vlan": "20",
                           "attached": "1"})
         page = client.get("/settings").text
-        assert "10.1.20.0/24" in page and "IoT" in page
+        assert "172.16.20.0/24" in page and "IoT" in page
 
     def test_a_bad_cidr_comes_back_on_the_page_with_the_typing_intact(self, client):
         response = client.post("/settings/subnets",
-                               data={"cidr": "10.1.99", "name": "Typo"})
+                               data={"cidr": "172.16.99", "name": "Typo"})
         assert response.status_code == 400
         # Clearing the form on a validation error is a worse outcome than the
         # typo was.
-        assert "10.1.99" in response.text and "Typo" in response.text
+        assert "172.16.99" in response.text and "Typo" in response.text
 
     def test_editing_a_vlan_tag(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "LAN", "vlan": "42",
+                    data={"cidr": "172.16.10.0/24", "name": "LAN", "vlan": "42",
                           "attached": "1", "enabled": "1"})
         assert 'value="42"' in client.get("/settings").text
 
     def test_unticking_attached_actually_unticks_it(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "LAN", "enabled": "1"})
+                    data={"cidr": "172.16.10.0/24", "name": "LAN", "enabled": "1"})
         page = client.get("/settings").text
         block = re.search(r'name="attached".*?>', page, re.S)
         assert block and "checked" not in block.group(0)
@@ -507,7 +507,7 @@ class TestSettingsPage:
         page = client.get("/settings").text
         # Scoped to the table: the add form's placeholder is also a CIDR, so a
         # page-wide search would keep matching after the row was gone.
-        assert 'name="cidr" value="10.1.10.0/24"' not in page
+        assert 'name="cidr" value="172.16.10.0/24"' not in page
         assert "No subnets configured" in page
 
     def test_settings_needs_a_login(self, client):
@@ -534,13 +534,13 @@ class TestDashboard:
         assert "10.9.9.0/24" in page and "Guest" in page
 
     def test_a_subnet_removed_in_settings_leaves_the_dashboard(self, client):
-        assert "10.1.10.0/24" in client.get("/").text
+        assert "172.16.10.0/24" in client.get("/").text
         client.post("/settings/subnets/1/delete")
-        assert "10.1.10.0/24" not in client.get("/").text
+        assert "172.16.10.0/24" not in client.get("/").text
 
     def test_an_edited_vlan_tag_shows_on_the_dashboard(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "LAN", "vlan": "55",
+                    data={"cidr": "172.16.10.0/24", "name": "LAN", "vlan": "55",
                           "attached": "1", "enabled": "1"})
         assert "55" in client.get("/").text
 
@@ -552,7 +552,7 @@ class TestDashboard:
 
     def test_a_subnet_with_sweep_unticked_is_called_out(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "LAN", "attached": "1"})
+                    data={"cidr": "172.16.10.0/24", "name": "LAN", "attached": "1"})
         page = client.get("/").text
         # Listed but not swept is a real state and silently looks like a
         # working subnet that never finds anything.
@@ -575,7 +575,7 @@ class TestDeviceFilter:
 
     def test_adding_a_subnet_reclassifies_devices_already_discovered(self, client):
         client.post("/settings/subnets",
-                    data={"cidr": "10.1.20.0/24", "name": "IoT", "attached": "1"})
+                    data={"cidr": "172.16.20.0/24", "name": "IoT", "attached": "1"})
         page = client.get("/devices?subnet=2").text
         # Membership is computed from the address, so a subnet added today
         # picks up a device found last week.
@@ -583,7 +583,7 @@ class TestDeviceFilter:
 
     def test_renaming_a_subnet_does_not_orphan_its_devices(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "Renamed", "attached": "1",
+                    data={"cidr": "172.16.10.0/24", "name": "Renamed", "attached": "1",
                           "enabled": "1"})
         assert device_names(client.get("/devices?subnet=1").text) == {"nas"}
 
@@ -604,7 +604,7 @@ class TestDeviceFilter:
 
     def test_the_vlan_tag_shows_against_a_device(self, client):
         client.post("/settings/subnets/1",
-                    data={"cidr": "10.1.10.0/24", "name": "LAN", "vlan": "77",
+                    data={"cidr": "172.16.10.0/24", "name": "LAN", "vlan": "77",
                           "attached": "1", "enabled": "1"})
         page = client.get("/devices?subnet=1").text
         assert "77" in page

@@ -29,7 +29,7 @@ def client():
     tmp = Path(tempfile.mkdtemp(prefix="spark-menu-"))
     config = Config.model_validate({
         "app": {"data_dir": str(tmp / "data"), "log_level": "WARNING"},
-        "network": {"subnets": [{"name": "LAN", "cidr": "10.1.10.0/24", "attached": True}]},
+        "network": {"subnets": [{"name": "LAN", "cidr": "172.16.10.0/24", "attached": True}]},
     })
     config.app.data_dir.mkdir(parents=True, exist_ok=True)
     with TestClient(create_app(config), follow_redirects=False) as c:
