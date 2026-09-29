@@ -691,6 +691,15 @@ The key is encrypted as soon as it arrives (the same vault as SNMP secrets),
 is never shown again, and never appears in a page — an edit with the key field
 left empty keeps the saved one.
 
+**Checked every 5 minutes, and shown on the device page.** Once its
+certificate is trusted, SPARK logs in with each credential every 5 minutes.
+The device it belongs to gets a card saying *connected* (with the TrueNAS
+version and when it was last checked), *waiting for you* (a certificate to
+check first), or *not connected* with the reason, and a Test button. If a
+credential fails two checks in a row — a revoked key, a replaced
+certificate, TrueNAS down — SPARK alerts, and again when it works. The rule
+is under Settings → Alerts → APIs; the mute list applies.
+
 ---
 
 ## Authentication

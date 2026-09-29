@@ -1000,8 +1000,14 @@
         <input type="number" name="drive_minutes" min="1" max="1440" required value="{{ r.drive_minutes }}" aria-label="Drive temperature minutes">
         <span>minutes</span>
       </div>
+      <h3 class="sub-title">APIs</h3>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="api_down" value="1" {% if r.api_down %}checked{% endif %}>
+          <span>An API credential stops working</span></label>
+        <span class="muted small rule-scope">Checked every 5 minutes once its certificate is trusted: two failed checks in a row, and again when it works. See <a href="/settings/credentials">Credentials</a>.</span>
+      </div>
       <div class="form-actions">
-        <button type="submit" class="btn-primary">Save SNMP alerts</button>
+        <button type="submit" class="btn-primary">Save alert rules</button>
       </div>
     </form>
 
@@ -1137,15 +1143,15 @@
         </div>
       </div>
       <p class="small cred-state">
-        {% if r.last_ok_at and not r.last_error %}
-          <span class="pill ok dot">connected</span>
+        {% if c.state == 'ok' %}
+          <span class="pill {{ c.pill }}">{{ c.words }}</span>
           {% if r.last_info %}TrueNAS {{ r.last_info.version or '' }}{% if r.last_info.hostname %} · {{ r.last_info.hostname }}{% endif %} ·{% endif %}
-          tested {{ r.last_ok_at | local('%b %-d, %H:%M %Z') }}
-        {% elif r.last_error %}
-          <span class="pill {{ 'neutral' if r.pending_sha256 and not r.cert_sha256 else 'bad' }}">{{ 'waiting for you' if r.pending_sha256 and not r.cert_sha256 else 'not connected' }}</span>
-          {{ r.last_error }}
-        {% else %}
+          checked {{ r.last_checked_at | local('%b %-d, %H:%M %Z') }}{% if c.scheduled %}, every 5 minutes{% endif %}
+        {% elif c.state == 'untested' %}
           <span class="muted">Not tested yet.</span>
+        {% else %}
+          <span class="pill {{ c.pill }}">{{ c.words }}</span>
+          {{ r.last_error }}
         {% endif %}
       </p>
       {% if r.pending_sha256 %}

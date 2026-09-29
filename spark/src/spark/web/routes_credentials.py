@@ -76,9 +76,20 @@ async def edit_credential(
     return redirect(f"{PAGE}#cred-{cred_id}")
 
 
+def _back(back: str, cred_id: int) -> str:
+    """Back to the device page Test was pressed on, or to this list."""
+    from .routes_auth import _safe_next
+
+    target = _safe_next(back) if back else ""
+    if target.startswith("/devices/"):
+        return f"{target}#api-{cred_id}"
+    return f"{PAGE}#cred-{cred_id}"
+
+
 @router.post("/settings/credentials/{cred_id}/test")
 async def test_credential(
     cred_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     _user: User = Depends(require_user),
@@ -87,7 +98,7 @@ async def test_credential(
     if row is not None:
         await credentials.test(session, vault_for(config), row)
         await session.commit()
-    return redirect(f"{PAGE}#cred-{cred_id}")
+    return redirect(_back(back, cred_id))
 
 
 @router.post("/settings/credentials/{cred_id}/trust")
@@ -119,6 +130,7 @@ async def delete_credential(
 ):
     row = await session.get(ApiCredential, cred_id)
     if row is not None:
+        await credentials.forget_alert(session, row.id)
         await session.delete(row)
         await session.commit()
     return redirect(PAGE)

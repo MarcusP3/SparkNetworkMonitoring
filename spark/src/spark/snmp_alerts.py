@@ -30,7 +30,7 @@ from . import alerts
 from .charts import fmt_bps
 from .db import get_setting, save_setting
 from .engine.state import human_duration
-from .models import AlertState, Device, SnmpInterface, SnmpPoll
+from .models import DEFAULT_SETTINGS, AlertState, Device, SnmpInterface, SnmpPoll
 
 SETTING = "alert_rules"
 
@@ -81,7 +81,10 @@ METRICS = (
 
 
 async def load(session: AsyncSession) -> dict:
-    return await get_setting(session, SETTING)
+    """The saved rules over the defaults, so a rule added in a later version
+    (storage, APIs) is on -- and shown ticked -- for a setup that saved the
+    form before it existed."""
+    return {**DEFAULT_SETTINGS[SETTING], **await get_setting(session, SETTING)}
 
 
 class RuleError(ValueError):
@@ -133,6 +136,8 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
                                   "Drive temperature"),
         "drive_minutes": _bounded(form.get("drive_minutes", ""), *MINUTES_RANGE,
                                   "Drive temperature minutes"),
+        # API credentials (credentials.py).
+        "api_down": bool(form.get("api_down")),
     }
     rules.update(checked)
     await save_setting(session, SETTING, rules)

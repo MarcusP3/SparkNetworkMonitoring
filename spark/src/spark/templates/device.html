@@ -66,6 +66,44 @@
   </div>
   {% endif %}
 
+  {% for a in apis %}
+  {% set r = a.row %}
+  <section class="card api-card" id="api-{{ r.id }}">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M16 7l3 3M14 9l2 2"/></svg></span>
+      <div>
+        <h2>{{ a.kind }} API</h2>
+        <p class="card-sub">
+          <span class="pill {{ a.pill }}">{{ a.words }}</span>
+          {% if a.state == 'ok' %}
+            {% if r.last_info %}{{ a.kind }} {{ r.last_info.version or '' }}{% if r.last_info.hostname %} · {{ r.last_info.hostname }}{% endif %} ·{% endif %}
+            checked {{ a.ago }}{% if a.scheduled %}, every 5 minutes{% endif %}
+          {% elif a.state == 'waiting' %}
+            Its certificate needs checking before SPARK sends anything, the key included.
+          {% elif a.state == 'bad' %}
+            {% if r.last_ok_at %}Last worked {{ r.last_ok_at | local('%b %-d, %H:%M %Z') }} ·{% else %}Has not worked yet ·{% endif %}
+            checked {{ a.ago }}
+          {% else %}
+            Not tested yet.
+          {% endif %}
+        </p>
+      </div>
+      <div class="head-actions api-actions">
+        {% if a.state != 'waiting' %}
+        <form method="post" action="/settings/credentials/{{ r.id }}/test">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="btn-quiet">Test</button>
+        </form>
+        {% endif %}
+        <a class="btn-quiet" href="/settings/credentials#cred-{{ r.id }}">{{ 'Check the certificate' if a.state == 'waiting' else 'Settings' }}</a>
+      </div>
+    </div>
+    {% if a.state == 'bad' %}
+      <p class="muted small snmp-error">{{ r.last_error }}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+
   {% if snmp %}
   {% set poll = snmp.poll %}
   <section class="card">

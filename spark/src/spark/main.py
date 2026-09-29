@@ -124,6 +124,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_alerts(config)
         scheduler_module.schedule_identity(config)
         scheduler_module.schedule_storage(config)
+        scheduler_module.schedule_credentials(config)
 
         log.info(
             "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "

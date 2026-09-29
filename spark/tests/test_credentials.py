@@ -355,6 +355,230 @@ class TestPage:
         assert run(count()) == 0
 
 
+# --------------------------------------------------------------------------
+# Checked every 5 minutes, and the alert
+# --------------------------------------------------------------------------
+
+
+async def _trusted(config, host, **over):  # type: ignore[no-untyped-def]
+    ident = await _add(config, host=host, **over)
+    async with D.session_scope() as s:
+        row = await s.get(ApiCredential, ident)
+        await credentials.test(s, vault_for(config), row)
+    async with D.session_scope() as s:
+        row = await s.get(ApiCredential, ident)
+        assert await credentials.trust(s, vault_for(config), row, row.pending_sha256)
+    return ident
+
+
+async def _set_key(config, ident, key):  # type: ignore[no-untyped-def]
+    async with D.session_scope() as s:
+        (await s.get(ApiCredential, ident)).key_sealed = vault_for(config).seal(key)
+
+
+async def _sent():  # type: ignore[no-untyped-def]
+    from spark.models import Notification
+    async with D.session_scope() as s:
+        rows = (await s.execute(select(Notification).order_by(Notification.id))).scalars()
+        return [(n.kind, n.subject, n.body) for n in rows]
+
+
+async def _alert_state(ident):  # type: ignore[no-untyped-def]
+    from spark.models import AlertState
+    async with D.session_scope() as s:
+        return await s.get(AlertState, f"api:{ident}")
+
+
+class TestScheduled:
+    def test_only_trusted_credentials_are_checked(self, db, fake):
+        ident = run(_add(db, host=fake.host))
+        fake.paths.clear()
+        assert run(credentials.check_all(db)) == 0
+        assert run(credentials.check_one(db, ident)) is False
+        assert fake.paths == [], "an untrusted credential is never connected to on a schedule"
+
+    def test_a_trusted_one_is_checked_and_recorded(self, db, fake):
+        ident = run(_trusted(db, fake.host))
+        before = run(_row(ident)).last_checked_at
+        fake.received.clear()
+        assert run(credentials.check_all(db)) == 1
+        row = run(_row(ident))
+        assert len(fake.logins()) == 1 and row.last_checked_at > before
+        assert credentials.state(row) == "ok"
+
+    def test_two_failures_alert_once_then_it_recovers(self, db, fake):
+        ident = run(_trusted(db, fake.host))
+        run(_set_key(db, ident, "1-revoked"))
+        assert run(credentials.check_one(db, ident)) is False
+        assert run(_sent()) == [], "one failed check is not news"
+        run(credentials.check_one(db, ident))
+        run(credentials.check_one(db, ident))
+        sent = run(_sent())
+        assert [(k, subj) for k, subj, _ in sent] == [
+            ("api_down", "truenas: SPARK cannot use the TrueNAS API")]
+        assert "refused the API key" in sent[0][2] and "1-revoked" not in sent[0][2]
+        assert credentials.state(run(_row(ident))) == "bad"
+
+        run(_set_key(db, ident, GOOD_KEY))
+        assert run(credentials.check_one(db, ident)) is True
+        assert [k for k, _, _ in run(_sent())] == ["api_down", "api_ok"]
+        assert run(_sent())[1][1] == "truenas: the TrueNAS API is working again"
+        assert run(_alert_state(ident)) is None
+
+    def test_one_failure_then_working_says_nothing(self, db, fake):
+        ident = run(_trusted(db, fake.host))
+        run(_set_key(db, ident, "1-revoked"))
+        run(credentials.check_one(db, ident))
+        run(_set_key(db, ident, GOOD_KEY))
+        run(credentials.check_one(db, ident))
+        run(_set_key(db, ident, "1-revoked"))
+        run(credentials.check_one(db, ident))
+        assert run(_sent()) == [], "the streak started again"
+
+    def test_a_replaced_certificate_alerts_and_gets_nothing(self, db, fake):
+        ident = run(_trusted(db, fake.host))
+        fake.use("impostor")
+        fake.received.clear()
+        run(credentials.check_one(db, ident))
+        run(credentials.check_one(db, ident))
+        assert fake.logins() == []
+        (kind, _, body), = run(_sent())
+        assert kind == "api_down" and "different certificate" in body
+
+    @pytest.mark.parametrize("how", ["rule off", "muted"])
+    def test_quiet_when_the_rule_is_off_or_the_device_muted(self, db, fake, how):
+        from spark import snmp_alerts
+        from spark.db import save_setting
+        from spark.web.routes_device_page import set_device_muted
+
+        async def quiet():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                if how == "rule off":
+                    await save_setting(s, snmp_alerts.SETTING,
+                                       {**await snmp_alerts.load(s), "api_down": False})
+                else:
+                    await set_device_muted(s, 1, True)
+        ident = run(_trusted(db, fake.host))
+        run(quiet())
+        run(_set_key(db, ident, "1-revoked"))
+        for _ in range(3):
+            run(credentials.check_one(db, ident))
+        assert run(_sent()) == []
+
+    def test_removing_or_changing_it_forgets_the_alert(self, db, fake, site):
+        ident = run(_trusted(db, fake.host))
+        run(_set_key(db, ident, "1-revoked"))
+        run(credentials.check_one(db, ident))
+        assert run(_alert_state(ident)) is not None
+        site.post(f"/settings/credentials/{ident}", data={
+            "name": "truenas", "device_id": "1", "host": "truenas.lan", "api_key": ""})
+        assert run(_alert_state(ident)) is None and run(_row(ident)).cert_sha256 is None
+
+        ident = run(_trusted(db, fake.host, name="second"))
+        run(_set_key(db, ident, "1-revoked"))
+        run(credentials.check_one(db, ident))
+        assert run(_alert_state(ident)) is not None
+        site.post(f"/settings/credentials/{ident}/delete")
+        assert run(_alert_state(ident)) is None
+
+    def test_the_rule_is_on_for_a_setup_that_saved_rules_before_it_existed(self, db, site):
+        from spark import snmp_alerts
+        from spark.db import save_setting
+
+        async def old():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                await save_setting(s, snmp_alerts.SETTING, {"cpu": False, "cpu_percent": 70})
+            async with D.session_scope() as s:
+                return await snmp_alerts.load(s)
+        rules = run(old())
+        assert rules["api_down"] is True and rules["pool_health"] is True
+        assert rules["cpu"] is False and rules["cpu_percent"] == 70
+        page = flat(site.get("/settings/alerts").text)
+        assert 'name="api_down" value="1" checked' in page
+        assert 'name="pool_health" value="1" checked' in page
+
+    def test_the_rules_form_saves_it(self, db, site):
+        from spark import snmp_alerts
+        form = {"port_busy_percent": "80", "port_busy_minutes": "10", "cpu_percent": "90",
+                "cpu_minutes": "10", "memory_percent": "90", "memory_minutes": "10",
+                "temperature_celsius": "80", "temperature_minutes": "5",
+                "pool_space_percent": "85", "disk_space_percent": "90", "drive_celsius": "50",
+                "drive_minutes": "10"}
+        assert site.post("/settings/alerts/rules", data=form).status_code == 303
+
+        async def rules():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return await snmp_alerts.load(s)
+        assert run(rules())["api_down"] is False
+        site.post("/settings/alerts/rules", data={**form, "api_down": "1"})
+        assert run(rules())["api_down"] is True
+
+
+def test_the_job_is_scheduled_every_5_minutes(db):
+    from datetime import timedelta
+
+    from spark import scheduler as S
+    from spark.models import utcnow
+
+    async def body():  # type: ignore[no-untyped-def]
+        S.start()
+        try:
+            assert S.schedule_credentials(db)
+            job = S.get_scheduler().get_job(credentials.JOB_ID)
+            assert 30 < (job.next_run_time - utcnow()).total_seconds() <= 45
+            assert job.trigger.interval == timedelta(minutes=5)
+        finally:
+            await S.shutdown()
+    run(body())
+
+
+def test_the_app_schedules_it_on_start(site):
+    from spark import scheduler as S
+    assert S.get_scheduler().get_job(credentials.JOB_ID) is not None
+
+
+# --------------------------------------------------------------------------
+# The device page
+# --------------------------------------------------------------------------
+
+
+class TestDevicePage:
+    def test_no_credential_no_card(self, site):
+        assert "api-card" not in site.get("/devices/1").text
+
+    def test_connected(self, site, fake, db):
+        run(_trusted(db, fake.host))
+        page = flat(site.get("/devices/1").text)
+        assert '<section class="card api-card" id="api-1">' in page
+        assert "<h2>TrueNAS API</h2>" in page
+        assert '<span class="pill ok dot">connected</span> TrueNAS 25.10.1 · truenas ·' in page
+        assert "every 5 minutes" in page and GOOD_KEY not in page
+
+    def test_waiting_points_at_the_certificate(self, site, fake):
+        site.post("/settings/credentials", data={
+            "kind": "truenas", "name": "truenas", "device_id": "1", "host": fake.host, "api_key": GOOD_KEY})
+        page = flat(site.get("/devices/1").text)
+        assert '<span class="pill neutral">waiting for you</span>' in page
+        assert '<a class="btn-quiet" href="/settings/credentials#cred-1">Check the certificate</a>' in page
+        assert "/settings/credentials/1/test" not in page
+
+    def test_not_connected_says_why(self, site, fake, db):
+        ident = run(_trusted(db, fake.host))
+        run(_set_key(db, ident, "1-revoked"))
+        run(credentials.check_one(db, ident))
+        page = flat(site.get("/devices/1").text)
+        assert '<span class="pill bad">not connected</span> Last worked' in page
+        assert "refused the API key" in page and "1-revoked" not in page
+
+    def test_test_comes_back_to_the_device(self, site, fake, db):
+        run(_trusted(db, fake.host))
+        response = site.post("/settings/credentials/1/test", data={"back": "/devices/1?range=24h"})
+        assert response.headers["location"] == "/devices/1?range=24h#api-1"
+        for back in ("https://evil.example/devices/1", "//evil.example/", "/settings"):
+            response = site.post("/settings/credentials/1/test", data={"back": back})
+            assert response.headers["location"] == "/settings/credentials#cred-1"
+
+
 def test_migration_15_from_a_version_14_database():
     from sqlalchemy import inspect, text
 

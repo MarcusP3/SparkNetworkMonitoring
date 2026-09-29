@@ -469,6 +469,28 @@ def schedule_storage(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_credentials(config) -> bool:  # type: ignore[no-untyped-def]
+    """Each trusted API credential, every 5 minutes (credentials.py)."""
+    from .credentials import CHECK_MINUTES, FIRST_CHECK_SECONDS, JOB_ID, check_all
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        check_all,
+        "interval",
+        minutes=CHECK_MINUTES,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_CHECK_SECONDS),
+        name="Check API credentials",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

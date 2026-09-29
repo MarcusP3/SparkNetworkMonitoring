@@ -8,19 +8,47 @@ field on edit keeps the one saved. A certificate is trusted only by a person
 pressing Trust on the fingerprint they were shown (truenas.py). Changing the
 address forgets the trusted certificate: a different address is a different
 server until someone says otherwise.
+
+Once a certificate is trusted, SPARK checks each credential every 5 minutes
+on its own (the device page and this list show the result), and alerts if
+it stops working on two checks in a row -- a revoked key, a replaced
+certificate, TrueNAS down -- and again when it works. The rule is under
+Settings -> Alerts. A credential with no trusted certificate is never
+checked on a schedule: it would only fetch the certificate again.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import truenas
-from .models import ApiCredential, Device, utcnow
-from .vault import SecretUnavailable, Vault
+from . import alerts, snmp_alerts, truenas
+from .db import session_scope
+from .engine.state import human_duration
+from .models import AlertState, ApiCredential, Device, utcnow
+from .vault import SecretUnavailable, Vault, vault_for
+
+log = logging.getLogger(__name__)
+
+JOB_ID = "api-credentials"
+CHECK_MINUTES = 5
+FIRST_CHECK_SECONDS = 45
+# Failed checks in a row before an alert: one blip (a reboot, an update) is
+# not news.
+FAILS_BEFORE_ALERT = 2
+
+# state() -> (pill class, words)
+STATES = {
+    "ok": ("ok dot", "connected"),
+    "waiting": ("neutral", "waiting for you"),
+    "bad": ("bad", "not connected"),
+    "untested": ("neutral", "not tested"),
+}
 
 KINDS = {"truenas": "TrueNAS"}
 
@@ -120,6 +148,9 @@ async def update(session: AsyncSession, vault: Vault, row: ApiCredential, *, nam
         row.cert_sha256 = row.pending_sha256 = None
         row.last_ok_at = row.last_info = None
         row.last_error = None
+        # No longer checked until trusted again: an alert about the old
+        # address or key would otherwise stand for ever.
+        await forget_alert(session, row.id)
     row.device_id = device.id if device else None
     row.host = address
     if key:
@@ -166,11 +197,109 @@ async def trust(session: AsyncSession, vault: Vault, row: ApiCredential,
     return await test(session, vault, row)
 
 
+def state(row: ApiCredential) -> str:
+    """ok, waiting (a certificate to check before anything is sent), bad,
+    or untested."""
+    if row.last_error:
+        return "waiting" if row.pending_sha256 and not row.cert_sha256 else "bad"
+    return "ok" if row.last_ok_at else "untested"
+
+
+def _entry(row: ApiCredential, device: Device | None) -> dict:
+    key = state(row)
+    pill, words = STATES[key]
+    return {"row": row, "device": device, "kind": KINDS.get(row.kind, row.kind),
+            "state": key, "pill": pill, "words": words,
+            "scheduled": row.enabled and row.cert_sha256 is not None}
+
+
 async def listing(session: AsyncSession) -> list[dict]:
     rows = (await session.execute(select(ApiCredential).order_by(func.lower(ApiCredential.name)))).scalars()
     out = []
     for row in rows:
         device = await session.get(Device, row.device_id) if row.device_id else None
-        out.append({"row": row, "device": device, "kind": KINDS.get(row.kind, row.kind)})
+        out.append(_entry(row, device))
     return out
+
+
+async def for_device(session: AsyncSession, device: Device) -> list[dict]:
+    rows = (await session.execute(
+        select(ApiCredential).where(ApiCredential.device_id == device.id)
+        .order_by(func.lower(ApiCredential.name))
+    )).scalars()
+    return [_entry(row, device) for row in rows]
+
+
+# --------------------------------------------------------------------------
+# Checked on a schedule, and the alert
+# --------------------------------------------------------------------------
+
+
+def _alert_key(cred_id: int) -> str:
+    return f"api:{cred_id}"
+
+
+async def forget_alert(session: AsyncSession, cred_id: int) -> None:
+    """Drop the alert state, silently: removed, or no longer checked."""
+    found = await session.get(AlertState, _alert_key(cred_id))
+    if found is not None:
+        await session.delete(found)
+
+
+async def check_all(config) -> int:  # type: ignore[no-untyped-def]
+    """The scheduler's job. Returns how many worked. Never raises."""
+    try:
+        async with session_scope() as session:
+            ids = list((await session.execute(
+                select(ApiCredential.id).where(ApiCredential.enabled.is_(True),
+                                               ApiCredential.cert_sha256.is_not(None))
+                .order_by(ApiCredential.id)
+            )).scalars())
+        worked = 0
+        for cred_id in ids:
+            if await check_one(config, cred_id):
+                worked += 1
+        return worked
+    except Exception:  # noqa: BLE001 - the scheduler must keep running
+        log.exception("Checking API credentials failed")
+        return 0
+
+
+async def check_one(config, cred_id: int) -> bool:  # type: ignore[no-untyped-def]
+    async with session_scope() as session:
+        row = await session.get(ApiCredential, cred_id)
+        if row is None or not row.enabled or row.cert_sha256 is None:
+            return False
+        worked = await test(session, vault_for(config), row)
+        await evaluate(session, row, worked, utcnow())
+    return worked
+
+
+async def evaluate(session: AsyncSession, row: ApiCredential, worked: bool,
+                   now: datetime) -> None:
+    key = _alert_key(row.id)
+    out = await snmp_alerts.step(session, key, breached=not worked, cleared=worked, value=None,
+                                 now=now, hold=timedelta(0), min_polls=FAILS_BEFORE_ALERT,
+                                 interval=CHECK_MINUTES * 60)
+    rules = await snmp_alerts.load(session)
+    settings = await alerts.load(session)
+    device = await session.get(Device, row.device_id) if row.device_id else None
+    sending = settings.get("enabled", True) and not (
+        device is not None and await alerts.is_muted(session, device_id=device.id))
+    name = device.display_name if device else row.name
+    what = KINDS.get(row.kind, row.kind)
+    if out.fired and rules.get("api_down", True) and sending:
+        await alerts.enqueue(
+            session, kind="api_down", tone="bad",
+            subject=f"{name}: SPARK cannot use the {what} API",
+            body=f"`{row.host}` — {row.last_error or 'no answer'}",
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire")
+        await snmp_alerts._mark_notified(session, key)
+    elif out.cleared and out.notified and settings.get("notify_on_recovery", True) and sending:
+        took = human_duration((now - out.since).total_seconds())
+        await alerts.enqueue(
+            session, kind="api_ok", tone="ok",
+            subject=f"{name}: the {what} API is working again",
+            body=f"`{row.host}` — it was not for {took}.",
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:clear")
 

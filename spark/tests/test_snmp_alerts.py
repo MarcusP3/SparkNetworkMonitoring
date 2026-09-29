@@ -404,7 +404,7 @@ class TestPages:
                 "drive_minutes": "15"}
         response = site.post("/settings/alerts/rules", data=form)
         assert response.headers["location"] == "/settings/alerts?saved=rules"
-        assert "SNMP alert rules saved." in site.get("/settings/alerts?saved=rules").text
+        assert "Alert rules saved." in site.get("/settings/alerts?saved=rules").text
 
         async def saved():
             async with D.session_scope() as s:

@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — the API on the device page, checked every 5 minutes (2026-09-29)
+
+### Added
+
+- **A card on the device page for each API credential** it has: *connected*
+  with the TrueNAS version, host name and when it was last checked;
+  *waiting for you* with a link to check the certificate; or *not
+  connected* with when it last worked and why not. A Test button that comes
+  back to the same page.
+- **Checked every 5 minutes** once a certificate is trusted (never before:
+  that would only fetch the certificate again).
+- **An alert when a credential stops working**, on two failed checks in a
+  row, and again when it works. Settings → Alerts → APIs; the mute list
+  applies. Changing a credential's address or key, or removing it, forgets
+  the alert quietly.
+
+### Fixed
+
+- Alert rules added in a later version (storage, and now APIs) showed
+  unticked on Settings → Alerts for a setup that had saved the rules form
+  before they existed, and saving it switched them off. The saved rules are
+  now read over the defaults.
+
+### Changed
+
+- The rules form's button is "Save alert rules", as it holds more than SNMP.
+
+### Tests
+
+17 new in `test_credentials.py`. Fifteen deliberate breaks each caught (one
+more, the job's own filter for untrusted credentials, is backed by the same
+check in `check_one` and changed nothing). `pytest` 1086 passed with the
+agent, `smoke_test.py` 76 passed. Checked in a browser in both themes and at
+phone width.
+
 ## Unreleased — no homelab details in anything shipped (2026-09-29)
 
 ### Changed

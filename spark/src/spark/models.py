@@ -1211,6 +1211,8 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "pool_space": True, "pool_space_percent": 85,
         "disk_space": True, "disk_space_percent": 90,
         "drive_temperature": True, "drive_celsius": 50, "drive_minutes": 10,
+        # API credentials (credentials.py): two failed checks in a row.
+        "api_down": True,
     },
     "snmp": {
         "poll_interval_seconds": 60,

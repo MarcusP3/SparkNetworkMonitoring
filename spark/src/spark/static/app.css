@@ -1758,3 +1758,14 @@ code.fingerprint.small { display: inline; }
 .suggest-card .card-head form { margin: 0; }
 .merge-plan { margin: .5rem 0 1rem; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .4rem; }
 .form-actions form { margin: 0; }
+
+/* Device page: one card per API credential, a status line and two buttons. */
+.api-card .card-head { margin-bottom: 0; }
+.api-card .snmp-error { margin: .75rem 0 0; }
+.api-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.api-actions form { margin: 0; }
+@media (max-width: 640px) {
+  .api-card .card-head { flex-wrap: wrap; }
+  .api-card .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
+  .api-card .api-actions { flex-basis: 100%; margin-left: calc(40px + .85rem); }
+}

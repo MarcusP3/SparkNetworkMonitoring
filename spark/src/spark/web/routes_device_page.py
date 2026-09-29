@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
+from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -281,6 +281,7 @@ async def device_page(
     suggested = await identity.suggestions(session)
     discovery, placed = await topology.suggestions(session)
     snmp_read = (await identity.reports(session)).read_at.get(device.id)
+    now = utcnow()
 
     return templates.TemplateResponse(
         request,
@@ -315,6 +316,9 @@ async def device_page(
             "seen_open": any(f.device.id == device.id for f in placed),
             "map_mode": await topology.get_mode(session),
             "auto_placed": await topology.placed_automatically(session, device),
+            # Its API credentials and whether they work (credentials.py).
+            "apis": [dict(a, ago=_ago(a["row"].last_checked_at, now))
+                     for a in await credentials.for_device(session, device)],
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
