@@ -34,6 +34,7 @@ from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
 from ..models import (
     AlertMute,
+    ApiCredential,
     Device,
     SnmpDevice,
     SnmpInterface,
@@ -306,6 +307,7 @@ SECTIONS = (
     ("ports", "Port scanning", "/settings/ports"),
     ("snmp", "SNMP", "/settings/snmp"),
     ("alerts", "Alerts", "/settings/alerts"),
+    ("credentials", "Credentials", "/settings/credentials"),
 )
 SECTION_URLS = {slug: url for slug, _, url in SECTIONS}
 PORTS_URL = SECTION_URLS["ports"]
@@ -331,6 +333,7 @@ async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
         "ports": "on" if discovery.get("port_scan_enabled", True) else "off",
         "snmp": f"{polled}",
         "alerts": alert_hint,
+        "credentials": f"{await session.scalar(select(func.count(ApiCredential.id))) or 0}",
     }
     return [{"slug": slug, "label": label, "url": url, "hint": hints[slug]}
             for slug, label, url in SECTIONS]
@@ -366,6 +369,8 @@ async def _render(
     snmp_form: dict | None = None,
     alert_error: str | None = None,
     alert_notice: str | None = None,
+    cred_error: str | None = None,
+    cred_form: dict | None = None,
 ):
     section = _section_of(section, port_error=port_error, port_form=port_form,
                           snmp_error=snmp_error, snmp_form=snmp_form,
@@ -410,9 +415,25 @@ async def _render(
             "alerts": await _alerts(session) if section == "alerts" else None,
             "alert_error": alert_error,
             "alert_notice": alert_notice,
+            "creds": await _credentials(session) if section == "credentials" else None,
+            "cred_error": cred_error,
+            "cred_form": cred_form or {},
         },
         status_code=status_code,
     )
+
+
+async def _credentials(session: AsyncSession) -> dict:
+    from .. import credentials
+
+    devices = (await session.execute(
+        select(Device).where(Device.ignored.is_(False))
+    )).scalars().all()
+    return {
+        "rows": await credentials.listing(session),
+        "kinds": list(credentials.KINDS.items()),
+        "devices": sorted(devices, key=lambda d: d.display_name.lower()),
+    }
 
 
 async def _apply_to_scheduler(session: AsyncSession, config: Config) -> None:

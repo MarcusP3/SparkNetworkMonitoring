@@ -1620,6 +1620,20 @@ a.pill:hover { filter: brightness(1.12); }
 .js-save-when-changed .save-when-changed:not(.dirty) .form-actions { display: none; }
 .prefs-form select { width: 100%; }
 .prefs-form .btn-quiet { margin-left: .35rem; }
+/* Settings -> Credentials. */
+.cred { padding: 1rem 0; border-top: 1px solid var(--border); }
+.cred:first-of-type { border-top: 0; padding-top: 0; }
+.cred-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.cred-head > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; min-width: 0; }
+.cred-actions { display: flex; gap: .4rem; }
+.cred-actions form { margin: 0; }
+.cred-state { margin: .5rem 0; }
+.cert-trust p { margin: 0 0 .4rem; }
+.cert-trust form { margin: .5rem 0 0; }
+.fingerprint { display: block; overflow-wrap: anywhere; font-size: .8125rem; }
+code.fingerprint.small { display: inline; }
+.cred-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem 1rem; align-items: end; margin-top: .75rem; }
+.cred-form p, .cred-form button { grid-column: 1 / -1; justify-self: start; margin: 0; }
 .wipe-map { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: .5rem 1rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .wipe-map p { margin: 0; flex: 1 1 20rem; }

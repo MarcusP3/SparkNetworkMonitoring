@@ -52,6 +52,7 @@ see [Alerts](#alerts).
 - [Preferences](#preferences)
 - [Alerts](#alerts)
 - [SNMP](#snmp)
+- [Credentials](#credentials)
 - [Authentication](#authentication)
 - [Development](#development)
 - [Roadmap](#roadmap)
@@ -653,6 +654,45 @@ not measuring quite the same thing.
 
 ---
 
+## Credentials
+
+Settings → Credentials holds keys for devices' own APIs — TrueNAS now, the
+UniFi controller later. SNMP communities and v3 users stay under Settings →
+SNMP.
+
+### TrueNAS
+
+SPARK talks to TrueNAS the way TrueNAS now asks to be talked to: JSON-RPC 2.0
+over a WebSocket at `wss://<host>/api/current`. The REST API was deprecated in
+25.04 and is gone in 26, so it is not used.
+
+1. In TrueNAS, make a key for a user that can only read — a service account
+   with the **Read-only Administrator** role is ideal. Keys are made under the
+   user menu (top right) → **My API Keys**.
+2. In SPARK, Settings → Credentials → **Add a credential**: TrueNAS, a name,
+   the device, and the key. The address defaults to the device's; set one only
+   if TrueNAS answers on another address or port.
+3. SPARK connects and shows the certificate's SHA-256 fingerprint. **The key
+   has not been sent yet.** Compare the fingerprint with TrueNAS (System →
+   Certificates) and press **Trust this certificate**.
+4. SPARK logs in and shows *connected*, with the TrueNAS version and host name.
+
+**HTTPS only, always.** TrueNAS revokes a key that is ever sent over plain
+HTTP, and there is no fallback to it here.
+
+**The certificate is pinned, the way SSH pins a host key.** TrueNAS ships a
+self-signed certificate, so ordinary verification would always fail. Instead
+SPARK remembers the one you trusted and sends the key only down a connection
+presenting it. A renewed or replaced certificate stops everything, with the
+new fingerprint shown, until you trust it again. Changing the address or the
+key forgets the trusted certificate.
+
+The key is encrypted as soon as it arrives (the same vault as SNMP secrets),
+is never shown again, and never appears in a page — an edit with the key field
+left empty keeps the saved one.
+
+---
+
 ## Authentication
 
 A single admin account with a password: Argon2id hash, a random 256-bit session
@@ -774,6 +814,8 @@ spark/
     alerts.py           deciding what to alert on; the mute list; the Discord outbox and dispatcher
     snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
     storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
+    truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
+    credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
     servicemap.py       the service map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
@@ -800,6 +842,7 @@ spark/
       snmp.py           the SNMP collector
     web/                routes and dependencies
       routes_device_page.py  the per-device page
+      routes_credentials.py  Settings → Credentials
       hardening.py      security headers, CSP nonces, same-origin check on writes
     templates/          Jinja templates
     static/             hand-written CSS, no build step
@@ -829,6 +872,7 @@ spark/
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
+    test_credentials.py  the TrueNAS client against a TLS fake: nothing sent before Trust, pins, renewals; the page
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in

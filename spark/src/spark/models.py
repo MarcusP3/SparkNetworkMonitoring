@@ -1011,6 +1011,36 @@ class SnmpStorage(Base):
         return self.used_bytes / self.size_bytes * 100
 
 
+class ApiCredential(Base, TimestampMixin):
+    """A key for a device's own API (Settings -> Credentials).
+
+    TrueNAS first; the UniFi controller will be another `kind`. The key is
+    sealed with the install's secret and never shown again once saved. The
+    TLS certificate is pinned by its SHA-256 on the first Test a person
+    accepts (truenas.py says why), and the key is only ever sent to that
+    certificate (migration 15).
+    """
+
+    __tablename__ = "api_credential"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))              # "truenas"
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL"), index=True
+    )
+    host: Mapped[str] = mapped_column(String(255))            # address or host name, :port allowed
+    key_sealed: Mapped[str] = mapped_column(Text)
+    cert_sha256: Mapped[str | None] = mapped_column(String(95))       # trusted
+    pending_sha256: Mapped[str | None] = mapped_column(String(95))    # seen, not yet trusted
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_info: Mapped[dict | None] = mapped_column(JSON)       # version, hostname
+
+
 class SnmpHealthSample(Base):
     """One poll's health reading; the SNMP counterpart of check_result.
 

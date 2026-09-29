@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — Settings → Credentials, and the TrueNAS API client (2026-09-29)
+
+### Added
+
+- **Settings → Credentials**, for keys to devices' own APIs. TrueNAS first;
+  SNMP profiles stay under Settings → SNMP.
+- **A TrueNAS API client** (`truenas.py`): JSON-RPC 2.0 over a WebSocket at
+  `wss://<host>/api/current`, as TrueNAS 25.x documents it (REST is
+  deprecated in 25.04 and removed in 26). HTTPS only — TrueNAS revokes a key
+  sent over plain HTTP — with no fallback.
+- **Certificate pinning.** The first Test fetches the certificate and sends
+  nothing; the page shows its SHA-256 fingerprint; **Trust** pins it (only if
+  it is still the one last seen) and logs in. A different certificate later
+  stops everything and shows the new fingerprint. A new address or key
+  forgets the pin.
+- A credential shows *connected* with the TrueNAS version and host name,
+  *waiting for you* while a certificate needs checking, or *not connected*
+  with the reason. Keys are sealed on arrival, never shown again, and never
+  put back into a page, even when the form is re-shown with an error.
+
+Nothing reads storage over the API yet; that is next.
+
+### Changed
+
+- Migration 15: the `api_credential` table.
+
+### Tests
+
+33 new (`test_credentials.py`), against a TLS WebSocket fake of TrueNAS that
+can swap its certificate mid-test and records every login attempt. Each
+deliberate break tried was caught. `pytest` 933 passed with the agent,
+`smoke_test.py` 76 passed. Checked in a browser in both themes and at phone
+width.
+
 ## Unreleased — storage: TrueNAS pools and drives, disk space anywhere (2026-09-29)
 
 ### Added

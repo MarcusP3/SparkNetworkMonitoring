@@ -25,6 +25,7 @@ from .config import Config
 from .models import (
     DEFAULT_SETTINGS,
     AlertMute,
+    ApiCredential,
     AlertState,
     Base,
     CheckRollup,
@@ -290,7 +291,13 @@ async def _add_snmp_storage(session: AsyncSession) -> None:
     await connection.run_sync(SnmpStorage.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 14
+@migration(15, "API credentials (Settings -> Credentials)")
+async def _add_api_credential(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(ApiCredential.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 15
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

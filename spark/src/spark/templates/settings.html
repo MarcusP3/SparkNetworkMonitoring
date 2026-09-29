@@ -1092,6 +1092,118 @@
     </div>
   </section>
   {% endif %}
+
+  {% if section == 'credentials' %}
+  {% macro device_select(chosen) -%}
+  <select name="device_id">
+    <option value="">No device</option>
+    {% for d in creds.devices %}
+    <option value="{{ d.id }}" {% if chosen and chosen|string == d.id|string %}selected{% endif %}>{{ d.display_name }}{% if d.primary_ip and d.primary_ip != d.display_name %} — {{ d.primary_ip }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  {%- endmacro %}
+  <section class="card" id="credentials">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 8.2-8.2M16 7l3 3M14 9l2 2"/></svg></span>
+      <div>
+        <h2>Credentials</h2>
+        <p class="card-sub">
+          Keys for devices' own APIs, for what SNMP cannot tell — TrueNAS first.
+          Stored encrypted and never shown again once saved. SNMP credentials
+          stay under <a href="/settings/snmp">SNMP</a>.
+        </p>
+      </div>
+    </div>
+
+    {% if cred_error %}<div class="alert error">{{ cred_error }}</div>{% endif %}
+
+    {% for c in creds.rows %}
+    {% set r = c.row %}
+    <div class="cred" id="cred-{{ r.id }}">
+      <div class="cred-head">
+        <div>
+          <strong>{{ r.name }}</strong>
+          <span class="pill neutral">{{ c.kind }}</span>
+          <code class="small">{{ r.host }}</code>
+          {% if c.device %}<span class="muted small">· <a href="/devices/{{ c.device.id }}">{{ c.device.display_name }}</a></span>{% endif %}
+        </div>
+        <div class="cred-actions">
+          <form method="post" action="/settings/credentials/{{ r.id }}/test">
+            <button type="submit" class="btn-quiet">Test</button>
+          </form>
+          <form method="post" action="/settings/credentials/{{ r.id }}/delete">
+            <button type="submit" class="btn-quiet danger">Remove</button>
+          </form>
+        </div>
+      </div>
+      <p class="small cred-state">
+        {% if r.last_ok_at and not r.last_error %}
+          <span class="pill ok dot">connected</span>
+          {% if r.last_info %}TrueNAS {{ r.last_info.version or '' }}{% if r.last_info.hostname %} · {{ r.last_info.hostname }}{% endif %} ·{% endif %}
+          tested {{ r.last_ok_at | local('%b %-d, %H:%M %Z') }}
+        {% elif r.last_error %}
+          <span class="pill {{ 'neutral' if r.pending_sha256 and not r.cert_sha256 else 'bad' }}">{{ 'waiting for you' if r.pending_sha256 and not r.cert_sha256 else 'not connected' }}</span>
+          {{ r.last_error }}
+        {% else %}
+          <span class="muted">Not tested yet.</span>
+        {% endif %}
+      </p>
+      {% if r.pending_sha256 %}
+      <div class="alert {{ 'warn' if r.cert_sha256 else 'info' }} cert-trust">
+        <p>{{ 'A different certificate' if r.cert_sha256 else 'The certificate' }} {{ r.host }} presents, SHA-256:</p>
+        <code class="fingerprint">{{ r.pending_sha256 }}</code>
+        <p class="muted small">Compare it with TrueNAS: System → Certificates, the certificate in use by the web interface.
+          Trust it only if they match. Until then SPARK sends nothing, the key included.</p>
+        <form method="post" action="/settings/credentials/{{ r.id }}/trust">
+          <input type="hidden" name="fingerprint" value="{{ r.pending_sha256 }}">
+          <button type="submit" class="btn-primary">Trust this certificate</button>
+        </form>
+      </div>
+      {% elif r.cert_sha256 %}
+      <p class="muted small">Trusted certificate <code class="fingerprint small">{{ r.cert_sha256[:23] }}…</code></p>
+      {% endif %}
+      <details>
+        <summary class="muted small">Edit {{ r.name }}</summary>
+        <form method="post" action="/settings/credentials/{{ r.id }}" class="cred-form">
+          <label class="stack-field"><span class="muted small">Name</span>
+            <input type="text" name="name" maxlength="64" required value="{{ r.name }}"></label>
+          <label class="stack-field"><span class="muted small">Device</span>{{ device_select(r.device_id) }}</label>
+          <label class="stack-field"><span class="muted small">Address</span>
+            <input type="text" name="host" maxlength="255" value="{{ r.host }}" autocomplete="off"></label>
+          <label class="stack-field"><span class="muted small">API key</span>
+            <input type="password" name="api_key" maxlength="1024" autocomplete="new-password" placeholder="Saved — leave empty to keep it"></label>
+          <p class="muted small">A new address or key forgets the trusted certificate; Test and trust it again.</p>
+          <button type="submit" class="btn-quiet">Save {{ r.name }}</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+
+    <details class="add-cred" {% if not creds.rows or cred_form %}open{% endif %}>
+      <summary class="sub-title">Add a credential</summary>
+      <form method="post" action="/settings/credentials" class="cred-form">
+        <label class="stack-field"><span class="muted small">Kind</span>
+          <select name="kind">
+            {% for value, label in creds.kinds %}<option value="{{ value }}" {% if cred_form.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select></label>
+        <label class="stack-field"><span class="muted small">Name</span>
+          <input type="text" name="name" maxlength="64" required value="{{ cred_form.name or '' }}" placeholder="thoth"></label>
+        <label class="stack-field"><span class="muted small">Device</span>{{ device_select(cred_form.device_id) }}</label>
+        <label class="stack-field"><span class="muted small">Address <em class="optional">if not the device's</em></span>
+          <input type="text" name="host" maxlength="255" value="{{ cred_form.host or '' }}" placeholder="10.1.10.17 or truenas.home" autocomplete="off"></label>
+        <label class="stack-field"><span class="muted small">API key</span>
+          <input type="password" name="api_key" maxlength="1024" required autocomplete="new-password"></label>
+        <p class="muted small">
+          For TrueNAS: a key for a user with the Read-Only Administrator role is all SPARK
+          needs. It is only ever sent over HTTPS — TrueNAS revokes a key sent over plain
+          HTTP — and only after you have trusted the certificate. Saving tests the
+          connection straight away without sending the key, to show you that certificate.
+        </p>
+        <button type="submit" class="btn-primary">Add credential</button>
+      </form>
+    </details>
+  </section>
+  {% endif %}
   </div>
   </div>
 </div>
