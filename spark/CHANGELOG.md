@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — Network map, and Services as its own tab (2026-09-29)
+
+### Changed
+
+- **Service map is now Network map**: the tab, the page, the device page's
+  "On the network map" card, Preferences and setup. Still at `/map`.
+- **Services is its own tab** (`/services`): the searchable list of every
+  service that sat under the map, with a count ("1 of 3 match") and the
+  Watch button. The map links to it; so does the dashboard's Services tile,
+  which was not a link before. An old `/map?q=…` link redirects there.
+- Phone row: six links now, so "Dashboard" reads "Home" there as "Network
+  map" reads "Map", and the smallest phones get slightly smaller text. Every
+  link fits at 320 px.
+
+### Tests
+
+5 new in `test_service_map.py`: the tab, the map without the list, the old
+search link, the dashboard tile. `pytest` and `smoke_test.py` pass; checked
+in a browser in both themes and at 320 and 390 px.
+
 ## Unreleased — larger tile icons, and Watched as a button-shaped status (2026-09-29)
 
 ### Changed

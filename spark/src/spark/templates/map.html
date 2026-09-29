@@ -19,8 +19,8 @@
     <div class="page-title">
       <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span>
       <div>
-        <h1>Service map</h1>
-        <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page.</p>
+        <h1>Network map</h1>
+        <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page; every service, searchable, is under <a href="/services">Services</a>.</p>
       </div>
     </div>
   </div>
@@ -186,49 +186,6 @@
   </details>
   {% endif %}
 
-  <section class="card">
-    <div class="card-head">
-      <div>
-        <h2>Services</h2>
-        <p class="card-sub">Everything the port scan found, on every device. Search by name, port, device or address.</p>
-      </div>
-    </div>
-    <form method="get" action="/map" class="row-form service-search">
-      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="plex, 8080, nas, 192.168.1." aria-label="Search services">
-      <button type="submit" class="btn-quiet">Search</button>
-      {% if q %}<a href="/map" class="btn-quiet">Clear</a>{% endif %}
-      <span class="muted small">{{ map.services | length }} service{{ 's' if map.services | length != 1 }}{% if q %} match{% endif %}</span>
-    </form>
-    {% if map.services %}
-    <div class="table-scroll">
-    <table class="table compact">
-      <thead><tr><th>Service</th><th class="num">Port</th><th>Device</th><th>Address</th><th>Watched</th><th></th></tr></thead>
-      <tbody>
-        {% for r in map.services %}
-        <tr>
-          <td>{{ r.service.name or '—' }}</td>
-          <td class="num"><code>{{ r.service.port }}</code></td>
-          <td><a href="/devices/{{ r.device.id }}" class="map-name">{{ r.device.display_name }}</a></td>
-          <td><code class="small">{{ r.device.primary_ip or '—' }}</code></td>
-          <td>{% if r.state %}{{ state_pill(r.state) }}{% else %}<span class="muted small">—</span>{% endif %}</td>
-          <td class="actions">
-            {% if not r.target %}
-            <form method="post" action="/devices/services/{{ r.service.id }}/watch">
-              <button type="submit" class="btn-quiet" title="Watch this service (TCP check on port {{ r.service.port }})">Watch</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-    {% elif q %}
-      <p class="muted small">Nothing matches “{{ q }}”.</p>
-    {% else %}
-      <p class="muted small">No services found yet. They appear after a port scan (Devices → Scan ports).</p>
-    {% endif %}
-  </section>
   </div>
 </div>
 <script nonce="{{ request.state.csp_nonce }}">

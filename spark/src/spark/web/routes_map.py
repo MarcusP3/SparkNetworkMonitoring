@@ -1,6 +1,9 @@
-"""The service map page: /map, and the placements SNMP suggests for it."""
+"""The network map (/map) and its SNMP suggestions, and the Services page
+(/services): every service the port scan found, searchable."""
 
 from __future__ import annotations
+
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/map")
-async def service_map(
+async def network_map(
     request: Request,
     q: str = "",
     accepted: str = "",
@@ -23,18 +26,48 @@ async def service_map(
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
-    # A search longer than anything it could match is not a search.
-    query = q.strip()[:100]
-    result = await servicemap.build(session, query=query)
+    if q.strip():
+        # The services search lived here before it had a page of its own;
+        # an old bookmark or link still finds it.
+        return redirect("/services?" + urlencode({"q": q.strip()[:100]}))
+    result = await servicemap.build(session)
     discovery, suggested = await topology.suggestions(session)
     return templates.TemplateResponse(
         request,
         "map.html",
-        {"config": config, "user": user, "title": "Service map", "map": result, "q": query,
+        {"config": config, "user": user, "title": "Network map", "map": result,
          "discovery": discovery, "suggested": suggested,
          "mode": await topology.get_mode(session),
          "accepted": _count(accepted), "wiped": _count(wiped)},
     )
+
+
+@router.get("/services")
+async def services_page(
+    request: Request,
+    q: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    # A search longer than anything it could match is not a search.
+    query = q.strip()[:100]
+    result = await servicemap.build(session, query=query)
+    return templates.TemplateResponse(
+        request,
+        "services.html",
+        {"config": config, "user": user, "title": "Services", "map": result, "q": query,
+         "total": sum(len(n.services) for n in _nodes(result))},
+    )
+
+
+def _nodes(result: servicemap.ServiceMap):  # type: ignore[no-untyped-def]
+    """Every node in the map, placed or not."""
+    stack = list(result.roots) + list(result.unplaced)
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(node.children)
 
 
 def _count(value: str) -> int | None:

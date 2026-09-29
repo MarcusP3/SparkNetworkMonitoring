@@ -111,7 +111,7 @@ async def setup_submit(
 
     error: str | None = None
     if map_mode not in topology.MODES:
-        error = "Choose Manual or Automatic for the service map."
+        error = "Choose Manual or Automatic for the network map."
     webhook = discord_webhook_url.strip()
     if error is None and password != password_confirm:
         error = "The two passwords do not match."

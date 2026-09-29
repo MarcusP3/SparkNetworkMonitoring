@@ -15,7 +15,7 @@
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
   {% if saved == 'timezone' %}<div class="alert ok">Saved. Every time in SPARK is now shown in {{ timezone }}.</div>{% endif %}
   {% if saved == 'session' %}<div class="alert ok">Saved. You'll be signed out after {{ idle_label }} without activity.</div>{% endif %}
-  {% if saved == 'map' %}<div class="alert ok">Saved. The service map is
+  {% if saved == 'map' %}<div class="alert ok">Saved. The network map is
     {% if map_mode == 'automatic' %}automatic{% if placed %}: {{ placed }} device{{ 's' if placed != 1 }} placed from SNMP just now{% endif %}.{% else %}manual: SNMP suggests, you accept.{% endif %}</div>{% endif %}
 
   <section class="card">
@@ -88,7 +88,7 @@
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span>
       <div>
-        <h2>Service map</h2>
+        <h2>Network map</h2>
         <p class="card-sub">
           Who places devices on the map. In both, a place you set yourself
           (on a device's page, or by pressing Accept) is never changed.

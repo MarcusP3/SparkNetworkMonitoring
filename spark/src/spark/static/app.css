@@ -635,7 +635,8 @@ a.stat:hover {
     font-size: .875rem;
   }
 }
-/* "Service map" is "Map" in the phone row, so five links fit at 320px. */
+/* "Network map" is "Map" and "Dashboard" is "Home" in the phone row, so
+   six links fit at 320px. */
 .nav-short { display: none; }
 @media (max-width: 640px) {
   .nav-full { display: none; }
@@ -643,9 +644,13 @@ a.stat:hover {
 }
 /* The smallest phones (iPhone SE and similar, 320px): a touch smaller still,
    so Settings is not the link that ends up clipped. */
-@media (max-width: 360px) {
+@media (max-width: 420px) {
   .nav { gap: .1rem; padding-left: .5rem; padding-right: .5rem; }
   .nav a { font-size: .8125rem; padding: .45rem .2rem; }
+}
+@media (max-width: 360px) {
+  .nav { gap: 0; padding-left: .35rem; padding-right: .35rem; }
+  .nav a { font-size: .75rem; padding: .45rem .15rem; }
 }
 
 /* ---- targets ---------------------------------------------------------- */

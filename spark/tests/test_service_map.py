@@ -339,16 +339,42 @@ class TestPages:
                          r'<span class="pill neutral"[^>]*> SMB', services)
 
     def test_searching_services(self, site):
-        page = site.get("/map?q=8080").text
+        page = site.get("/services?q=8080").text
         table = page[page.index("<th>Service</th>"):]
         assert "http-alt" in table and "Plex" not in table
-        assert "Nothing matches “zzz”." in site.get("/map?q=zzz").text
-        page = site.get("/map?q=<script>alert(1)</script>").text
+        assert "Nothing matches “zzz”." in site.get("/services?q=zzz").text
+        page = site.get("/services?q=<script>alert(1)</script>").text
         assert "<script>alert(1)</script>" not in page
+
+    def test_services_is_its_own_tab(self, site):
+        page = " ".join(site.get("/services").text.split())
+        assert '<a href="/services" class="active">Services</a>' in page
+        assert '<span class="nav-full">Network map</span><span class="nav-short">Map</span>' in page
+        assert "<h1>Services</h1>" in page and "<th>Service</th>" in page
+        assert '<form method="get" action="/services" class="row-form service-search">' in page
+        assert "Plex" in page and "3 services" in page
+        page = " ".join(site.get("/services?q=8080").text.split())
+        assert "1 of 3 match" in page and '<a href="/services" class="btn-quiet">Clear</a>' in page
+
+    def test_the_map_no_longer_lists_services(self, site):
+        page = " ".join(site.get("/map").text.split())
+        assert "<h1>Network map</h1>" in page and "<th>Service</th>" not in page
+        assert 'class="row-form service-search"' not in page
+        assert '<a href="/services">Services</a>' in page, "the map points at the new tab"
+
+    def test_an_old_search_link_goes_to_services(self, site):
+        response = site.get("/map?q=plex%20box")
+        assert response.status_code == 303
+        assert response.headers["location"] == "/services?q=plex+box"
+        assert site.get("/map?q=%20").status_code == 200, "a blank search is just the map"
+
+    def test_the_dashboard_tile_opens_services(self, site):
+        page = " ".join(site.get("/").text.split())
+        assert '<a class="stat" href="/services">' in page
 
     def test_place_a_device_from_its_page(self, site):
         page = site.get("/devices/4").text
-        assert "On the service map" in page and 'name="parent_id"' in page
+        assert "On the network map" in page and 'name="parent_id"' in page
         response = site.post("/devices/4/place", data={"role": "client", "parent_id": "2",
                                                        "back": "/devices/4?range=24h"})
         assert response.headers["location"] == "/devices/4?range=24h"

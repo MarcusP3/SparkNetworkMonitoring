@@ -454,7 +454,7 @@ async def place_device(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
-    """Set where a device sits on the service map: its role and parent.
+    """Set where a device sits on the network map: its role and parent.
 
     A role or parent that is not one of the choices changes nothing; the page
     only offers valid ones, so anything else did not come from it.

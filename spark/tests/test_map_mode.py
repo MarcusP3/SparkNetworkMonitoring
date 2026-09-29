@@ -280,7 +280,7 @@ class TestPages:
         response = site.post("/preferences", data={"map_mode": "automatic"})
         assert response.headers["location"] == "/preferences?saved=map&placed=4#map"
         page = flat(site.get("/preferences?saved=map&placed=4").text)
-        assert "Saved. The service map is automatic: 4 devices placed from SNMP just now." in page
+        assert "Saved. The network map is automatic: 4 devices placed from SNMP just now." in page
         assert site.post("/preferences", data={"map_mode": "sometimes"}).status_code == 400
 
     def test_the_map_and_device_pages_in_automatic_mode(self, site):
@@ -345,7 +345,7 @@ class TestSetup:
         assert self._setup()[2] == "manual"
         _form, response, _mode = self._setup(map_mode="both")
         assert response.status_code == 400
-        assert "Choose Manual or Automatic for the service map." in response.text
+        assert "Choose Manual or Automatic for the network map." in response.text
         assert re.search(r'<option value="manual" selected>', response.text)
 
 

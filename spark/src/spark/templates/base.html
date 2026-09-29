@@ -17,10 +17,11 @@
     <span>{{ config.app.instance_name }}</span>
   </a>
   <nav class="nav">
-    <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+    <a href="/" class="{% if request.url.path == '/' %}active{% endif %}"><span class="nav-full">Dashboard</span><span class="nav-short">Home</span></a>
     <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
     <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
-    <a href="/map" class="{% if request.url.path.startswith('/map') %}active{% endif %}"><span class="nav-full">Service map</span><span class="nav-short">Map</span></a>
+    <a href="/map" class="{% if request.url.path.startswith('/map') %}active{% endif %}"><span class="nav-full">Network map</span><span class="nav-short">Map</span></a>
+    <a href="/services" class="{% if request.url.path.startswith('/services') %}active{% endif %}">Services</a>
     <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>
   </nav>
   <div class="user-chip">

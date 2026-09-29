@@ -3,7 +3,7 @@
 Kept apart from Settings on purpose: Settings is what SPARK does on the
 network; this is how SPARK presents itself to you: the time zone every time
 on every page is shown in, how long you stay signed in without using it, and
-whether the service map is placed by you or by SNMP (with Wipe map).
+whether the network map is placed by you or by SNMP (with Wipe map).
 """
 
 from __future__ import annotations

@@ -36,7 +36,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
 | Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
-| Service map — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
+| Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
 see [Alerts](#alerts).
@@ -48,7 +48,7 @@ see [Alerts](#alerts).
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Monitoring](#monitoring)
-- [Service map](#service-map)
+- [Network map and Services](#network-map-and-services)
 - [Preferences](#preferences)
 - [Alerts](#alerts)
 - [SNMP](#snmp)
@@ -196,7 +196,7 @@ Two ways to fix it: give the SPARK VM an interface in each VLAN, or put the
 router on the SNMP list. Every 15 minutes SPARK reads the router's ARP table,
 which has the MAC for every VLAN it routes, and fills in the MAC of each
 device there that lacks one. A device that later turns up at a new address is
-listed under **Possible duplicates** (see Duplicates under [Service map](#service-map)) rather
+listed under **Possible duplicates** (see Duplicates under [Network map and Services](#network-map-and-services)) rather
 than followed automatically.
 
 `vlan:` is a display label; nothing reads it functionally. It is editable at
@@ -282,14 +282,18 @@ thirty.
 
 ---
 
-## Service map
+## Network map and Services
 
-**`/map`** shows every device in its place — gateway, then switches, then
-what hangs off each — with its status and the services the port scan found
-on it, then a searchable list of every service on the network ("plex",
-"8080", "nas", "172.16.10." all work).
+**Network map** (`/map`) shows every device in its place — gateway, then
+switches, then what hangs off each — with its status and the services the
+port scan found on it.
 
-**Placing a device** is done on its own page, in the **On the service map**
+**Services** (`/services`) is its own tab: a searchable list of every
+service on the network ("plex", "8080", "nas", "192.168.1." all work), with
+its status and a **Watch** button for the ones not watched yet. An old
+`/map?q=…` link goes there. The dashboard's Services tile opens it too.
+
+**Placing a device** is done on its own page, in the **On the network map**
 card: a **Role** (gateway, switch, access point, server, client) and
 **Connected to** (the device it is plugged into). Set it for your handful of
 infrastructure; everything else can hang off its switch or stay in **Not
@@ -316,7 +320,7 @@ parent set by hand is never replaced. How it works:
 - LLDP, where a switch has it, is exact and wins over the MAC tables.
 
 **Manual or automatic.** Chosen at setup, and changed any time under
-**Preferences → Service map**:
+**Preferences → Network map**:
 
 - **Manual** (the default): what SNMP finds is suggested, as above.
 - **Automatic**: after every SNMP read (every 15 minutes) devices are placed
@@ -326,7 +330,7 @@ parent set by hand is never replaced. How it works:
   changed or cleared. **Not right** on a device's page takes an automatic
   place back off for good.
 
-**Wipe map** (Preferences → Service map) starts the map over: every role,
+**Wipe map** (Preferences → Network map) starts the map over: every role,
 every place (including yours) and every "Not right". It shows what it will
 clear and asks first. Devices, targets, services, alerts and history are
 untouched. In automatic mode the map is rebuilt at once. If SPARK knows your
@@ -363,8 +367,8 @@ device supports them.
 click to fold that branch away ("12 below ▸"), or use **Collapse all** /
 **Expand all**. What you fold is remembered in that browser. Ports: the ones
 you watch with a target show on each device; the rest are folded under their
-count ("+6 more") and open on a click. The **Services** table below the map
-still lists every one.
+count ("+6 more") and open on a click. The **Services** tab still lists
+every one.
 
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a
@@ -434,7 +438,7 @@ Add to it from the Muted card, or with **Mute alerts** on a device's page.
 What is deliberately not sent:
 
 - a target whose failure is explained by one it **depends on** being down
-  (set on the target), or by a device above it on the **service map** being
+  (set on the target), or by a device above it on the **network map** being
   down — the switch goes, you get one message, not thirty;
 - a recovery for an outage that was never alerted (it went down while alerts
   were off, or its dependency explained it);
@@ -848,7 +852,7 @@ spark/
     truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
-    servicemap.py       the service map: the tree, each device's status, the services list
+    servicemap.py       the network map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
     identity.py         SNMP own addresses and ARP tables: merge suggestions, MACs across routers
@@ -976,7 +980,7 @@ Ten things that will bite you if you don't know them:
 | 4c | History retention, scan schedule, subnet management + filter | ✅ done |
 | 4b | Service discovery — TCP port scan, services on devices | ✅ done |
 | 4d | Docker inventory — read-only socket proxy | next |
-| 5 | Service map — tree and filterable list views | ✅ done (Docker containers join it with 4d) |
+| 5 | Network map and Services — tree and filterable list views | ✅ done (Docker containers join it with 4d) |
 | 6 | SNMP — credentials, Test, polling, history, device pages | ✅ done |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | ✅ done (ahead of 4d, 5, 7) |
