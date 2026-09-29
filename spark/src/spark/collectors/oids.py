@@ -103,6 +103,26 @@ HR_STORAGE_UNITS = "1.3.6.1.2.1.25.2.3.1.4"
 HR_STORAGE_SIZE = "1.3.6.1.2.1.25.2.3.1.5"
 HR_STORAGE_USED = "1.3.6.1.2.1.25.2.3.1.6"
 
+# hrStorageTable in full: disk space on anything running net-snmp. Only
+# fixed disks are filesystems worth watching; RAM, virtual memory and the
+# rest share the table.
+HR_STORAGE_ALLOCATION_UNITS = HR_STORAGE_UNITS
+HR_STORAGE_FIXED_DISK = "1.3.6.1.2.1.25.2.1.4"
+
+# TRUENAS-MIB (enterprise 50536), as served by TrueNAS SCALE 25.x. Checked
+# against a real 25.10 box: the pool table holds health and I/O counters but
+# no sizes; a pool's space is its root dataset's used and available.
+# Answered by a helper that works these out when asked -- slowly, seconds per
+# walk -- so they are read on their own schedule with a long timeout
+# (storage.py), never in the minute-by-minute poll.
+TRUENAS_ZPOOL_NAME = "1.3.6.1.4.1.50536.1.1.1.1.2"
+TRUENAS_ZPOOL_HEALTH = "1.3.6.1.4.1.50536.1.1.1.1.3"      # "ONLINE", "DEGRADED", ...
+TRUENAS_DATASET_NAME = "1.3.6.1.4.1.50536.1.6.1.1.2"
+TRUENAS_DATASET_USED = "1.3.6.1.4.1.50536.1.6.1.1.3"      # bytes
+TRUENAS_DATASET_AVAILABLE = "1.3.6.1.4.1.50536.1.6.1.1.4" # bytes
+TRUENAS_DRIVE_NAME = "1.3.6.1.4.1.50536.3.1.2"
+TRUENAS_DRIVE_TEMP = "1.3.6.1.4.1.50536.3.1.3"            # thousandths of a degree C
+
 # UCD-SNMP-MIB - net-snmp on Linux, which covers a lot of appliances
 #
 # ssCpuIdle/ssCpuUser/ssCpuSystem are the one-minute *average* scalars, marked

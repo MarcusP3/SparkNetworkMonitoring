@@ -122,6 +122,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         snmp_polled = await scheduler_module.sync_snmp_jobs(config)
         scheduler_module.schedule_alerts(config)
         scheduler_module.schedule_identity(config)
+        scheduler_module.schedule_storage(config)
 
         log.info(
             "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "

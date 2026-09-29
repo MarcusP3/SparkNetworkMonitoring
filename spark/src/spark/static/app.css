@@ -1399,6 +1399,16 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 }
 .chart-card { min-width: 0; }
 .traffic-card { margin-bottom: 1rem; }
+/* Storage card (storage.py): pools, drives, filesystems. */
+.storage-table { margin-bottom: 1rem; }
+.storage-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.storage-table .bar-col { width: 9rem; min-width: 6rem; }
+.space-bar { display: block; width: 100%; height: .4rem; }
+.space-bar .track { fill: var(--surface-3); }
+.space-bar .fill { fill: var(--text-muted); }
+.space-bar.over .fill { fill: var(--warn); }
+.warn-text { color: var(--warn); }
+.drive-temps { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-bottom: 1rem; }
 /* The interface picker and what sits under the chart (device page). */
 .port-picker { margin-bottom: 1rem; }
 /* A long option ("ath12 · up · 1.2 Mbps in / 300 kbps out") must not push a

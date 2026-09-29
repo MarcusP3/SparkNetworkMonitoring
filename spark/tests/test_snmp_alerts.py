@@ -398,7 +398,10 @@ class TestPages:
         form = {"port_down": "1", "port_busy": "1", "port_busy_percent": "70",
                 "port_busy_minutes": "5", "cpu": "1", "cpu_percent": "85", "cpu_minutes": "3",
                 "memory_percent": "90", "memory_minutes": "10", "temperature": "1",
-                "temperature_celsius": "75", "temperature_minutes": "5"}
+                "temperature_celsius": "75", "temperature_minutes": "5",
+                "pool_health": "1", "pool_space": "1", "pool_space_percent": "80",
+                "disk_space_percent": "95", "drive_temperature": "1", "drive_celsius": "48",
+                "drive_minutes": "15"}
         response = site.post("/settings/alerts/rules", data=form)
         assert response.headers["location"] == "/settings/alerts?saved=rules"
         assert "SNMP alert rules saved." in site.get("/settings/alerts?saved=rules").text
@@ -408,6 +411,10 @@ class TestPages:
                 return await snmp_alerts.load(s)
         r = run(saved())
         assert (r["cpu_percent"], r["cpu_minutes"], r["memory"], r["port_busy_percent"]) == (85, 3, False, 70)
+        assert (r["pool_health"], r["pool_space_percent"], r["disk_space"], r["disk_space_percent"],
+                r["drive_celsius"], r["drive_minutes"]) == (True, 80, False, 95, 48, 15)
+        response = site.post("/settings/alerts/rules", data={**form, "drive_celsius": "10"})
+        assert response.status_code == 400 and "Drive temperature must be between 30 and 120." in response.text
 
         response = site.post("/settings/alerts/rules", data={**form, "cpu_percent": "150"})
         assert response.status_code == 400 and "CPU must be between 1 and 100." in response.text

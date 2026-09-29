@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -974,6 +975,42 @@ class MapAuto(Base):
     placed_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class SnmpStorage(Base):
+    """Storage a polled device reports: pools, drives and filesystems.
+
+    `pool`: a TrueNAS ZFS pool -- its health, and its space from the pool's
+    root dataset. `drive`: a TrueNAS drive's temperature. `fs`: a filesystem
+    from hrStorageTable, on anything running net-snmp.
+
+    Read every 5 minutes, apart from the poll (storage.py): TrueNAS answers
+    these slowly. Replaced whole on each read, like snmp_address; the alert
+    rules keep what they need in alert_state (migration 14).
+    """
+
+    __tablename__ = "snmp_storage"
+    __table_args__ = (
+        UniqueConstraint("snmp_device_id", "kind", "name", name="uq_snmp_storage"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(8))            # "pool", "drive" or "fs"
+    name: Mapped[str] = mapped_column(String(255))
+    health: Mapped[str | None] = mapped_column(String(32))  # pools: ONLINE, DEGRADED...
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    used_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    celsius: Mapped[float | None] = mapped_column(Float)    # drives
+    read_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+    @property
+    def percent(self) -> float | None:
+        if not self.size_bytes or self.used_bytes is None:
+            return None
+        return self.used_bytes / self.size_bytes * 100
+
+
 class SnmpHealthSample(Base):
     """One poll's health reading; the SNMP counterpart of check_result.
 
@@ -1139,6 +1176,11 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "cpu": True, "cpu_percent": 90, "cpu_minutes": 10,
         "memory": True, "memory_percent": 90, "memory_minutes": 10,
         "temperature": True, "temperature_celsius": 80, "temperature_minutes": 5,
+        # Storage (storage.py): TrueNAS pools and drives, filesystems anywhere.
+        "pool_health": True,
+        "pool_space": True, "pool_space_percent": 85,
+        "disk_space": True, "disk_space_percent": 90,
+        "drive_temperature": True, "drive_celsius": 50, "drive_minutes": 10,
     },
     "snmp": {
         "poll_interval_seconds": 60,

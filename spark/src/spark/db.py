@@ -42,6 +42,7 @@ from .models import (
     SnmpNeighbour,
     SnmpPoll,
     SnmpProfile,
+    SnmpStorage,
     Subnet,
 )
 
@@ -283,7 +284,13 @@ async def _add_map_auto(session: AsyncSession) -> None:
     await connection.run_sync(MapAuto.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 13
+@migration(14, "Pools, drives and filesystems from SNMP")
+async def _add_snmp_storage(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(SnmpStorage.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 14
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

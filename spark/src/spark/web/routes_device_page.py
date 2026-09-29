@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts, topology
+from .. import alerts, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -202,6 +202,7 @@ async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
         "row": row,
         "profile": profile,
         "poll": poll,
+        "storage": await _storage(session, row.id),
         "window": window,
         "health": health,
         "health_charts": _health_charts(health, zone),
@@ -344,6 +345,38 @@ async def _placement(session: AsyncSession, device: Device) -> dict:
         "options": [(d, ROLE_LABELS[d.role]) for d in options],
         "parent": parent,
         "children": len(below),
+    }
+
+
+async def _storage(session: AsyncSession, row_id: int) -> dict:
+    """The Storage card: pools, drives and filesystems, each against its line
+    from Settings -> Alerts so the page and the alerts agree."""
+    found = await storage.rows_for(session, row_id)
+    rules = await snmp_alerts.load(session)
+    pool_line = float(rules.get("pool_space_percent") or 85)
+    disk_line = float(rules.get("disk_space_percent") or 90)
+    hot = float(rules.get("drive_celsius") or 50)
+
+    def space(row, line):  # type: ignore[no-untyped-def]
+        pct = row.percent
+        free = (row.size_bytes - row.used_bytes) if pct is not None else None
+        return {"row": row, "pct": pct, "over": pct is not None and pct >= line,
+                "used": storage.fmt_bytes(row.used_bytes), "size": storage.fmt_bytes(row.size_bytes),
+                "free": storage.fmt_bytes(free), "bar": min(100, round(pct)) if pct is not None else 0}
+
+    def health(row):  # type: ignore[no-untyped-def]
+        value = (row.health or "").upper()
+        return "ok" if value == storage.HEALTHY else ("warn" if value == "DEGRADED" else "bad")
+
+    everything = found[storage.POOL] + found[storage.DRIVE] + found[storage.FS]
+    return {
+        "pools": [{**space(p, pool_line), "health": p.health, "kind": health(p)}
+                  for p in found[storage.POOL]],
+        "drives": [{"row": d, "hot": d.celsius is not None and d.celsius >= hot}
+                   for d in found[storage.DRIVE]],
+        "filesystems": [space(f, disk_line) for f in found[storage.FS]],
+        "read_at": max((r.read_at for r in everything), default=None),
+        "pool_line": pool_line, "disk_line": disk_line, "hot": hot,
     }
 
 

@@ -972,6 +972,34 @@
         <input type="number" name="temperature_minutes" min="1" max="1440" required value="{{ r.temperature_minutes }}" aria-label="Temperature minutes">
         <span>minutes</span>
       </div>
+      <h3 class="sub-title">Storage</h3>
+      <p class="muted small">Read every 5 minutes: TrueNAS pools and drives, and disk space on anything running net-snmp.</p>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="pool_health" value="1" {% if r.pool_health %}checked{% endif %}>
+          <span>A pool is not ONLINE</span></label>
+        <span class="muted small rule-scope">DEGRADED, FAULTED, UNAVAIL: straight away, and again when it is ONLINE.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="pool_space" value="1" {% if r.pool_space %}checked{% endif %}>
+          <span>A pool is</span></label>
+        <input type="number" name="pool_space_percent" min="1" max="100" required value="{{ r.pool_space_percent }}" aria-label="Pool space percent">
+        <span>% full or more</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="disk_space" value="1" {% if r.disk_space %}checked{% endif %}>
+          <span>A disk is</span></label>
+        <input type="number" name="disk_space_percent" min="1" max="100" required value="{{ r.disk_space_percent }}" aria-label="Disk space percent">
+        <span>% full or more</span>
+        <span class="muted small rule-scope">Filesystems on Linux servers and appliances.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="drive_temperature" value="1" {% if r.drive_temperature %}checked{% endif %}>
+          <span>A drive is at</span></label>
+        <input type="number" name="drive_celsius" min="30" max="120" required value="{{ r.drive_celsius }}" aria-label="Drive temperature in Celsius">
+        <span>°C or more for</span>
+        <input type="number" name="drive_minutes" min="1" max="1440" required value="{{ r.drive_minutes }}" aria-label="Drive temperature minutes">
+        <span>minutes</span>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">Save SNMP alerts</button>
       </div>

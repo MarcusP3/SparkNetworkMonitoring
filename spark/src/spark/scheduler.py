@@ -446,6 +446,29 @@ def schedule_identity(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_storage(config) -> bool:  # type: ignore[no-untyped-def]
+    """Pools, drives and disk space, every 5 minutes (storage.py says why
+    not every poll). Not under the "snmp:" prefix, which sync_snmp_jobs owns."""
+    from .storage import FIRST_RUN_SECONDS, INTERVAL_MINUTES, JOB_ID, refresh
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        refresh,
+        "interval",
+        minutes=INTERVAL_MINUTES,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_RUN_SECONDS),
+        name="Read SNMP storage: pools, drives, disk space",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

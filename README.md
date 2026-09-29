@@ -539,6 +539,19 @@ or `no answer` with the reason — and when the next one is due.
 - **Health** — CPU (or load average), memory and the hottest temperature
   sensor, each charted over **1h, 24h, 7d or 30d**. Charts that would be empty
   are left out.
+- **Storage**, where the device reports any, read every 5 minutes:
+  - **TrueNAS**: each pool's health (ONLINE, DEGRADED…) and space, and each
+    drive's temperature. TrueNAS's pool table has no sizes, so a pool's
+    space is its root dataset's used and available. TrueNAS answers these
+    slowly (it works them out when asked), which is why they are read on
+    their own schedule with a 30-second timeout rather than every poll.
+  - **Anything running net-snmp** (Linux servers, Proxmox hosts): each real
+    filesystem's size, use and free space. Memory, /run, snaps and
+    container layers are left out, and a bind mount is shown once.
+  - Alerts, under **Settings → Alerts → Storage**: a pool not ONLINE (at
+    once), a pool 85% full or more, a disk 90% full or more (both on two
+    reads in a row), a drive at 50 °C or more for 10 minutes. Each ends 5
+    under its line, and says so.
 - **Interfaces** — one port's traffic chart, the busiest to begin with.
   Pick another from the **Interface** list (each shows its status and rate
   now); under the chart are its current rate, peak in the range, errors, and
@@ -760,6 +773,7 @@ spark/
     limits.py           how long any input may be, the largest request, the largest id
     alerts.py           deciding what to alert on; the mute list; the Discord outbox and dispatcher
     snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
+    storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
     servicemap.py       the service map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
@@ -814,6 +828,7 @@ spark/
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
+    test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in

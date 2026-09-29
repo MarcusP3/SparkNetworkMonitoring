@@ -118,6 +118,72 @@
     {% endif %}
   </section>
 
+  {% set st = snmp.storage %}
+  {% if st.pools or st.drives or st.filesystems %}
+  <section class="card" id="storage">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span>
+      <div>
+        <h2>Storage</h2>
+        <p class="card-sub">
+          Read every 5 minutes{% if st.read_at %}, last at {{ st.read_at | local('%H:%M %Z') }}{% endif %}.
+          Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
+        </p>
+      </div>
+    </div>
+    {% macro bar(pct, over) -%}
+    <svg class="space-bar{% if over %} over{% endif %}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="track" x="0" y="0" width="100" height="6" rx="3"/><rect class="fill" x="0" y="0" width="{{ pct }}" height="6" rx="3"/></svg>
+    {%- endmacro %}
+    {% if st.pools %}
+    <div class="table-scroll">
+    <table class="table compact storage-table">
+      <thead><tr><th>Pool</th><th>Health</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
+      <tbody>
+        {% for p in st.pools %}
+        <tr>
+          <td>{{ p.row.name }}</td>
+          <td>{% if p.health %}<span class="pill {{ p.kind }}">{{ p.health }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
+          {% if p.pct is not none %}
+          <td>{{ p.used }} of {{ p.size }} <span class="{{ 'warn-text' if p.over else 'muted' }} small">({{ p.pct | round | int }}%)</span></td>
+          <td class="num">{{ p.free }}</td>
+          <td class="bar-col">{{ bar(p.bar, p.over) }}</td>
+          {% else %}
+          <td class="muted small" colspan="3">Health only (TrueNAS gives no space for this pool)</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if st.drives %}
+    <div class="drive-temps">
+      <span class="muted small">Drives</span>
+      {% for d in st.drives %}
+      <span class="pill {{ 'warn' if d.hot else 'neutral' }}" title="{{ d.row.name }}: {{ '%.0f' | format(d.row.celsius) }}°C{% if d.hot %}, at or over {{ st.hot | int }}°C{% endif %}">{{ d.row.name }} <span class="muted">{{ '%.0f' | format(d.row.celsius) }}°C</span></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if st.filesystems %}
+    <div class="table-scroll">
+    <table class="table compact storage-table">
+      <thead><tr><th>Filesystem</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
+      <tbody>
+        {% for f in st.filesystems %}
+        <tr>
+          <td><code>{{ f.row.name }}</code></td>
+          <td>{{ f.used }} of {{ f.size }} <span class="{{ 'warn-text' if f.over else 'muted' }} small">({{ f.pct | round | int }}%)</span></td>
+          <td class="num">{{ f.free }}</td>
+          <td class="bar-col">{{ bar(f.bar, f.over) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="card" id="interfaces">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10v4M11 10v4M15 10v4"/></svg></span>

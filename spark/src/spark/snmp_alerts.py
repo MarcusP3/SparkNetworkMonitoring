@@ -120,6 +120,19 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
                                         "Temperature"),
         "temperature_minutes": _bounded(form.get("temperature_minutes", ""), *MINUTES_RANGE,
                                         "Temperature minutes"),
+        # Storage (storage.py).
+        "pool_health": bool(form.get("pool_health")),
+        "pool_space": bool(form.get("pool_space")),
+        "pool_space_percent": _bounded(form.get("pool_space_percent", ""), *PERCENT_RANGE,
+                                       "Pool space"),
+        "disk_space": bool(form.get("disk_space")),
+        "disk_space_percent": _bounded(form.get("disk_space_percent", ""), *PERCENT_RANGE,
+                                       "Disk space"),
+        "drive_temperature": bool(form.get("drive_temperature")),
+        "drive_celsius": _bounded(form.get("drive_celsius", ""), *CELSIUS_RANGE,
+                                  "Drive temperature"),
+        "drive_minutes": _bounded(form.get("drive_minutes", ""), *MINUTES_RANGE,
+                                  "Drive temperature minutes"),
     }
     rules.update(checked)
     await save_setting(session, SETTING, rules)

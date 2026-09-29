@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — storage: TrueNAS pools and drives, disk space anywhere (2026-09-29)
+
+### Added
+
+- **A Storage card** on a polled device's page, read every 5 minutes:
+  - TrueNAS: each pool's health and space, and each drive's temperature,
+    from TRUENAS-MIB. Checked against a real TrueNAS SCALE 25.10 box: the
+    pool table there has health and I/O counters but no sizes, so a pool's
+    space is its root dataset's used + available (the boot pool has no
+    dataset row and shows health only). Drive temperatures come in
+    thousandths of a degree.
+  - Anything running net-snmp: its real filesystems from hrStorageTable
+    (fixed disks only; /proc, /sys, /dev, /run, snaps, container layers and
+    tiny mounts left out; a bind mount shown once). Not on TrueNAS, where
+    that table repeats every dataset.
+- **Storage alerts**, under Settings → Alerts: a pool not ONLINE (at once,
+  and again when ONLINE), a pool 85% full or more, a disk 90% full or more
+  (two reads in a row each), a drive at 50 °C or more for 10 minutes. Space
+  and heat alerts end 5 under their line. The mute list and each rule's
+  switch apply as for the other SNMP alerts.
+- Read on their own 5-minute schedule, one device at a time, with a
+  30-second timeout: TrueNAS works these values out when asked and its
+  whole agent waits while it does. Only devices answering their polls are
+  asked.
+
+### Changed
+
+- Migration 14: the `snmp_storage` table. New rules in `alert_rules`.
+
+### Tests
+
+20 new (`test_storage.py`); seventeen deliberate breaks each caught (one
+more changed nothing and is harmless). The rules-form test covers the new
+fields. `pytest` 900 passed with the agent, `smoke_test.py` 76 passed.
+Checked in a browser in both themes and at phone width.
+
 ## Unreleased — manual or automatic map, and Wipe map (2026-09-28)
 
 ### Added

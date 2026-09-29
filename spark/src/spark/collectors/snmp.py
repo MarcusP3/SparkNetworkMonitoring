@@ -238,6 +238,41 @@ def _format_mac(value: Any) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class PoolReading:
+    name: str
+    health: str | None
+    used_bytes: int | None = None
+    size_bytes: int | None = None
+
+
+@dataclass(frozen=True)
+class DriveReading:
+    name: str
+    celsius: float
+
+
+@dataclass(frozen=True)
+class FilesystemReading:
+    name: str
+    size_bytes: int
+    used_bytes: int
+
+
+# Mount points that are fixed disks to hrStorage but not disks to a person.
+_NOT_DISKS = ("/proc", "/sys", "/dev", "/run", "/snap", "/var/lib/docker",
+              "/var/lib/containers", "/var/lib/kubelet")
+
+
+_SMALLEST_DISK = 64 * 1024 * 1024
+
+
+def _unsigned(value: int) -> int:
+    """hrStorageSize and -Used are Integer32; a large filesystem can come
+    back negative from an agent that did not scale its allocation units."""
+    return value + (1 << 32) if value < 0 else value
+
+
 # A forwarding table on a busy switch is the largest thing SPARK walks.
 FDB_ROWS = 20000
 
@@ -490,6 +525,84 @@ class SnmpCollector:
                 if kinds.get(index) != O.ARP_INVALID:
                     _add_pair(pairs, ip, _format_mac(value))
         return pairs
+
+    # ---------------- storage: pools, drives, filesystems ----------------
+
+    async def truenas_pools(self) -> list[PoolReading]:
+        """TrueNAS pools: health, and space from each pool's root dataset.
+
+        Empty for anything that is not TrueNAS. The root dataset is the one
+        named exactly as the pool; its used + available is the pool's usable
+        size. The boot pool has no dataset row, so it reports health only.
+        """
+        names = await self.walk(O.TRUENAS_ZPOOL_NAME)
+        if not names:
+            return []
+        health = await self.walk(O.TRUENAS_ZPOOL_HEALTH)
+        datasets = await self.walk(O.TRUENAS_DATASET_NAME)
+        roots = {str(name): index for index, name in datasets.items() if "/" not in str(name)}
+        space: dict[str, tuple[int | None, int | None]] = {}
+        wanted = [roots[str(n)] for n in names.values() if str(n) in roots]
+        if wanted:
+            got = await self.get(*[f"{O.TRUENAS_DATASET_USED}.{i}" for i in wanted],
+                                 *[f"{O.TRUENAS_DATASET_AVAILABLE}.{i}" for i in wanted])
+            values = {_index_of(oid, O.TRUENAS_DATASET_USED): v for oid, v in got.items()
+                      if oid.lstrip(".").startswith(O.TRUENAS_DATASET_USED + ".")}
+            avail = {_index_of(oid, O.TRUENAS_DATASET_AVAILABLE): v for oid, v in got.items()
+                     if oid.lstrip(".").startswith(O.TRUENAS_DATASET_AVAILABLE + ".")}
+            for name, index in roots.items():
+                space[name] = (_as_int(values.get(index)), _as_int(avail.get(index)))
+        out = []
+        for index, name in names.items():
+            used, free = space.get(str(name), (None, None))
+            size = used + free if used is not None and free is not None else None
+            out.append(PoolReading(name=str(name), health=str(health.get(index) or "") or None,
+                                   used_bytes=used, size_bytes=size))
+        return sorted(out, key=lambda p: p.name.lower())
+
+    async def truenas_drives(self) -> list[DriveReading]:
+        """Drive temperatures from TrueNAS, in degrees C. A drive reporting
+        0 is one TrueNAS could not read, and is left out."""
+        names = await self.walk(O.TRUENAS_DRIVE_NAME)
+        if not names:
+            return []
+        temps = await self.walk(O.TRUENAS_DRIVE_TEMP)
+        out = [DriveReading(name=str(names[i]), celsius=temps[i] / 1000)
+               for i in names if isinstance(temps.get(i), int) and temps[i] > 0]
+        return sorted(out, key=lambda d: d.name)
+
+    async def filesystems(self) -> list[FilesystemReading]:
+        """Real filesystems from hrStorageTable, with their size and use.
+
+        Fixed disks only, and not the ones that are always full or are not
+        really disks: snaps, container layers, /proc, /sys, /dev, /run. A
+        filesystem mounted twice (a bind mount) is kept once, at its shortest
+        path.
+        """
+        types = await self.walk(HR_STORAGE_TYPE)
+        fixed = [i for i, t in types.items() if str(t).lstrip(".") == O.HR_STORAGE_FIXED_DISK]
+        if not fixed:
+            return []
+        descr = await self.walk(O.HR_STORAGE_DESCR)
+        units = await self.walk(O.HR_STORAGE_ALLOCATION_UNITS)
+        sizes = await self.walk(O.HR_STORAGE_SIZE)
+        used = await self.walk(O.HR_STORAGE_USED)
+        seen: dict[tuple[int, int], FilesystemReading] = {}
+        for i in fixed:
+            name = str(descr.get(i) or "")
+            unit, size, use = units.get(i), sizes.get(i), used.get(i)
+            if not name or not all(isinstance(v, int) for v in (unit, size, use)) or not size:
+                continue
+            if any(name == p or name.startswith(p + "/") for p in _NOT_DISKS) or "/snap/" in name:
+                continue
+            reading = FilesystemReading(name=name[:255], size_bytes=_unsigned(size) * unit,
+                                        used_bytes=_unsigned(use) * unit)
+            if reading.size_bytes < _SMALLEST_DISK:
+                continue      # a few kilobytes of mount point, not a disk
+            key = (reading.size_bytes, reading.used_bytes)
+            if key not in seen or len(name) < len(seen[key].name):
+                seen[key] = reading
+        return sorted(seen.values(), key=lambda f: f.name)
 
     # ---------------- topology: MAC tables and LLDP ----------------
 
