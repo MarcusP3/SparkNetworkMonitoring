@@ -34,6 +34,7 @@ from ..discovery.runner import PORT_SCAN_INTERVAL_CHOICES
 from ..collectors.snmp import AUTH_PROTOCOLS, PRIV_PROTOCOLS
 from ..models import (
     AlertMute,
+    AlertSuppression,
     ApiCredential,
     Device,
     SnmpDevice,
@@ -308,6 +309,7 @@ SECTIONS = (
     ("snmp", "SNMP", "/settings/snmp"),
     ("alerts", "Alerts", "/settings/alerts"),
     ("credentials", "Credentials", "/settings/credentials"),
+    ("suppressions", "Suppressions", "/settings/suppressions"),
 )
 SECTION_URLS = {slug: url for slug, _, url in SECTIONS}
 PORTS_URL = SECTION_URLS["ports"]
@@ -334,6 +336,7 @@ async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
         "snmp": f"{polled}",
         "alerts": alert_hint,
         "credentials": f"{await session.scalar(select(func.count(ApiCredential.id))) or 0}",
+        "suppressions": f"{await session.scalar(select(func.count(AlertSuppression.id))) or 0}",
     }
     return [{"slug": slug, "label": label, "url": url, "hint": hints[slug]}
             for slug, label, url in SECTIONS]
@@ -371,6 +374,9 @@ async def _render(
     alert_notice: str | None = None,
     cred_error: str | None = None,
     cred_form: dict | None = None,
+    supp_error: str | None = None,
+    supp_form: dict | None = None,
+    supp_notice: str | None = None,
 ):
     section = _section_of(section, port_error=port_error, port_form=port_form,
                           snmp_error=snmp_error, snmp_form=snmp_form,
@@ -418,9 +424,36 @@ async def _render(
             "creds": await _credentials(session) if section == "credentials" else None,
             "cred_error": cred_error,
             "cred_form": cred_form or {},
+            "supp": await _suppressions(session) if section == "suppressions" else None,
+            "supp_error": supp_error,
+            "supp_form": supp_form or {},
+            "supp_notice": supp_notice,
         },
         status_code=status_code,
     )
+
+
+async def _suppressions(session: AsyncSession) -> dict:
+    """The list, and what the add form offers: devices, each rule with the
+    global line it would move, and the TrueNAS alert types seen so far."""
+    from .. import snmp_alerts, suppressions
+
+    devices = sorted((await session.execute(
+        select(Device).where(Device.ignored.is_(False))
+    )).scalars().all(), key=lambda d: d.display_name.lower())
+    rules = await snmp_alerts.load(session)
+    offered = []
+    for key, spec in suppressions.RULES.items():
+        line = rules.get(spec.limit_key) if spec.limit_key else None
+        offered.append({"key": key, "label": spec.label, "unit": spec.unit, "bounds": spec.bounds,
+                        "line": line})
+    classes: set[str] = set()
+    for cred in (await session.execute(select(ApiCredential))).scalars():
+        for a in (cred.readings or {}).get("alerts") or []:
+            if a.get("klass"):
+                classes.add(a["klass"])
+    return {"rows": await suppressions.listing(session), "devices": devices,
+            "rules": offered, "classes": sorted(classes)}
 
 
 async def _credentials(session: AsyncSession) -> dict:
@@ -468,11 +501,21 @@ async def settings_section(
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
-    """One Settings sub-page. An unknown name goes to the first one."""
+    """One Settings sub-page. An unknown name goes to the first one.
+
+    Suppressions takes ?device=&rule=&detail= to fill in its form, from the
+    Suppress link beside an incident on the dashboard."""
     if section not in SECTION_URLS or section == "subnets":
         return redirect("/settings")
     notice = "Alert rules saved." if section == "alerts" and saved == "rules" else None
-    return await _render(request, session, config, user, section=section, alert_notice=notice)
+    params = request.query_params
+    prefill = {"device": params.get("device", "")[:20], "rule": params.get("rule", "")[:32],
+               "detail": params.get("detail", "")[:64], "mode": "off"} \
+        if section == "suppressions" else None
+    return await _render(request, session, config, user, section=section, alert_notice=notice,
+                         supp_form=prefill,
+                         supp_notice="Saved. That alert starts afresh for this device."
+                         if section == "suppressions" and saved else None)
 
 
 @router.post("/settings/subnets")

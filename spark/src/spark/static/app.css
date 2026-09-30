@@ -1794,3 +1794,13 @@ code.fingerprint.small { display: inline; }
 .truenas-alerts .sub-title { margin: .25rem 0 .5rem; }
 .truenas-alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
 .truenas-alerts li { font-size: .875rem; overflow-wrap: anywhere; }
+
+/* Settings -> Suppressions. */
+.supp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .75rem 1rem; align-items: start; margin-top: .75rem; }
+.supp-form .form-actions { grid-column: 1 / -1; }
+.supp-mode { border: 0; margin: 0; padding: 0; display: grid; gap: .35rem; min-width: 0; }
+.supp-mode legend { padding: 0; margin-bottom: .25rem; }
+.supp-mode input[type="number"] { width: 5.5rem; margin-left: .4rem; }
+.supp-table td:nth-child(2) { overflow-wrap: anywhere; }
+.suppress-link { color: var(--accent); text-decoration: none; }
+.suppress-link:hover { text-decoration: underline; }

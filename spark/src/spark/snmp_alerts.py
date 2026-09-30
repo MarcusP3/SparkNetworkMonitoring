@@ -273,8 +273,11 @@ def utilisation(iface: SnmpInterface) -> float | None:
 async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: SnmpPoll,
                    interfaces: list[SnmpInterface], now: datetime, interval: int) -> None:
     """Every rule, for one answered poll of one device."""
+    from . import suppressions
+
     settings = await alerts.load(session)
     rules = await load(session)
+    supp = await suppressions.for_device(session, device.id)
     muted = await alerts.is_muted(session, device_id=device.id)
     sending = settings.get("enabled", True) and not muted
     recoveries = settings.get("notify_on_recovery", True)
@@ -284,9 +287,9 @@ async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: 
         value = getattr(poll, metric.field)
         if value is None:
             continue      # not reported this time: neither breach nor all-clear
-        limit = float(rules.get(metric.limit_key) or 0)
+        limit = supp.line(metric.key, float(rules.get(metric.limit_key) or 0))
         key = f"{metric.key}:{row_id}"
-        on = bool(rules.get(metric.key, True))
+        on = bool(rules.get(metric.key, True)) and not supp.off(metric.key)
         minutes = int(rules.get(f"{metric.key}_minutes") or 1)
         hot = "is running hot" if metric.key == "temperature" else "is high"
         subject = f"{device.display_name}: {metric.what} {hot} ({metric.show(value)})"
@@ -318,16 +321,16 @@ async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: 
         if not iface.starred:
             continue
         await _port_down(session, iface, device, rules, now, interval, address,
-                         sending, recoveries)
+                         sending, recoveries, supp)
         await _port_busy(session, iface, device, rules, now, interval, address,
-                         sending, recoveries)
+                         sending, recoveries, supp)
 
 
 async def _port_down(session, iface, device, rules, now, interval, address,  # type: ignore[no-untyped-def]
-                     sending, recoveries) -> None:
+                     sending, recoveries, supp) -> None:
     key = f"port:{iface.id}"
     down = (iface.oper_status or "").lower() != "up"
-    on = bool(rules.get("port_down", True))
+    on = bool(rules.get("port_down", True)) and not supp.off("port_down")
     disabled = (iface.admin_status or "").lower() == "down"
     subject = f"{device.display_name}: port {iface.label} is down"
     body = (f"{address} — " + ("switched off on the device (admin down)." if disabled
@@ -351,14 +354,14 @@ async def _port_down(session, iface, device, rules, now, interval, address,  # t
 
 
 async def _port_busy(session, iface, device, rules, now, interval, address,  # type: ignore[no-untyped-def]
-                     sending, recoveries) -> None:
+                     sending, recoveries, supp) -> None:
     key = f"busy:{iface.id}"
     pct = utilisation(iface) if (iface.oper_status or "").lower() == "up" else None
     if pct is None:
         return
-    limit = float(rules.get("port_busy_percent") or 80)
+    limit = supp.line("port_busy", float(rules.get("port_busy_percent") or 80))
     minutes = int(rules.get("port_busy_minutes") or 10)
-    on = bool(rules.get("port_busy", True))
+    on = bool(rules.get("port_busy", True)) and not supp.off("port_busy")
     speed = fmt_bps(iface.speed_mbps * 1_000_000)
     subject = f"{device.display_name}: port {iface.label} is busy ({pct:.0f}% of {speed})"
     body = (f"{address} — over {limit:.0f}% for {minutes} minute{'s' if minutes != 1 else ''}. "

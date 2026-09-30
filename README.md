@@ -409,6 +409,19 @@ device, and stays *ongoing* until the rule clears. **Open incidents** counts
 both kinds. They are recorded even for a muted device (the problem was real;
 only the message is held back), but not while a rule is switched off.
 
+**Suppressions** (Settings → Suppressions) are for a device that breaks a
+rule by design — ZFS keeps TrueNAS's memory nearly full on purpose. One
+rule, for one device: **off**, or **its own line** ("memory over 100%",
+"CPU over 98%"). Lines apply to CPU, memory, temperature, port traffic, pool
+and disk space, and drive temperature; the other rules can only be off.
+TrueNAS's own alerts can be suppressed one type at a time (PoolUSBDisks),
+or all at once. A suppressed rule is fully quiet — no message and no
+incident — and every other rule and device is untouched. Saving or removing
+one starts that rule afresh for that device, so an alert standing at the
+time closes as *suppressed*. Each alert on the dashboard's Recent incidents
+has a **Suppress** link that fills the form in. (Muting is the other tool:
+the whole device, still recorded, only not sent.)
+
 **Settings → Alerts.** Paste a Discord webhook (in Discord: Server Settings →
 Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and press
 **Send a test**. The URL is stored encrypted, like SNMP credentials, and never
@@ -860,6 +873,7 @@ spark/
     storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
     truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
+    suppressions.py     one alert rule, for one device, off or with its own line
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     servicemap.py       the network map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
@@ -905,6 +919,7 @@ spark/
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_incidents.py   one open incident per target, across pause/resume
     test_alert_incidents.py  incidents for alert rules: opened on firing, closed on clearing, on the dashboard
+    test_suppressions.py  per-device rule overrides: quiet, their own lines, afresh when saved; the page
     test_ports.py       the scanner against real sockets; the service store
     test_paging.py      one device per page, exactly once, whatever the filter
     test_port_catalogue.py  the editable port list, and what it costs to scan

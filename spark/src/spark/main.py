@@ -25,6 +25,7 @@ from .web.routes_device_page import router as device_page_router
 from .web.routes_devices import router as devices_router
 from .web.routes_map import router as map_router
 from .web.routes_credentials import router as credentials_router
+from .web.routes_suppressions import router as suppressions_router
 from .web.routes_preferences import router as preferences_router
 from .web.routes_events import router as events_router
 from .web.routes_settings import router as settings_router
@@ -213,6 +214,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(preferences_router)
     app.include_router(map_router)
     app.include_router(credentials_router)
+    app.include_router(suppressions_router)
     return app
 
 

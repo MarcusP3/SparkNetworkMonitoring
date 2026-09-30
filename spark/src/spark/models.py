@@ -653,6 +653,24 @@ class AlertIncident(Base):
     resolution: Mapped[str | None] = mapped_column(String(32))
 
 
+class AlertSuppression(Base):
+    """One alert rule, for one device: off, or with its own line
+    (Settings -> Suppressions; suppressions.py). `detail` narrows a TrueNAS
+    alert to one type ("PoolUSBDisks"); empty means every one. `threshold`
+    None means off (migration 18)."""
+
+    __tablename__ = "alert_suppression"
+    __table_args__ = (UniqueConstraint("device_id", "rule", "detail",
+                                       name="uq_alert_suppression"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"), index=True)
+    rule: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[str | None] = mapped_column(String(64))
+    threshold: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class NotificationStatus(enum.StrEnum):
     PENDING = "pending"    # waiting for the dispatcher
     HELD = "held"          # arrived during quiet hours; goes out in the digest

@@ -28,6 +28,7 @@ from .models import (
     ApiCredential,
     AlertIncident,
     AlertState,
+    AlertSuppression,
     Base,
     CheckRollup,
     DeviceAddress,
@@ -315,7 +316,13 @@ async def _add_alert_incident(session: AsyncSession) -> None:
     await connection.run_sync(AlertIncident.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 17
+@migration(18, "Per-device alert suppressions (Settings -> Suppressions)")
+async def _add_alert_suppression(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(AlertSuppression.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 18
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

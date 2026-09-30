@@ -310,6 +310,10 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
     settings = await load(session)
     if not settings.get("notify_on_snmp", True):
         return
+    from .suppressions import for_device
+
+    if (await for_device(session, device_id)).off("snmp_down"):
+        return  # suppressed for this device: fully quiet
     # Muted, or alerts switched off: the outage is still an incident on the
     # dashboard, only no message is sent.
     sending = settings.get("enabled", True) and not await is_muted(session, device_id=device_id)

@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts, truenas, truenas_health
+from . import alerts, snmp_alerts, suppressions, truenas, truenas_health
 from .db import session_scope
 from .engine.state import human_duration
 from .models import AlertState, ApiCredential, Device, utcnow
@@ -301,7 +301,8 @@ async def evaluate(session: AsyncSession, row: ApiCredential, worked: bool,
         device is not None and await alerts.is_muted(session, device_id=device.id))
     name = device.display_name if device else row.name
     what = KINDS.get(row.kind, row.kind)
-    on = bool(rules.get("api_down", True))
+    on = bool(rules.get("api_down", True)) and not (
+        await suppressions.for_device(session, row.device_id)).off("api_down")
     subject = f"{name}: SPARK cannot use the {what} API"
     body = f"`{row.host}` — {row.last_error or 'no answer'}"
     out = await snmp_alerts.step(session, key, breached=not worked, cleared=worked, value=None,

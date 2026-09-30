@@ -8,12 +8,14 @@ engine and discovery workers land in the next increments.
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import subnets as subnet_service
+from .. import suppressions
 from ..config import Config
 from ..db import get_setting
 from ..engine.state import human_duration
@@ -141,6 +143,7 @@ async def dashboard(
             "target_name": name,
             "source": "Target",
             "href": None,
+            "suppress": None,
             "opened_at": incident.opened_at,
             "closed_at": incident.closed_at,
             "duration": human_duration(incident.duration_seconds),
@@ -155,10 +158,18 @@ async def dashboard(
         select(AlertIncident).order_by(AlertIncident.opened_at.desc()).limit(RECENT)
     )).scalars():
         closed = row.closed_at
+        rule = suppressions.rule_of(row.key)
+        suppress = None
+        if row.device_id and rule:
+            query = {"device": row.device_id, "rule": rule}
+            if rule == "truenas_alerts" and (klass := await suppressions.klass_of(session, row.key)):
+                query["detail"] = klass
+            suppress = f"/settings/suppressions?{urlencode(query)}#add"
         incidents.append({
             "target_name": row.title,
             "source": source_of(row.key),
             "href": f"/devices/{row.device_id}" if row.device_id else None,
+            "suppress": suppress,
             "opened_at": row.opened_at,
             "closed_at": closed,
             "duration": human_duration((closed - row.opened_at).total_seconds()) if closed else None,

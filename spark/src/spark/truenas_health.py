@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts
+from . import alerts, snmp_alerts, suppressions
 from .engine.state import human_duration
 from .models import AlertState, ApiCredential, Device, utcnow
 from .storage import fmt_bytes
@@ -90,6 +90,7 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
     the reading it replaced, for the words of an alert TrueNAS has dropped."""
     readings = row.readings or {}
     name, sending, recoveries, rules = await context(session, row)
+    supp = await suppressions.for_device(session, row.device_id)
     address = f"`{row.host}`"
 
     async def run(key: str, *, breached: bool, on: bool, kind: str,
@@ -125,7 +126,8 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
             subject = (f"{name}: drive {d['name']} is {status}" if status != ONLINE else
                        f"{name}: drive {d['name']} has {errors(d)} error"
                        f"{'s' if errors(d) != 1 else ''}")
-            await run(key, breached=not healthy(d), on=bool(rules.get("drive_errors", True)),
+            await run(key, breached=not healthy(d),
+                      on=bool(rules.get("drive_errors", True)) and not supp.off("drive_errors"),
                       kind="drive_health",
                       fire=(subject, f"{address} — {where}: {status}; {counts}."
                             + (f" {d['model']}." if d.get("model") else ""), "bad"),
@@ -145,7 +147,8 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
         on = bool(rules.get("truenas_alerts", True))
         for key, a in current.items():
             level = a["level"].title()
-            await run(key, breached=True, on=on, kind="truenas_alert",
+            await run(key, breached=True, on=on and not supp.off("truenas_alerts", a.get("klass")),
+                      kind="truenas_alert",
                       fire=(f"{name}: {a['text']}"[:200],
                             f"{address} — TrueNAS {level}" + (f" ({a['klass']})" if a.get("klass") else "")
                             + ".", "bad" if _rank(a["level"]) >= _rank(BAD_FROM) else "info"),

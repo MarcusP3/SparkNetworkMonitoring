@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Suppressions (2026-09-30)
+
+### Added
+
+- **Settings → Suppressions.** One alert rule, for one device: off, or its
+  own line (memory over 100% on the NAS, CPU over 98% on a switch), while
+  the global rules under Alerts still apply everywhere else. Lines for CPU,
+  memory, temperature, port traffic, pool and disk space, and drive
+  temperature; the others (ports down, pools not ONLINE, SNMP going quiet,
+  drive errors, API credentials, TrueNAS alerts) can only be off. TrueNAS's
+  own alerts can be suppressed by type (PoolUSBDisks) or all at once.
+- Fully quiet: no Discord message and no incident. Saving or removing one
+  starts that rule afresh for that device, so an alert standing at the time
+  closes as "suppressed" instead of hanging on below a raised line.
+- A **Suppress** link beside each alert on the dashboard's Recent
+  incidents, which opens the form filled in with that device and rule (and
+  the TrueNAS alert type).
+
+### Changed
+
+- Migration 18: the `alert_suppression` table.
+
+### Tests
+
+28 new (`test_suppressions.py`), across SNMP thresholds, storage lines,
+SNMP going quiet, and the TrueNAS API (by type, all types, drive errors,
+the API itself); sixteen deliberate breaks each caught. `pytest` and
+`smoke_test.py` pass; checked in a browser in both themes and at phone
+width.
+
 ## Unreleased — alerts are incidents too (2026-09-30)
 
 ### Added

@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts
+from . import alerts, snmp_alerts, suppressions
 from .collectors import SnmpCollector
 from .collectors.snmp import DriveReading, FilesystemReading, PoolReading
 from .db import session_scope
@@ -187,6 +187,7 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
     if device is None:
         return
     rules = await snmp_alerts.load(session)
+    supp = await suppressions.for_device(session, device.id)
     settings = await alerts.load(session)
     sending = settings.get("enabled", True) and not await alerts.is_muted(
         session, device_id=device.id)
@@ -220,16 +221,17 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
             await run(
                 f"pool:{row_id}:{pool.name}", breached=health != HEALTHY,
                 cleared=health == HEALTHY, value=None, hold=timedelta(0), reads=1,
-                on=bool(rules.get("pool_health", True)), kind="pool_health",
+                on=bool(rules.get("pool_health", True)) and not supp.off("pool_health"),
+                kind="pool_health",
                 fire=(f"{name}: pool {pool.name} is {health}",
                       f"{address} — ZFS reports the pool {health}. Check its disks in TrueNAS."),
                 clear=(f"{name}: pool {pool.name} is ONLINE again",
                        f"{address} — it was not ONLINE for {{took}}."),
             )
-        await _space(run, row_id, name, address, pool, POOL, rules)
+        await _space(run, row_id, name, address, pool, POOL, rules, supp)
     for fs in found[FS]:
-        await _space(run, row_id, name, address, fs, FS, rules)
-    limit = float(rules.get("drive_celsius") or 50)
+        await _space(run, row_id, name, address, fs, FS, rules, supp)
+    limit = supp.line("drive_temperature", float(rules.get("drive_celsius") or 50))
     minutes = int(rules.get("drive_minutes") or 10)
     for drive in found[DRIVE]:
         if drive.celsius is None:
@@ -238,7 +240,8 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
             f"drive:{row_id}:{drive.name}", breached=drive.celsius >= limit,
             cleared=drive.celsius <= limit - CELSIUS_MARGIN, value=drive.celsius,
             hold=timedelta(minutes=minutes), reads=1,
-            on=bool(rules.get("drive_temperature", True)), kind="drive_temperature",
+            on=bool(rules.get("drive_temperature", True)) and not supp.off("drive_temperature"),
+            kind="drive_temperature",
             fire=(f"{name}: drive {drive.name} is running hot ({drive.celsius:.0f}°C)",
                   f"{address} — at or over {limit:.0f}°C for {minutes} minute"
                   f"{'s' if minutes != 1 else ''}."),
@@ -248,18 +251,18 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
 
 
 async def _space(run, row_id: int, name: str, address: str, row: SnmpStorage,  # type: ignore[no-untyped-def]
-                 kind: str, rules: dict) -> None:
+                 kind: str, rules: dict, supp) -> None:
     pct = row.percent
     if pct is None:
         return
     rule = "pool_space" if kind == POOL else "disk_space"
-    limit = float(rules.get(f"{rule}_percent") or (85 if kind == POOL else 90))
+    limit = supp.line(rule, float(rules.get(f"{rule}_percent") or (85 if kind == POOL else 90)))
     what = f"pool {row.name}" if kind == POOL else f"disk {row.name}"
     free = fmt_bytes((row.size_bytes or 0) - (row.used_bytes or 0))
     await run(
         f"space:{row_id}:{kind}:{row.name}", breached=pct >= limit,
         cleared=pct <= limit - PERCENT_MARGIN, value=pct, hold=timedelta(0),
-        reads=SPACE_READS, on=bool(rules.get(rule, True)), kind=rule,
+        reads=SPACE_READS, on=bool(rules.get(rule, True)) and not supp.off(rule), kind=rule,
         fire=(f"{name}: {what} is {pct:.0f}% full",
               f"{address} — {free} free of {fmt_bytes(row.size_bytes)}; the line is {limit:.0f}%."),
         clear=(f"{name}: {what} is back to {pct:.0f}% full",
