@@ -973,17 +973,18 @@
         <span>minutes</span>
       </div>
       <h3 class="sub-title">Storage</h3>
-      <p class="muted small">Read every 5 minutes: TrueNAS pools and drives, and disk space on anything running net-snmp.</p>
+      <p class="muted small">Read every 5 minutes: TrueNAS pools and drives, Proxmox storage and drives, and disk space on anything running net-snmp.</p>
       <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="pool_health" value="1" {% if r.pool_health %}checked{% endif %}>
           <span>A pool is not ONLINE</span></label>
-        <span class="muted small rule-scope">DEGRADED, FAULTED, UNAVAIL: straight away, and again when it is ONLINE.</span>
+        <span class="muted small rule-scope">DEGRADED, FAULTED, UNAVAIL: straight away, and again when it is ONLINE. Proxmox: also a storage that is not available.</span>
       </div>
       <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="pool_space" value="1" {% if r.pool_space %}checked{% endif %}>
           <span>A pool is</span></label>
         <input type="number" name="pool_space_percent" min="1" max="100" required value="{{ r.pool_space_percent }}" aria-label="Pool space percent">
         <span>% full or more</span>
+        <span class="muted small rule-scope">TrueNAS pools, and Proxmox storage.</span>
       </div>
       <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="disk_space" value="1" {% if r.disk_space %}checked{% endif %}>
@@ -1008,13 +1009,18 @@
       </div>
       <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="drive_errors" value="1" {% if r.drive_errors %}checked{% endif %}>
-          <span>A drive is not ONLINE, or has errors</span></label>
-        <span class="muted small rule-scope">TrueNAS: any read, write or checksum errors in its pool. Again once it is ONLINE with none.</span>
+          <span>A drive is failing</span></label>
+        <span class="muted small rule-scope">TrueNAS: not ONLINE in its pool, or any read, write or checksum errors. Proxmox: SMART health is not PASSED. Again once it is healthy.</span>
       </div>
       <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="truenas_alerts" value="1" {% if r.truenas_alerts %}checked{% endif %}>
           <span>TrueNAS raises an alert</span></label>
         <span class="muted small rule-scope">Warning and above, once each (SMART failures among them), and again when TrueNAS clears it. Info is shown on the device page only.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="guest_down" value="1" {% if r.guest_down %}checked{% endif %}>
+          <span>A watched VM or container stops</span></label>
+        <span class="muted small rule-scope">Proxmox: not running on two checks in a row, or no longer listed. Watch guests on the device page.</span>
       </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">Save alert rules</button>
@@ -1198,7 +1204,7 @@
       <div>
         <h2>Credentials</h2>
         <p class="card-sub">
-          Keys for devices' own APIs, for what SNMP cannot tell — TrueNAS first.
+          Keys for devices' own APIs, for what SNMP cannot tell — TrueNAS and Proxmox.
           Stored encrypted and never shown again once saved. SNMP credentials
           stay under <a href="/settings/snmp">SNMP</a>.
         </p>
@@ -1229,7 +1235,7 @@
       <p class="small cred-state">
         {% if c.state == 'ok' %}
           <span class="pill {{ c.pill }}">{{ c.words }}</span>
-          {% if r.last_info %}TrueNAS {{ r.last_info.version or '' }}{% if r.last_info.hostname %} · {{ r.last_info.hostname }}{% endif %} ·{% endif %}
+          {% if r.last_info %}{{ c.kind }} {{ r.last_info.version or '' }}{% if r.last_info.hostname %} · {{ r.last_info.hostname }}{% endif %} ·{% endif %}
           checked {{ r.last_checked_at | local('%b %-d, %H:%M %Z') }}{% if c.scheduled %}, every 5 minutes{% endif %}
         {% elif c.state == 'untested' %}
           <span class="muted">Not tested yet.</span>
@@ -1242,8 +1248,10 @@
       <div class="alert {{ 'warn' if r.cert_sha256 else 'info' }} cert-trust">
         <p>{{ 'A different certificate' if r.cert_sha256 else 'The certificate' }} {{ r.host }} presents, SHA-256:</p>
         <code class="fingerprint">{{ r.pending_sha256 }}</code>
-        <p class="muted small">Compare it with TrueNAS: System → Certificates, the certificate in use by the web interface.
-          Trust it only if they match. Until then SPARK sends nothing, the key included.</p>
+        <p class="muted small">{% if r.kind == 'proxmox' %}Compare it with Proxmox: the node → System → Certificates
+          (pveproxy-ssl.pem if there is one, otherwise pve-ssl.pem), or run <code>pvenode cert info</code> on the host.
+          {% else %}Compare it with TrueNAS: System → Certificates, the certificate in use by the web interface.
+          {% endif %}Trust it only if they match. Until then SPARK sends nothing, the key included.</p>
         <form method="post" action="/settings/credentials/{{ r.id }}/trust">
           <input type="hidden" name="fingerprint" value="{{ r.pending_sha256 }}">
           <button type="submit" class="btn-primary">Trust this certificate</button>
@@ -1260,7 +1268,7 @@
           <label class="stack-field"><span class="muted small">Device</span>{{ device_select(r.device_id) }}</label>
           <label class="stack-field"><span class="muted small">Address</span>
             <input type="text" name="host" maxlength="255" value="{{ r.host }}" autocomplete="off"></label>
-          <label class="stack-field"><span class="muted small">API key</span>
+          <label class="stack-field"><span class="muted small">{{ 'API token' if r.kind == 'proxmox' else 'API key' }}</span>
             <input type="password" name="api_key" maxlength="1024" autocomplete="new-password" placeholder="Saved — leave empty to keep it"></label>
           <p class="muted small">A new address or key forgets the trusted certificate; Test and trust it again.</p>
           <button type="submit" class="btn-quiet">Save {{ r.name }}</button>
@@ -1281,13 +1289,20 @@
         <label class="stack-field"><span class="muted small">Device</span>{{ device_select(cred_form.device_id) }}</label>
         <label class="stack-field"><span class="muted small">Address <em class="optional">if not the device's</em></span>
           <input type="text" name="host" maxlength="255" value="{{ cred_form.host or '' }}" placeholder="192.168.1.20 or truenas.lan" autocomplete="off"></label>
-        <label class="stack-field"><span class="muted small">API key</span>
+        <label class="stack-field"><span class="muted small">API key or token</span>
           <input type="password" name="api_key" maxlength="1024" required autocomplete="new-password"></label>
         <p class="muted small">
           For TrueNAS: a key for a user with the Read-Only Administrator role is all SPARK
-          needs. It is only ever sent over HTTPS — TrueNAS revokes a key sent over plain
-          HTTP — and only after you have trusted the certificate. Saving tests the
-          connection straight away without sending the key, to show you that certificate.
+          needs. TrueNAS revokes a key sent over plain HTTP.
+        </p>
+        <p class="muted small">
+          For Proxmox: an API token with the PVEAuditor role on <code>/</code>, pasted whole as
+          <code>USER@REALM!TOKENID=SECRET</code> (for example <code>spark@pve!monitor=…</code>).
+          PVEAuditor can read but change nothing. Port 8006 unless the address says otherwise.
+        </p>
+        <p class="muted small">
+          Either is only ever sent over HTTPS, and only after you have trusted the certificate.
+          Saving tests the connection straight away without sending it, to show you that certificate.
         </p>
         <button type="submit" class="btn-primary">Add credential</button>
       </form>

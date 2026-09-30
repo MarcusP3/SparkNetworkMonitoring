@@ -53,6 +53,7 @@ RULES: dict[str, Rule] = {
     "drive_temperature": Rule("Drive temperature", "°C", CELSIUS, "drive_celsius"),
     "drive_errors": Rule("A drive is not ONLINE, or has errors"),
     "api_down": Rule("An API credential stops working"),
+    "guest_down": Rule("A watched VM or container stops"),
     "truenas_alerts": Rule("A TrueNAS alert"),
 }
 
@@ -62,6 +63,8 @@ BY_PREFIX = {
     "port": "port_down", "busy": "port_busy", "snmpdown": "snmp_down",
     "pool": "pool_health", "drive": "drive_temperature",
     "api": "api_down", "apidrive": "drive_errors", "tnalert": "truenas_alerts",
+    "pveguest": "guest_down", "pvezfs": "pool_health", "pvestore": "pool_health",
+    "pvespace": "pool_space", "pvedisk": "drive_errors",
 }
 
 
@@ -206,6 +209,10 @@ async def _keys(session: AsyncSession, device_id: int, rule: str,
         elif rule == "drive_temperature":
             prefixes.append(f"drive:{snmp_row}:")
     for cred in creds:
+        pve = {"guest_down": ["pveguest"], "pool_health": ["pvezfs", "pvestore"],
+               "pool_space": ["pvespace"], "drive_errors": ["pvedisk"]}
+        if cred.kind == "proxmox":
+            prefixes.extend(f"{head}:{cred.id}:" for head in pve.get(rule, []))
         if rule == "api_down":
             keys.append(f"api:{cred.id}")
         elif rule == "drive_errors":

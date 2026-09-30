@@ -1243,7 +1243,9 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 /* Wide tables scroll inside their card rather than widening the page. At
    phone width the Settings tables are wider than the screen, and without this
    the whole page scrolled sideways. */
-.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* position: relative so a visually-hidden header (absolutely placed) stays
+   inside the scroller instead of widening the page on a phone. */
+.table-scroll { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .snmp-result .pill { margin-right: .35rem; }
 .snmp-polling { margin: .25rem 0 .75rem; flex-wrap: wrap; }
 .snmp-polling .inline-field select { width: auto; min-width: 8rem; }
@@ -1794,6 +1796,17 @@ code.fingerprint.small { display: inline; }
 .truenas-alerts .sub-title { margin: .25rem 0 .5rem; }
 .truenas-alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
 .truenas-alerts li { font-size: .875rem; overflow-wrap: anywhere; }
+
+/* The Proxmox card (device.html): host, guests, storage, ZFS, drives. */
+.pve-card .sub-title { margin: .5rem 0 .5rem; }
+.pve-table th, .pve-table td { white-space: nowrap; }
+.pve-table td .muted.small { white-space: normal; }
+.pve-table tr.is-quiet td:not(.actions) { color: var(--text-muted); }
+.pve-table td.actions { text-align: right; width: 1%; }
+.pve-table td.actions form { margin: 0; }
+/* A watched guest's "Watched" is a button here: pressing it stops watching. */
+.btn-quiet.is-watched.is-toggle { cursor: pointer; }
+.btn-quiet.is-watched.is-toggle:hover { background: color-mix(in srgb, var(--ok) 22%, transparent); }
 
 /* Settings -> Suppressions. */
 .supp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .75rem 1rem; align-items: start; margin-top: .75rem; }

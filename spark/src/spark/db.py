@@ -322,7 +322,18 @@ async def _add_alert_suppression(session: AsyncSession) -> None:
     await connection.run_sync(AlertSuppression.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 18
+@migration(19, "Watched Proxmox guests on API credentials")
+async def _add_api_options(session: AsyncSession) -> None:
+    """A column, so tolerant of it already being there (see migration 4)."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("api_credential")}
+    )
+    if "options" not in existing:
+        await session.execute(text("ALTER TABLE api_credential ADD COLUMN options JSON"))
+
+
+CURRENT_VERSION = 19
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

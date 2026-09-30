@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
-from .. import truenas_health
+from .. import proxmox_health, suppressions, truenas_health
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -285,8 +285,14 @@ async def device_page(
     now = utcnow()
     apis = [dict(a, ago=_ago(a["row"].last_checked_at, now))
             for a in await credentials.for_device(session, device)]
-    hot = float((await snmp_alerts.load(session)).get("drive_celsius") or 50)
+    rules = await snmp_alerts.load(session)
+    hot = float(rules.get("drive_celsius") or 50)
     api_storage = next((v for a in apis if (v := truenas_health.view(a["row"], hot=hot))), None)
+    # Proxmox: its host, guests, storage and drives, under its API card.
+    line = (await suppressions.for_device(session, device.id)).line(
+        "pool_space", float(rules.get("pool_space_percent") or 85))
+    for a in apis:
+        a["pve"] = proxmox_health.view(a["row"], line=line)
 
     return templates.TemplateResponse(
         request,

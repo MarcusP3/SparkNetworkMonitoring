@@ -113,6 +113,160 @@
     {% endif %}
   </section>
 {% endmacro %}
+{% macro space_bar(pct, over) -%}
+<svg class="space-bar{% if over %} over{% endif %}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="track" x="0" y="0" width="100" height="6" rx="3"/><rect class="fill" x="0" y="0" width="{{ pct }}" height="6" rx="3"/></svg>
+{%- endmacro %}
+{% macro pve_card(a, pv) %}
+  {% set r = a.row %}
+  <section class="card pve-card" id="guests-{{ r.id }}">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg></span>
+      <div>
+        <h2>Proxmox</h2>
+        <p class="card-sub">
+          {% if pv.guests %}{{ pv.running }} of {{ pv.guests | length }} guest{{ 's' if pv.guests | length != 1 }} running ·{% endif %}
+          read every 5 minutes{% if pv.read_at %}, last at {{ pv.read_at | local('%H:%M %Z') }}{% endif %}.
+          Watch a guest to be alerted when it stops. Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
+        </p>
+      </div>
+    </div>
+    {% if pv.nodes %}
+    <div class="table-scroll">
+    <table class="table compact storage-table pve-table">
+      <thead><tr><th>Node</th><th>State</th><th>Version</th><th class="num">CPU</th><th>Memory</th><th class="num">Up</th></tr></thead>
+      <tbody>
+        {% for n in pv.nodes %}
+        <tr>
+          <td>{{ n.name }}{% if n.cpu_model %}<div class="muted small">{{ n.cpu_model }}</div>{% endif %}</td>
+          <td><span class="pill {{ 'ok' if n.status == 'online' else 'bad' }}">{{ n.status }}</span></td>
+          <td class="small">{% if n.version %}PVE {{ n.version }}{% else %}<span class="muted">—</span>{% endif %}{% if n.kernel %}<div class="muted small">{{ n.kernel }}</div>{% endif %}</td>
+          <td class="num">{% if n.cpu_pct is not none %}{{ n.cpu_pct }}%{% if n.cores %} <span class="muted small">of {{ n.cores }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="small">{{ n.mem_str }}{% if n.mem_pct is not none %} <span class="muted">({{ n.mem_pct | round | int }}%)</span>{% endif %}</td>
+          <td class="num">{{ n.up }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if pv.guests or pv.watched_missing %}
+    <h3 class="sub-title">VMs and containers</h3>
+    <div class="table-scroll">
+    <table class="table compact storage-table pve-table">
+      <thead><tr><th class="num">ID</th><th>Name</th><th>Type</th>{% if pv.many_nodes %}<th>Node</th>{% endif %}<th>State</th><th class="num">CPU</th><th>Memory</th><th class="num">Up</th><th><span class="visually-hidden">Watch</span></th></tr></thead>
+      <tbody>
+        {% for g in pv.guests %}
+        <tr class="{% if not g.running and not g.watched %}is-quiet{% endif %}">
+          <td class="num">{{ g.vmid }}</td>
+          <td>{{ g.name }}</td>
+          <td class="muted small">{{ g.kind }}</td>
+          {% if pv.many_nodes %}<td class="small">{{ g.node or '—' }}</td>{% endif %}
+          <td><span class="pill {{ 'ok' if g.running else ('bad' if g.watched else 'neutral') }}">{{ g.status }}</span></td>
+          <td class="num">{% if g.cpu_pct is not none %}{{ g.cpu_pct }}%{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="small">{{ g.mem_str }}</td>
+          <td class="num">{{ g.up }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/credentials/{{ r.id }}/watch">
+              <input type="hidden" name="vmid" value="{{ g.vmid }}">
+              <input type="hidden" name="on" value="{{ '0' if g.watched else '1' }}">
+              <input type="hidden" name="back" value="{{ back }}">
+              {% if g.watched %}
+              <button type="submit" class="btn-quiet is-watched is-toggle" title="Alerts when it stops. Press to stop watching.">Watched</button>
+              {% else %}
+              <button type="submit" class="btn-quiet" title="Alert when it stops">Watch</button>
+              {% endif %}
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% for m in pv.watched_missing %}
+        <tr>
+          <td class="num">{{ m.vmid }}</td>
+          <td>{{ m.name or '—' }}</td>
+          <td colspan="{{ 6 if pv.many_nodes else 5 }}"><span class="pill bad">not listed</span> <span class="muted small">Watched, but Proxmox no longer lists it.</span></td>
+          <td class="actions">
+            <form method="post" action="/settings/credentials/{{ r.id }}/watch">
+              <input type="hidden" name="vmid" value="{{ m.vmid }}">
+              <input type="hidden" name="on" value="0">
+              <input type="hidden" name="back" value="{{ back }}">
+              <button type="submit" class="btn-quiet is-watched is-toggle" title="Press to stop watching">Watched</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if pv.storages %}
+    <h3 class="sub-title">Storage</h3>
+    <div class="table-scroll">
+    <table class="table compact storage-table pve-table">
+      <thead><tr><th>Storage</th><th>Type</th>{% if pv.many_nodes %}<th>Node</th>{% endif %}<th>State</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
+      <tbody>
+        {% for s in pv.storages %}
+        <tr>
+          <td>{{ s.name }}{% if s.shared %} <span class="muted small">shared</span>{% endif %}</td>
+          <td class="muted small">{{ s.type or '—' }}</td>
+          {% if pv.many_nodes %}<td class="small">{{ s.node }}</td>{% endif %}
+          <td><span class="pill {{ 'ok' if s.active else 'bad' }}">{{ 'active' if s.active else 'not available' }}</span></td>
+          {% if s.pct is not none %}
+          <td>{{ s.used_str }} of {{ s.total_str }} <span class="{{ 'warn-text' if s.over else 'muted' }} small">({{ s.pct | round | int }}%)</span></td>
+          <td class="num">{{ s.free_str }}</td>
+          <td class="bar-col">{{ space_bar(s.bar, s.over) }}</td>
+          {% else %}
+          <td class="muted small" colspan="3">—</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if pv.zfs %}
+    <h3 class="sub-title">ZFS pools</h3>
+    <div class="table-scroll">
+    <table class="table compact storage-table pve-table">
+      <thead><tr><th>Pool</th>{% if pv.many_nodes %}<th>Node</th>{% endif %}<th>Health</th><th class="num">Size</th><th class="num">Free</th><th class="num" title="Fragmentation">Frag</th></tr></thead>
+      <tbody>
+        {% for p in pv.zfs %}
+        <tr>
+          <td>{{ p.name }}</td>
+          {% if pv.many_nodes %}<td class="small">{{ p.node }}</td>{% endif %}
+          <td><span class="pill {{ 'ok' if p.ok else 'bad' }}">{{ p.health }}</span></td>
+          <td class="num">{{ p.size_str }}</td>
+          <td class="num">{{ p.free_str }}</td>
+          <td class="num">{% if p.frag is not none %}{{ p.frag }}%{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% if pv.disks %}
+    <h3 class="sub-title">Drives</h3>
+    <div class="table-scroll">
+    <table class="table compact storage-table drive-table pve-table">
+      <thead><tr><th>Drive</th><th>Model</th><th>Type</th><th class="num">Size</th>{% if pv.many_nodes %}<th>Node</th>{% endif %}<th>Used for</th><th>SMART</th><th class="num" title="Life left, as the drive reports it">Life left</th></tr></thead>
+      <tbody>
+        {% for d in pv.disks %}
+        <tr>
+          <td><code>{{ d.devpath }}</code></td>
+          <td class="muted small">{{ d.model or '—' }}</td>
+          <td class="muted small">{{ d.type or '—' }}</td>
+          <td class="num">{{ d.size_str }}</td>
+          {% if pv.many_nodes %}<td class="small">{{ d.node }}</td>{% endif %}
+          <td class="small">{{ d.used or '—' }}</td>
+          <td>{% if d.ok is none %}<span class="pill neutral">unknown</span>{% else %}<span class="pill {{ 'ok' if d.ok else 'bad' }}">{{ d.health | lower }}</span>{% endif %}</td>
+          <td class="num">{% if d.wearout is not none %}<span class="{{ 'warn-text' if d.wearout <= 10 else '' }}">{{ d.wearout }}%</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </section>
+{% endmacro %}
 <div class="page device-page">
   <div class="page-head">
     <div class="page-title">
@@ -215,6 +369,7 @@
       <p class="muted small snmp-error">{{ r.last_error }}</p>
     {% endif %}
   </section>
+  {% if a.pve %}{{ pve_card(a, a.pve) }}{% endif %}
   {% endfor %}
 
   {% if snmp %}

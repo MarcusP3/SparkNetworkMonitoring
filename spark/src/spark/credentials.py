@@ -1,7 +1,8 @@
 """API credentials: Settings -> Credentials.
 
-Keys for devices' own APIs -- TrueNAS now, the UniFi controller later. SNMP
-communities and v3 users stay with SNMP (snmp_config.py).
+Keys for devices' own APIs -- TrueNAS (truenas.py) and Proxmox (proxmox.py)
+now, the UniFi controller later. SNMP communities and v3 users stay with
+SNMP (snmp_config.py).
 
 A key is sealed as soon as it arrives and is never shown again; a blank key
 field on edit keeps the one saved. A certificate is trusted only by a person
@@ -12,7 +13,7 @@ server until someone says otherwise.
 Once a certificate is trusted, SPARK checks each credential every 5 minutes
 on its own (the device page and this list show the result), and alerts if
 it stops working on two checks in a row -- a revoked key, a replaced
-certificate, TrueNAS down -- and again when it works. The rule is under
+certificate, the box down -- and again when it works. The rule is under
 Settings -> Alerts. A credential with no trusted certificate is never
 checked on a schedule: it would only fetch the certificate again.
 """
@@ -27,7 +28,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts, suppressions, truenas, truenas_health
+from . import (alerts, proxmox, proxmox_health, snmp_alerts, suppressions, truenas,
+               truenas_health)
 from .db import session_scope
 from .engine.state import human_duration
 from .models import AlertState, ApiCredential, Device, utcnow
@@ -50,7 +52,13 @@ STATES = {
     "untested": ("neutral", "not tested"),
 }
 
-KINDS = {"truenas": "TrueNAS"}
+KINDS = {"truenas": "TrueNAS", "proxmox": "Proxmox"}
+
+# The client for each kind: test(host, key, pinned) -> Info, and the
+# errors it raises. Both pin the certificate the same way.
+CLIENTS = {"truenas": truenas, "proxmox": proxmox}
+NOT_TRUSTED = (truenas.CertificateNotTrusted, proxmox.CertificateNotTrusted)
+FAILED = (truenas.TrueNASError, proxmox.ProxmoxError)
 
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
                        r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
@@ -119,6 +127,17 @@ async def _name(session: AsyncSession, name: str, *, not_id: int | None = None) 
     return name
 
 
+def _key(kind: str, raw: str) -> str:
+    """The key as it will be sent. A Proxmox token must be whole."""
+    key = (raw or "").strip()
+    if key and kind == "proxmox":
+        try:
+            return proxmox.check_token(key)
+        except ValueError as exc:
+            raise CredentialError(str(exc)) from None
+    return key
+
+
 async def add(session: AsyncSession, vault: Vault, *, kind: str, name: str,
               device_id: int | None, host: str, api_key: str) -> ApiCredential:
     if kind not in KINDS:
@@ -126,9 +145,9 @@ async def add(session: AsyncSession, vault: Vault, *, kind: str, name: str,
     name = await _name(session, name)
     device = await _device(session, device_id)
     address = clean_host(host or (device.primary_ip if device else "") or "")
-    key = (api_key or "").strip()
+    key = _key(kind, api_key)
     if not key:
-        raise CredentialError("Paste the API key.")
+        raise CredentialError("Paste the API token." if kind == "proxmox" else "Paste the API key.")
     row = ApiCredential(kind=kind, name=name, device_id=device.id if device else None,
                         host=address, key_sealed=vault.seal(key))
     session.add(row)
@@ -143,7 +162,7 @@ async def update(session: AsyncSession, vault: Vault, row: ApiCredential, *, nam
     row.name = await _name(session, name, not_id=row.id)
     device = await _device(session, device_id)
     address = clean_host(host or (device.primary_ip if device else "") or "")
-    key = (api_key or "").strip()
+    key = _key(row.kind, api_key)
     if address != row.host or key:
         row.cert_sha256 = row.pending_sha256 = None
         row.last_ok_at = row.last_info = row.readings = None
@@ -169,20 +188,24 @@ async def test(session: AsyncSession, vault: Vault, row: ApiCredential) -> bool:
     except SecretUnavailable as exc:
         row.last_checked_at, row.last_error = utcnow(), str(exc)
         return False
+    client = CLIENTS.get(row.kind)
+    if client is None:
+        row.last_checked_at, row.last_error = utcnow(), f"SPARK does not know a {row.kind!r} API."
+        return False
     try:
-        info = await truenas.test(row.host, key, row.cert_sha256)
-    except truenas.CertificateNotTrusted as exc:
+        info = await client.test(row.host, key, row.cert_sha256)
+    except NOT_TRUSTED as exc:
         row.pending_sha256 = exc.fingerprint
         row.last_checked_at, row.last_error = utcnow(), str(exc)
         return False
-    except truenas.TrueNASError as exc:
+    except FAILED as exc:
         row.last_checked_at, row.last_error = utcnow(), str(exc)[:1000]
         return False
     now = utcnow()
     row.last_checked_at = row.last_ok_at = now
     row.last_error = row.pending_sha256 = None
     row.last_info = {"version": info.version, "hostname": info.hostname}
-    # Each part only if TrueNAS answered it: one it would not leaves the last
+    # Each part only if the box answered it: one it would not leaves the last
     # reading of that part standing.
     readings = dict(row.readings or {})
     for part, value in info.readings.items():
@@ -199,8 +222,8 @@ async def trust(session: AsyncSession, vault: Vault, row: ApiCredential,
     last seen, so a person never trusts one they were not shown -- then Test."""
     shown = (fingerprint or "").strip().upper()
     if not row.pending_sha256 or shown != row.pending_sha256:
-        raise CredentialError("That certificate is no longer the one TrueNAS presents. "
-                              "Test again and check the new fingerprint.")
+        raise CredentialError(f"That certificate is no longer the one {KINDS.get(row.kind, 'the box')} "
+                              "presents. Test again and check the new fingerprint.")
     row.cert_sha256, row.pending_sha256 = row.pending_sha256, None
     return await test(session, vault, row)
 
@@ -256,6 +279,22 @@ async def forget_alert(session: AsyncSession, cred_id: int) -> None:
     await snmp_alerts.close_incidents(session, utcnow(), key=_alert_key(cred_id),
                                       resolution=snmp_alerts.GONE)
     await truenas_health.forget(session, cred_id)
+    await proxmox_health.forget(session, cred_id)
+
+
+async def watch(session: AsyncSession, row: ApiCredential, vmid: int, on: bool) -> None:
+    """Watch a Proxmox guest (it alerts when it stops) or stop watching it,
+    which drops any alert standing for it."""
+    wanted = set(proxmox_health.watched(row))
+    if on:
+        wanted.add(vmid)
+    else:
+        wanted.discard(vmid)
+        start = proxmox_health.prefix("pveguest", row.id)
+        await proxmox_health.drop(session, start, key=f"{start}{vmid}")
+    labels = {k: v for k, v in ((row.options or {}).get("labels") or {}).items()
+              if k.isdigit() and int(k) in wanted}
+    row.options = {**(row.options or {}), "watched": sorted(wanted), "labels": labels}
 
 
 async def check_all(config) -> int:  # type: ignore[no-untyped-def]
@@ -286,8 +325,10 @@ async def check_one(config, cred_id: int) -> bool:  # type: ignore[no-untyped-de
         worked = await test(session, vault_for(config), row)
         now = utcnow()
         await evaluate(session, row, worked, now)
-        if worked:
+        if worked and row.kind == "truenas":
             await truenas_health.evaluate(session, row, before, now)
+        elif worked and row.kind == "proxmox":
+            await proxmox_health.evaluate(session, row, before, now)
     return worked
 
 

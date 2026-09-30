@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — Proxmox over its API (2026-09-30)
+
+### Added
+
+- **Proxmox credentials.** Settings → Credentials takes a Proxmox API
+  token (`USER@REALM!TOKENID=SECRET`, the PVEAuditor role on `/`). The
+  certificate is pinned as for TrueNAS, and the token is written onto the
+  connection only after the certificate is checked. GET only; port 8006
+  unless the address gives another.
+- **A Proxmox card on the device page**: each node (version, CPU, memory,
+  uptime), every VM and container (state, CPU, memory, uptime), each
+  enabled storage (active, space), each ZFS pool's health, and each drive's
+  SMART health and life left. Read every 5 minutes with the credential check.
+- **Watch** a VM or container from that card. Only watched guests alert.
+- **Alerts**: a new rule, *A watched VM or container stops* (two checks in
+  a row, or no longer listed). Proxmox also feeds *A pool is not ONLINE*
+  (a ZFS pool, or a storage that is not active), *A pool is … full* (its
+  storages) and the drive rule, now called *A drive is failing* (SMART not
+  PASSED). All appear as dashboard incidents and can be suppressed per device.
+- Migration 19: `api_credential.options`, for the watched guests.
+
+### Fixed
+
+- On a phone, a table's visually hidden column heading (the bar column on
+  the Storage card) could widen the whole page sideways. Table scrollers now
+  contain it.
+
+### Tests
+
+47 new (`test_proxmox.py`), against a real TLS server.
+
 ## Unreleased — NAS, UPS and camera roles (2026-09-30)
 
 ### Added

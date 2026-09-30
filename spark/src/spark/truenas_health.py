@@ -175,6 +175,8 @@ def _date(value: str | None) -> datetime | None:
 
 def view(row: ApiCredential, *, hot: float) -> dict | None:
     """What the Storage card shows from this credential, or None."""
+    if row.kind != "truenas":
+        return None
     readings = row.readings or {}
     if not any(readings.get(part) for part in ("pools", "drives", "alerts")):
         return None

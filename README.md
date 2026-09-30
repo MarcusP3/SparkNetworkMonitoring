@@ -37,6 +37,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
+| Device APIs — TrueNAS (drives, alerts) and Proxmox (guests, storage, SMART) | ✅ working |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
 see [Alerts](#alerts).
@@ -703,9 +704,9 @@ not measuring quite the same thing.
 
 ## Credentials
 
-Settings → Credentials holds keys for devices' own APIs — TrueNAS now, the
-UniFi controller later. SNMP communities and v3 users stay under Settings →
-SNMP.
+Settings → Credentials holds keys for devices' own APIs — TrueNAS and
+Proxmox now, the UniFi controller later. SNMP communities and v3 users stay
+under Settings → SNMP.
 
 ### TrueNAS
 
@@ -757,7 +758,7 @@ errors, temperature — the last scrub beside each pool, and TrueNAS's
 current alerts. Settings → Alerts → APIs has two more rules, both on by
 default:
 
-- **A drive is not ONLINE, or has errors** — any read, write or checksum
+- **A drive is failing** — not ONLINE in its pool, or any read, write or checksum
   error in its pool; again once it is ONLINE with none (after the pool is
   cleared in TrueNAS). Disks outside any pool, such as a boot stick, have no
   ZFS state and are not alerted on.
@@ -768,6 +769,65 @@ default:
 A method TrueNAS will not answer leaves that part as it was last read; an
 unanswered read is never taken as the all-clear. Serial numbers are not
 stored.
+
+### Proxmox
+
+SPARK reads Proxmox VE over its REST API at `https://<host>:8006/api2/json`
+with an API token, and only ever with GET.
+
+1. On the Proxmox host (the node → Shell), make a user and a token that can
+   only read. PVEAuditor is Proxmox's read-only role; with privilege
+   separation on, the token needs the role itself as well as its user:
+
+   ```bash
+   pveum user add spark@pve --comment "SPARK monitoring"
+   pveum acl modify / --users spark@pve --roles PVEAuditor
+   pveum user token add spark@pve monitor --privsep 1
+   pveum acl modify / --tokens 'spark@pve!monitor' --roles PVEAuditor
+   ```
+
+   The third command shows the token's secret once.
+2. In SPARK, Settings → Credentials → **Add a credential**: Proxmox, a name,
+   the device, and the token pasted whole as `USER@REALM!TOKENID=SECRET` —
+   for the commands above, `spark@pve!monitor=` followed by the secret. Port
+   8006 is assumed; give `address:port` for another.
+3. Compare the fingerprint SPARK shows with the node → System → Certificates
+   (`pveproxy-ssl.pem` if there is one, otherwise `pve-ssl.pem`), or run
+   `pvenode cert info` on the host, and press **Trust this certificate**.
+   **The token has not been sent before this.**
+
+The certificate is pinned exactly as for TrueNAS. SPARK writes each request
+by hand on the TLS connection after checking the certificate, so the token
+cannot leave before the check — an HTTP library would send the header first
+and show the certificate after.
+
+**What it reads, every 5 minutes:** `/version`; `/nodes` (each node's CPU,
+memory, uptime); `/cluster/resources?type=vm` (every VM and container); and
+for each online node `/status` (Proxmox and kernel version, CPU model),
+`/storage?enabled=1` (each enabled storage, whether it is active, its
+space), `/disks/zfs` (each pool's health) and `/disks/list` (each drive's
+SMART health and wear). The device gets a **Proxmox** card with all of it.
+Templates are left out; serial numbers are not stored.
+
+`/disks/list` has Proxmox run `smartctl` on each drive, as its own Disks
+page does, which wakes a drive that has spun down.
+
+**Alerts** (Settings → Alerts; the mute list and suppressions apply):
+
+- **A watched VM or container stops** — only guests you press **Watch** on,
+  on the device page; not running on two checks in a row (so a restart is
+  not news), or no longer listed; again once it runs. A stopped test VM
+  nobody is watching is not a problem.
+- **A pool is not ONLINE** — a ZFS pool not ONLINE, or an enabled storage
+  that is not active (an NFS share gone); again when it is back.
+- **A pool is … full** — a storage at or over the line on two reads, until
+  it is 5 under. A shared storage counts once.
+- **A drive is failing** — SMART health anything but PASSED (OK on SAS);
+  again when it passes. UNKNOWN (a USB stick, a controller that hides SMART)
+  is not decided on.
+
+A call Proxmox will not answer leaves that part as it was last read, and a
+node that did not answer is not taken to have lost its drives.
 
 ---
 
@@ -896,6 +956,8 @@ spark/
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
     suppressions.py     one alert rule, for one device, off or with its own line
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
+    proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
+    proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
     servicemap.py       the network map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
@@ -956,6 +1018,7 @@ spark/
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
     test_credentials.py  the TrueNAS client against a TLS fake: nothing sent before Trust, pins, renewals; the page
     test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts
+    test_proxmox.py     the Proxmox client against a TLS fake: nothing sent before Trust; parsing; guest, storage and SMART alerts; the card
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in

@@ -76,13 +76,13 @@ async def edit_credential(
     return redirect(f"{PAGE}#cred-{cred_id}")
 
 
-def _back(back: str, cred_id: int) -> str:
+def _back(back: str, cred_id: int, anchor: str = "api") -> str:
     """Back to the device page Test was pressed on, or to this list."""
     from .routes_auth import _safe_next
 
     target = _safe_next(back) if back else ""
     if target.startswith("/devices/"):
-        return f"{target}#api-{cred_id}"
+        return f"{target}#{anchor}-{cred_id}"
     return f"{PAGE}#cred-{cred_id}"
 
 
@@ -99,6 +99,24 @@ async def test_credential(
         await credentials.test(session, vault_for(config), row)
         await session.commit()
     return redirect(_back(back, cred_id))
+
+
+@router.post("/settings/credentials/{cred_id}/watch")
+async def watch_guest(
+    cred_id: ItemId,
+    vmid: str = Form("", max_length=limits.SHORT),
+    on: str = Form("", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Watch a Proxmox VM or container, or stop: from its device page."""
+    row = await session.get(ApiCredential, cred_id)
+    guest = limits.as_id(vmid)
+    if row is not None and row.kind == "proxmox" and guest is not None:
+        await credentials.watch(session, row, guest, on == "1")
+        await session.commit()
+    return redirect(_back(back, cred_id, "guests"))
 
 
 @router.post("/settings/credentials/{cred_id}/trust")
