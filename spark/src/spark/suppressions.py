@@ -15,6 +15,7 @@ closes as "suppressed" rather than hanging on in the band below its old line.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import delete, func, select
@@ -219,13 +220,35 @@ async def _keys(session: AsyncSession, device_id: int, rule: str,
     return keys, prefixes
 
 
-async def klass_of(session: AsyncSession, key: str) -> str | None:
-    """The TrueNAS alert type behind a "tnalert:<credential>:<uuid>" key."""
+async def klass_of(session: AsyncSession, key: str, detail: str | None = None) -> str | None:
+    """The TrueNAS alert type behind a "tnalert:<credential>:<uuid>" key: from
+    what TrueNAS lists now, or else from the incident's own words, which end
+    "TrueNAS Warning (PoolUSBDisks)." (truenas_health)."""
     _, cred_id, uuid = (key.split(":", 2) + ["", ""])[:3]
-    if not cred_id.isdigit():
-        return None
-    cred = await session.get(ApiCredential, int(cred_id))
-    for a in ((cred.readings or {}).get("alerts") or []) if cred else []:
-        if f"{a.get('uuid')}"[:len(uuid)] == uuid:
-            return a.get("klass")
-    return None
+    if cred_id.isdigit():
+        cred = await session.get(ApiCredential, int(cred_id))
+        for a in ((cred.readings or {}).get("alerts") or []) if cred else []:
+            if f"{a.get('uuid')}"[:len(uuid)] == uuid:
+                return a.get("klass")
+    found = _KLASS.search(detail or "")
+    return found.group(1) if found else None
+
+
+_KLASS = re.compile(r"TrueNAS \w+ \(([A-Za-z0-9_]+)\)\.$")
+
+
+async def hidden_on_dashboard(session: AsyncSession):  # type: ignore[no-untyped-def]
+    """A test for incidents the dashboard leaves out: closed by a
+    suppression, or from a rule that is off for its device now. A rule with
+    its own line is not off; its incidents above that line still show."""
+    off = {(r.device_id, r.rule, r.detail) for r in (await session.execute(
+        select(AlertSuppression).where(AlertSuppression.threshold.is_(None)))).scalars()}
+
+    def hidden(row, rule: str | None, klass: str | None) -> bool:  # type: ignore[no-untyped-def]
+        if row.resolution == SUPPRESSED:
+            return True
+        if not row.device_id or not rule:
+            return False
+        return (row.device_id, rule, None) in off or (
+            klass is not None and (row.device_id, rule, klass) in off)
+    return hidden

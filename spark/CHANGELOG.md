@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — suppressed alerts leave the dashboard (2026-09-30)
+
+### Changed
+
+- **Recent incidents and Open incidents leave suppressed alerts out**: the
+  incident a suppression closed, and every earlier one of a rule that is
+  now off for its device. Removing the suppression brings the earlier ones
+  back (the one it closed stays out). A rule given its own line keeps its
+  history. A TrueNAS alert type no longer listed is still recognised, from
+  the incident's own words.
+
+### Tests
+
+5 new in `test_suppressions.py`; seven deliberate breaks each caught.
+
 ## Unreleased — Suppressions (2026-09-30)
 
 ### Added

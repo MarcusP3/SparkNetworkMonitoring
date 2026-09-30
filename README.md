@@ -418,7 +418,10 @@ TrueNAS's own alerts can be suppressed one type at a time (PoolUSBDisks),
 or all at once. A suppressed rule is fully quiet — no message and no
 incident — and every other rule and device is untouched. Saving or removing
 one starts that rule afresh for that device, so an alert standing at the
-time closes as *suppressed*. Each alert on the dashboard's Recent incidents
+time closes as *suppressed*. The dashboard leaves suppressed alerts out:
+the one closed by the suppression, and any earlier ones of a rule that is
+now off for that device (they come back if the suppression is removed). A
+rule given its own line keeps its history. Each alert on the dashboard's Recent incidents
 has a **Suppress** link that fills the form in. (Muting is the other tool:
 the whole device, still recorded, only not sent.)
 

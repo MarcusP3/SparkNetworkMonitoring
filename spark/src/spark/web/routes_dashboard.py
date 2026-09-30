@@ -58,6 +58,19 @@ def _greeting() -> str:
     return "Good evening"
 
 
+async def _open_alerts(session: AsyncSession) -> int:
+    hidden = await suppressions.hidden_on_dashboard(session)
+    total = 0
+    for row in (await session.execute(
+        select(AlertIncident).where(AlertIncident.closed_at.is_(None))
+    )).scalars():
+        rule = suppressions.rule_of(row.key)
+        klass = (await suppressions.klass_of(session, row.key, row.detail)
+                 if rule == "truenas_alerts" else None)
+        total += not hidden(row, rule, klass)
+    return total
+
+
 @router.get("/healthz")
 async def healthz():
     """Liveness probe. Deliberately unauthenticated and free of any detail."""
@@ -83,9 +96,10 @@ async def dashboard(
         "targets": await count(Target, Target.enabled.is_(True)),
         "down": await count(Target, Target.status == HealthStatus.DOWN),
         "degraded": await count(Target, Target.status == HealthStatus.DEGRADED),
-        # Outages and every other kind of alert standing now.
+        # Outages and every other kind of alert standing now, less what is
+        # suppressed (the list below leaves those out too).
         "open_incidents": await count(Incident, Incident.closed_at.is_(None))
-        + await count(AlertIncident, AlertIncident.closed_at.is_(None)),
+        + await _open_alerts(session),
     }
 
     targets = list(
@@ -154,15 +168,26 @@ async def dashboard(
         for incident, name in incident_rows.all()
     ]
     # SNMP, storage and API alerts beside the outages, the newest ten of both.
+    # Not what is suppressed: an alert closed by its suppression, or any from
+    # a rule that is now off for its device -- that is expected, not news.
+    hidden = await suppressions.hidden_on_dashboard(session)
+    shown = 0
     for row in (await session.execute(
-        select(AlertIncident).order_by(AlertIncident.opened_at.desc()).limit(RECENT)
+        select(AlertIncident).order_by(AlertIncident.opened_at.desc()).limit(RECENT * 10)
     )).scalars():
-        closed = row.closed_at
+        if shown >= RECENT:
+            break
         rule = suppressions.rule_of(row.key)
+        klass = (await suppressions.klass_of(session, row.key, row.detail)
+                 if rule == "truenas_alerts" else None)
+        if hidden(row, rule, klass):
+            continue
+        shown += 1
+        closed = row.closed_at
         suppress = None
         if row.device_id and rule:
             query = {"device": row.device_id, "rule": rule}
-            if rule == "truenas_alerts" and (klass := await suppressions.klass_of(session, row.key)):
+            if klass:
                 query["detail"] = klass
             suppress = f"/settings/suppressions?{urlencode(query)}#add"
         incidents.append({

@@ -347,3 +347,76 @@ class TestTrueNAS:
             self._check(db, ident)
         assert "api_down" not in kinds()
         assert not [k for k, _, _ in incidents() if k.startswith("api:")]
+
+
+# --------------------------------------------------------------------------
+# The dashboard leaves suppressed alerts out
+# --------------------------------------------------------------------------
+
+
+def recent(site):  # type: ignore[no-untyped-def]
+    page = flat(site.get("/").text)
+    return page[page.index("<h2>Recent incidents</h2>"):]
+
+
+def open_tile(site) -> str:  # type: ignore[no-untyped-def]
+    page = flat(site.get("/").text)
+    at = page.index('<span class="stat-name">Open incidents</span>')
+    return page[at:at + 120]
+
+
+class TestDashboardHides:
+    def test_suppressing_takes_it_off_the_list(self, site):
+        memory(0, 12, cpu=95)
+        assert "core-switch: Memory is high (99%)" in recent(site)
+        assert '<span class="stat-value">2</span>' in open_tile(site)
+        save()
+        assert "core-switch: Memory is high (99%)" not in recent(site)
+        assert "core-switch: CPU is high (95%)" in recent(site), "the rest stay"
+        assert '<span class="stat-value">1</span>' in open_tile(site)
+
+    def test_older_ones_of_a_rule_now_off_go_too_and_come_back_with_it(self, site):
+        memory(0, 12)
+        memory(13, 20, value=50)                    # recovered: closed, not suppressed
+        memory(21, 35)                              # again, and standing
+        assert recent(site).count("Memory is high") == 2
+        ident = save()                              # closes the standing one as suppressed
+        assert "Memory is high" not in recent(site)
+        remove(ident)
+        page = recent(site)
+        assert "Memory is high" in page, "the recovered one is history again"
+        assert page.count("Memory is high") == 1, "the one closed as suppressed stays out"
+
+    def test_its_own_line_keeps_the_history(self, site):
+        memory(0, 12)
+        memory(13, 20, value=50)
+        save(mode="line", threshold="98")
+        assert "Memory is high" in recent(site), "a line is not off"
+
+    def test_a_truenas_type_that_is_no_longer_listed(self, site):
+        from datetime import timedelta
+
+        from test_snmp_alerts import T0
+
+        async def gone():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                s.add(AlertIncident(key="tnalert:9:old", device_id=1,
+                                    title="core-switch: boot-pool is on USB",
+                                    detail="10.0.0.2 — TrueNAS Warning (PoolUSBDisks).",
+                                    opened_at=T0))          # still open, its credential gone
+                s.add(AlertIncident(key="tnalert:9:smart", device_id=1,
+                                    title="core-switch: SMART says no",
+                                    detail="10.0.0.2 — TrueNAS Critical (SMART).",
+                                    opened_at=T0, closed_at=T0 + timedelta(hours=1),
+                                    resolution="recovered"))
+        run(gone())
+        save(rule="truenas_alerts", detail="PoolUSBDisks")
+        page = recent(site)
+        assert "boot-pool is on USB" not in page and "SMART says no" in page
+        assert '<span class="stat-value">0</span>' in open_tile(site), "nor counted"
+
+
+def test_klass_from_the_incident_words():
+    from spark.suppressions import _KLASS
+    assert _KLASS.search("10.0.0.2 — TrueNAS Warning (PoolUSBDisks).").group(1) == "PoolUSBDisks"
+    assert _KLASS.search("10.0.0.2 — TrueNAS Critical.") is None
