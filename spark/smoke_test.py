@@ -75,12 +75,12 @@ def main() -> int:
             check("setup page renders", r.status_code == 200 and "Set up SPARK" in r.text)
 
             print("\nPassword policy")
-            r = client.post("/setup", data={
+            r = client.post("/setup", data={"setup_code": client.app.state.setup_code, 
                 "username": "admin", "password": "short", "password_confirm": "short"})
             check("rejects a password under 12 characters",
                   r.status_code == 400 and "at least 12" in r.text)
 
-            r = client.post("/setup", data={
+            r = client.post("/setup", data={"setup_code": client.app.state.setup_code, 
                 "username": "admin",
                 "password": "correct horse battery",
                 "password_confirm": "different phrase here"})
@@ -88,7 +88,7 @@ def main() -> int:
                   r.status_code == 400 and "do not match" in r.text)
 
             print("\nAccount creation")
-            r = client.post("/setup", data={
+            r = client.post("/setup", data={"setup_code": client.app.state.setup_code, 
                 "username": "admin",
                 "password": "correct horse battery",
                 "password_confirm": "correct horse battery",

@@ -80,7 +80,7 @@ def client(monkeypatch):
     monkeypatch.setattr(scheduler_module, "run_now", not_awaited)
 
     with TestClient(create_app(config), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                "password_confirm": PASSWORD, "timezone": "UTC"})
         yield c
 

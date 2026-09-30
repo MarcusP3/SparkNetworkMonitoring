@@ -65,7 +65,7 @@ async def _session_count() -> int:
 def client():
     config = _config()
     with TestClient(create_app(config), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                "password_confirm": PASSWORD, "timezone": "UTC"})
         yield c
 
@@ -241,14 +241,15 @@ class TestWrittenBeforeTheRedirect:
             await app(scope, receive, spy)
 
         with TestClient(watching, follow_redirects=False) as c:
-            send_request(c)
+            # The client wraps the spy, not the app; setup needs the app's code.
+            send_request(c, app)
         return seen
 
     def test_setup_and_login(self):
         config = _config()
 
-        def go(c):  # type: ignore[no-untyped-def]
-            c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        def go(c, app):  # type: ignore[no-untyped-def]
+            c.post("/setup", data={"setup_code": app.state.setup_code, "username": "admin", "password": PASSWORD,
                                    "password_confirm": PASSWORD, "timezone": "UTC"})
             c.post("/login", data={"username": "admin", "password": PASSWORD})
             c.post("/logout")

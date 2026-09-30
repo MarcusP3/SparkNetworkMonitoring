@@ -191,7 +191,7 @@ def site(fake_network):
 
     asyncio.run(seed())
     with TestClient(create_app(config), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD})
         yield client, config
 

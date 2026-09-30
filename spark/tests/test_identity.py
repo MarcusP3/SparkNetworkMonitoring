@@ -362,7 +362,7 @@ def test_a_device_that_does_not_answer_keeps_what_it_said(monkeypatch):
 @pytest.fixture
 def site(db):
     with TestClient(create_app(db), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         yield client
 

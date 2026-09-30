@@ -3,6 +3,12 @@
 `spark-probe` exists because vendor SNMP support is uneven and badly
 documented. Point it at a switch and it reports what that device actually
 answers, so you find out before building anything on an assumption.
+
+`spark-reset-password` is the way back in when the admin password is lost.
+It runs on the machine SPARK runs on (`docker compose exec spark
+spark-reset-password`), which is the one place a person has to be to use it:
+there is no reset by email, no security question, no back door from the
+network. It signs out every session as it goes.
 """
 
 from __future__ import annotations
@@ -191,6 +197,87 @@ def probe_main(argv: list[str] | None = None) -> int:
         return asyncio.run(_run_probe(args))
     except KeyboardInterrupt:
         return 130
+
+
+# --------------------------------------------------------------------------
+# spark-reset-password
+# --------------------------------------------------------------------------
+
+
+async def _reset_password(username: str | None, password: str) -> str:
+    """Set the password on the one account (or the named one). Returns the
+    username it changed, or raises SystemExit with a message for a person."""
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from .auth import AuthError, set_password
+    from .config import load_config
+    from .db import open_engine
+    from .models import User
+
+    config = load_config()
+    if not config.app.db_path.exists():
+        raise SystemExit(f"No database at {config.app.db_path}. Is SPARK_CONFIG (or "
+                         "SPARK__APP__DATA_DIR) pointing where SPARK keeps its data?")
+    # Its own engine, not the app's process-wide one: this is a separate
+    # process in real use, and disposing of it must not affect anything else.
+    engine = open_engine(config)
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            if username:
+                user = await session.scalar(select(User).where(User.username == username))
+                if user is None:
+                    raise SystemExit(f"There is no account called {username!r}.")
+            else:
+                users = list((await session.execute(select(User))).scalars())
+                if not users:
+                    raise SystemExit("There is no account yet. Open /setup in a browser; "
+                                     "the setup code is in SPARK's log.")
+                if len(users) > 1:
+                    names = ", ".join(u.username for u in users)
+                    raise SystemExit(f"More than one account ({names}); say which with --username.")
+                user = users[0]
+            try:
+                await set_password(session, user, password)
+            except AuthError as exc:
+                raise SystemExit(str(exc)) from None
+            await session.commit()
+            return user.username
+    finally:
+        await engine.dispose()
+
+
+def reset_password_main(argv: list[str] | None = None) -> int:
+    import getpass
+
+    parser = argparse.ArgumentParser(
+        prog="spark-reset-password",
+        description="Set a new administrator password and sign out every session. "
+                    "Run it where SPARK runs: docker compose exec spark spark-reset-password",
+    )
+    parser.add_argument("--username", help="Which account, if there is more than one")
+    parser.add_argument("--password-stdin", action="store_true",
+                        help="Read the new password from standard input instead of prompting "
+                             "(for scripts; the terminal is the safer place to type it)")
+    args = parser.parse_args(argv)
+
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\r\n")
+    else:
+        password = getpass.getpass("New password: ")
+        if password != getpass.getpass("New password again: "):
+            print("The two passwords do not match; nothing changed.", file=sys.stderr)
+            return 1
+    try:
+        changed = asyncio.run(_reset_password(args.username, password))
+    except SystemExit as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+    print(f"Password changed for {changed!r}. Every session has been signed out; "
+          "sign in again with the new password.")
+    return 0
 
 
 if __name__ == "__main__":

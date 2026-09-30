@@ -53,7 +53,7 @@ def client_with(targets: list[Target]) -> TestClient:
     asyncio.run(seed())
     client = TestClient(create_app(cfg), follow_redirects=False)
     client.__enter__()
-    client.post("/setup", data={"username": "admin", "password": PASSWORD,
+    client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                 "password_confirm": PASSWORD})
     return client
 

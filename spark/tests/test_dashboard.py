@@ -61,7 +61,7 @@ def page():
         client = make_client(status, open_incident, routed)
         clients.append(client)
         client.__enter__()
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD})
         return client.get("/").text
 

@@ -151,10 +151,14 @@ async def check_http(spec: CheckSpec) -> CheckOutcome:
         async with httpx.AsyncClient(
             timeout=spec.timeout_seconds, verify=verify, follow_redirects=True
         ) as client:
-            response = await client.request(method, url)
+            # Streamed, and never more than MAX_BODY of it kept. A monitored
+            # host that starts serving something enormous -- or is compromised
+            # and made to -- must not be able to push SPARK out of memory
+            # (review finding #30). Without expect_body nothing is read at all.
+            async with client.stream(method, url) as response:
+                cert_days = _cert_days_remaining(response)
+                body = await _read_prefix(response, MAX_BODY) if expect_body else ""
             latency = (time.monotonic() - started) * 1000
-            body = response.text if expect_body else ""
-            cert_days = _cert_days_remaining(response)
     except Exception as exc:  # noqa: BLE001
         return CheckOutcome.down(describe_exception(exc))
 
@@ -182,6 +186,25 @@ async def check_http(spec: CheckSpec) -> CheckOutcome:
                 f"TLS certificate expires in {cert_days} days", latency_ms=latency
             )
     return CheckOutcome.up(latency_ms=latency, detail=detail)
+
+
+# How much of a response body an HTTP check will look at for expect_body.
+# Any page a person would match a phrase in fits many times over; the cap
+# is there for the page nobody expected.
+MAX_BODY = 1024 * 1024
+
+
+async def _read_prefix(response: Any, limit: int) -> str:
+    """The first `limit` bytes of a streamed body, decoded leniently."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in response.aiter_bytes():
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= limit:
+            break
+    raw = b"".join(chunks)[:limit]
+    return raw.decode(response.encoding or "utf-8", errors="replace")
 
 
 def _cert_days_remaining(response: Any) -> int | None:

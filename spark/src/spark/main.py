@@ -57,6 +57,27 @@ def require_writable(data_dir: Path) -> None:
         ) from exc
 
 
+def keep_data_private(data_dir: Path) -> None:
+    """Everything SPARK writes is readable by SPARK alone.
+
+    `secret.key` was created 0600 from the start; the database beside it was
+    created with the process umask -- 0644 in the image -- so any local user
+    on the VM could read the network map, the session hashes and the password
+    hash (review finding #31). The umask covers every file made from here on
+    (SQLite's -wal and -shm included); the chmod covers the ones already there.
+    Best effort on the existing files: a bind mount that refuses chmod is not
+    a reason to refuse to start.
+    """
+    os.umask(0o077)
+    for name in ("spark.db", "spark.db-wal", "spark.db-shm", "secret.key"):
+        path = data_dir / name
+        try:
+            if path.exists() and path.stat().st_mode & 0o077:
+                path.chmod(0o600)
+        except OSError as exc:
+            log.warning("Could not make %s private (%s)", path, exc)
+
+
 def _back_to(request: Request) -> str:
     """The page the request came from, if it was one of ours; else home."""
     referer = urlsplit(request.headers.get("referer", ""))
@@ -88,6 +109,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         # directory created by an older image, or by Docker on first start, is
         # the one thing most likely to be wrong on upgrade.
         require_writable(config.app.data_dir)
+        keep_data_private(config.app.data_dir)
         init_engine(config)
         await init_db(config)
 
@@ -95,11 +117,18 @@ def create_app(config: Config | None = None) -> FastAPI:
         # directory fails loudly here rather than on the first login.
         config.secret_key()
 
-        from .auth import purge_expired
+        from .auth import announce_setup_code, new_setup_code, purge_expired, setup_required
         from .subnets import count_enabled, seed_from_config
 
         async with session_scope() as session:
             await purge_expired(session)
+            # No administrator yet: /setup needs the code this prints. Made
+            # here so it is in the startup log, where the Quick start says
+            # to look; routes_auth makes one on demand if it is ever missing.
+            app.state.setup_code = None
+            if await setup_required(session):
+                app.state.setup_code = new_setup_code()
+                announce_setup_code(app.state.setup_code, config.app.host, config.app.port)
             # One-shot: copies spark.yaml's subnets in on the first start after
             # upgrading, then never again. See subnets.seed_from_config.
             await seed_from_config(session, config)
@@ -139,6 +168,18 @@ def create_app(config: Config | None = None) -> FastAPI:
             snmp_polled,
             "on" if sweeping else "off",
         )
+        if config.auth.mode == "proxy" and config.app.host in ("0.0.0.0", "::", ""):
+            # The identity header is only as private as this port. Anything
+            # that can reach it directly, past the proxy, is one header away
+            # from being admin unless its address is refused -- which it is,
+            # but binding to the proxy's side of the box is the stronger wall.
+            log.warning(
+                "auth.mode is 'proxy' and SPARK is listening on every interface "
+                "(app.host: %s). If the proxy is on this machine, set app.host to "
+                "127.0.0.1; otherwise firewall port %s so only %s can reach it.",
+                config.app.host, config.app.port,
+                ", ".join(config.auth.proxy.trusted_proxies),
+            )
         yield
         await scheduler_module.shutdown()
         await close_engine()
@@ -157,8 +198,10 @@ def create_app(config: Config | None = None) -> FastAPI:
     )
     app.state.config = config
     # Outermost, so the headers land on every response including redirects and
-    # errors, and a cross-site POST is refused before any dependency runs.
-    app.add_middleware(Hardening)
+    # errors, a cross-site POST is refused before any dependency runs, and the
+    # client address is settled -- from X-Forwarded-For only behind a proxy
+    # SPARK was told to trust -- before anything reads it.
+    app.add_middleware(Hardening, trusted_proxies=config.auth.proxy.trusted_proxies)
 
     @app.exception_handler(RedirectException)
     async def _handle_redirect(_request: Request, exc: RedirectException):
@@ -228,11 +271,19 @@ def run() -> None:
         host=config.app.host,
         port=config.app.port,
         log_config=None,
+        # SPARK applies X-Forwarded-* itself, only from auth.proxy.trusted_proxies
+        # (web/hardening.py). uvicorn's own handling trusts loopback by
+        # default, which with host networking is every container on the VM.
+        proxy_headers=False,
     )
 
 
 def factory() -> FastAPI:
-    """For `uvicorn spark.main:factory --factory`, e.g. with --reload in dev."""
+    """For `uvicorn spark.main:factory --factory`, e.g. with --reload in dev.
+
+    Run it with `--no-proxy-headers` (or FORWARDED_ALLOW_IPS unset and no
+    local proxy): SPARK handles X-Forwarded-* itself, see hardening.py.
+    """
     return create_app()
 
 

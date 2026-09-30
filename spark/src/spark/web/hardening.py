@@ -29,6 +29,19 @@ request from a modern browser always has one of them.
 Only `Host` is compared. Behind a reverse proxy that rewrites the `Host`
 header the check would refuse every POST; proxies preserve it by default and
 the README says to keep it that way.
+
+**Proxy headers.** SPARK, not uvicorn, decides which peers are proxies.
+uvicorn's own `ProxyHeadersMiddleware` trusts 127.0.0.1 and ::1 by default
+and rewrites the client address from `X-Forwarded-For` before the app sees
+it -- which, with host networking, let any other container or process on the
+VM pick its own address: a fresh login-lockout bucket per request, and in
+proxy mode a way to satisfy the `trusted_proxies` allowlist with a header
+(review finding #22). So `main.py` starts uvicorn with `proxy_headers=False`,
+and this middleware does the job against `auth.proxy.trusted_proxies`, in
+both auth modes: the TCP peer is always kept in `request.state.peer`, and
+only when that peer is on the list are `X-Forwarded-For` (the last entry,
+the one the trusted proxy itself added) and `X-Forwarded-Proto` applied to
+the request's client and scheme.
 """
 
 from __future__ import annotations
@@ -39,6 +52,7 @@ from urllib.parse import urlsplit
 from starlette.exceptions import HTTPException
 
 from ..limits import BODY as MAX_BODY
+from ..proxies import forwarded_client, forwarded_scheme, is_trusted_proxy, parse_proxies
 
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -116,16 +130,37 @@ def same_origin(headers: list[tuple[bytes, bytes]]) -> bool:
 
 
 class Hardening:
-    """ASGI middleware: refuse cross-site writes, stamp every response."""
+    """ASGI middleware: refuse cross-site writes, stamp every response, and
+    apply proxy headers only from the proxies SPARK was told to trust."""
 
-    def __init__(self, app) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, app, trusted_proxies=()) -> None:  # type: ignore[no-untyped-def]
         self.app = app
+        self.proxies = parse_proxies(trusted_proxies)
+
+    def _apply_proxy_headers(self, scope) -> None:  # type: ignore[no-untyped-def]
+        """Record the TCP peer; rewrite client and scheme only behind a trusted proxy."""
+        client = scope.get("client")
+        peer = client[0] if client else None
+        state = scope.setdefault("state", {})
+        state["peer"] = peer
+        state["via_proxy"] = False
+        if not is_trusted_proxy(peer, self.proxies):
+            return
+        headers = scope.get("headers", [])
+        forwarded = forwarded_client(headers)
+        if forwarded is not None:
+            scope["client"] = (forwarded, 0)
+            state["via_proxy"] = True
+        scheme = forwarded_scheme(headers)
+        if scheme is not None:
+            scope["scheme"] = scheme
 
     async def __call__(self, scope, receive, send) -> None:  # type: ignore[no-untyped-def]
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        self._apply_proxy_headers(scope)
         headers = scope.get("headers", [])
         if scope["method"] in UNSAFE_METHODS and not same_origin(headers):
             await _refuse(send, 403, _FORBIDDEN)

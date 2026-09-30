@@ -48,7 +48,7 @@ def fresh_client(**auth) -> TestClient:  # type: ignore[no-untyped-def]
 
 def signed_in_client() -> TestClient:
     client = fresh_client()
-    response = client.post("/setup", data={"username": "admin", "password": PASSWORD,
+    response = client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                            "password_confirm": PASSWORD})
     assert response.status_code == 303
     return client
@@ -171,30 +171,94 @@ class TestSameOrigin:
 # --------------------------------------------------------------------------
 
 
-class _Request:
-    """Just enough of a Starlette request for client_ip()."""
+def _scope(peer: str, **headers: str) -> dict:
+    """An ASGI scope as uvicorn would hand it over, before any middleware."""
+    return {
+        "type": "http", "method": "GET", "path": "/", "scheme": "http",
+        "client": (peer, 40000),
+        "headers": [(k.replace("_", "-").encode(), v.encode()) for k, v in headers.items()],
+    }
 
-    def __init__(self, host: str, **headers: str) -> None:
-        self.client = type("C", (), {"host": host})()
-        self.headers = {k.replace("_", "-"): v for k, v in headers.items()}
+
+def _apply(scope: dict, trusted: list[str]) -> dict:
+    """Run only the proxy-header part of the middleware over a scope."""
+    from spark.web.hardening import Hardening
+
+    Hardening(app=None, trusted_proxies=trusted)._apply_proxy_headers(scope)
+    return scope
+
+
+class TestProxyHeaders:
+    """SPARK, not uvicorn, decides which peers are proxies (finding #22)."""
+
+    trusted = ["10.0.0.5"]
+
+    def test_forwarded_for_uses_the_entry_the_proxy_added(self):
+        # A client that sends its own X-Forwarded-For gets it *prepended* to
+        # the proxy's; only the last entry is the proxy's own observation.
+        scope = _apply(_scope("10.0.0.5", x_forwarded_for="1.2.3.4, 203.0.113.9"), self.trusted)
+        assert scope["client"][0] == "203.0.113.9"
+        assert scope["state"]["peer"] == "10.0.0.5"
+        assert scope["state"]["via_proxy"] is True
+
+    def test_forwarded_for_is_ignored_from_an_untrusted_source(self):
+        scope = _apply(_scope("192.168.1.50", x_forwarded_for="203.0.113.9"), self.trusted)
+        assert scope["client"][0] == "192.168.1.50"
+        assert scope["state"]["via_proxy"] is False
+
+    def test_loopback_is_not_trusted_unless_listed(self):
+        # uvicorn's default trusted 127.0.0.1 and ::1; with host networking
+        # that is every container and process on the VM.
+        for peer in ("127.0.0.1", "::1"):
+            scope = _apply(_scope(peer, x_forwarded_for="10.0.0.5"), self.trusted)
+            assert scope["client"][0] == peer
+            assert scope["state"]["peer"] == peer
+
+    def test_trusted_proxies_apply_in_password_mode_too(self):
+        # Behind a TLS proxy on another box every user used to be that box's
+        # address, so ten failures from anyone locked the admin out (#27).
+        scope = _apply(_scope("10.0.0.5", x_forwarded_for="203.0.113.9",
+                              x_forwarded_proto="https"), self.trusted)
+        assert scope["client"][0] == "203.0.113.9"
+        assert scope["scheme"] == "https"
+
+    def test_nothing_is_trusted_with_an_empty_list(self):
+        scope = _apply(_scope("10.0.0.5", x_forwarded_for="203.0.113.9",
+                              x_forwarded_proto="https"), [])
+        assert scope["client"][0] == "10.0.0.5"
+        assert scope["scheme"] == "http"
+
+    def test_garbage_in_the_header_changes_nothing(self):
+        scope = _apply(_scope("10.0.0.5", x_forwarded_for="not-an-address",
+                              x_forwarded_proto="gopher"), self.trusted)
+        assert scope["client"][0] == "10.0.0.5"
+        assert scope["scheme"] == "http"
+
+    def test_a_cidr_entry_matches_the_whole_range(self):
+        scope = _apply(_scope("10.0.0.77", x_forwarded_for="203.0.113.9"), ["10.0.0.0/24"])
+        assert scope["client"][0] == "203.0.113.9"
+
+    def test_client_ip_is_whatever_the_middleware_settled_on(self):
+        request = type("R", (), {"client": type("C", (), {"host": "203.0.113.9"})()})()
+        assert client_ip(request, AuthConfig()) == "203.0.113.9"
+        assert client_ip(request) == "203.0.113.9"
 
 
 class TestProxyMode:
     proxy = AuthConfig(mode="proxy", proxy=ProxyAuthConfig(trusted_proxies=["10.0.0.5"]))
 
-    def test_forwarded_for_uses_the_entry_the_proxy_added(self):
-        # A client that sends its own X-Forwarded-For gets it *prepended* to
-        # the proxy's; only the last entry is the proxy's own observation.
-        request = _Request("10.0.0.5", x_forwarded_for="1.2.3.4, 203.0.113.9")
-        assert client_ip(request, self.proxy) == "203.0.113.9"
+    def test_identity_header_is_believed_only_from_the_tcp_peer(self):
+        # A proxy-mode instance whose proxy is elsewhere: a request that
+        # arrives from an unlisted peer carrying a forged X-Forwarded-For
+        # naming the proxy is still a request from that peer.
+        from spark.auth import create_admin
 
-    def test_forwarded_for_is_ignored_from_an_untrusted_source(self):
-        request = _Request("192.168.1.50", x_forwarded_for="203.0.113.9")
-        assert client_ip(request, self.proxy) == "192.168.1.50"
-
-    def test_forwarded_for_is_ignored_in_password_mode(self):
-        request = _Request("10.0.0.5", x_forwarded_for="203.0.113.9")
-        assert client_ip(request, AuthConfig()) == "10.0.0.5"
+        client = fresh_client(mode="proxy", proxy={"trusted_proxies": ["10.0.0.5"]})
+        in_db(client, lambda s: create_admin(s, "admin", PASSWORD))
+        headers = {"Remote-User": "admin", "X-Forwarded-For": "10.0.0.5"}
+        response = client.get("/settings", headers=headers)
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/login")
 
     def test_password_login_is_refused_in_proxy_mode(self):
         client = fresh_client(mode="proxy", proxy={"trusted_proxies": ["10.0.0.5"]})
@@ -214,7 +278,7 @@ class TestSessionCookie:
         tmp = Path(tempfile.mkdtemp(prefix="spark-hardening-"))
         app = create_app(make_config(tmp))
         with TestClient(app, base_url="https://testserver", follow_redirects=False) as tls:
-            response = tls.post("/setup", data={"username": "admin", "password": PASSWORD,
+            response = tls.post("/setup", data={"setup_code": tls.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                                 "password_confirm": PASSWORD})
             assert response.status_code == 303
             cookie = response.headers["set-cookie"].lower()

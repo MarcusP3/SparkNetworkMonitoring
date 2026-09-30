@@ -48,7 +48,7 @@
 </main>
 
 <footer class="footer">
-  <span><strong>SPARK</strong> <span class="muted">v{{ app_version }}</span></span>
+  <span><strong>SPARK</strong>{% if user %} <span class="muted">v{{ app_version }}</span>{% endif %}</span>
   <span class="muted">© 2026 Marcus Pierce · PolyForm Noncommercial 1.0.0</span>
 </footer>
 <script nonce="{{ request.state.csp_nonce }}">

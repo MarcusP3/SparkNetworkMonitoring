@@ -16,13 +16,23 @@
 
   <form method="post" action="/setup" class="form">
     <label>
+      <span>Setup code</span>
+      <input type="text" name="setup_code" maxlength="32" value="{{ setup_code or '' }}" required autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX"{% if not setup_code %} autofocus{% endif %}>
+      <small class="hint">
+        Printed in SPARK's log when it started with no administrator
+        (<code>docker compose logs spark</code> on the machine it runs on).
+        Only whoever can read that log can create the account.
+      </small>
+    </label>
+
+    <label>
       <span>Username</span>
       <input type="text" name="username" maxlength="64" value="{{ username or 'admin' }}" required autocomplete="username">
     </label>
 
     <label>
       <span>Password</span>
-      <input type="password" name="password" maxlength="1024" required minlength="12" autocomplete="new-password" autofocus>
+      <input type="password" name="password" maxlength="1024" required minlength="12" autocomplete="new-password"{% if setup_code %} autofocus{% endif %}>
       <small class="hint">At least 12 characters. A short phrase you'll remember beats a short jumble you won't.</small>
     </label>
 

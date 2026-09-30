@@ -26,8 +26,9 @@
   {% else %}
   <p class="muted">
     Authentication is delegated to your reverse proxy. Check that it is
-    forwarding the <code>{{ config.auth.proxy.header }}</code> header and that
-    its address appears in <code>auth.proxy.trusted_proxies</code>.
+    forwarding the identity header named in <code>spark.yaml</code>
+    (<code>auth.proxy.header</code>) and that its address appears in
+    <code>auth.proxy.trusted_proxies</code>.
   </p>
   {% endif %}
 </div>

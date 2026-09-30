@@ -586,7 +586,7 @@ class TestDispatch:
 def site(monkeypatch):
     config = _config()
     with TestClient(create_app(config), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD})
         yield client, config
 
@@ -683,11 +683,11 @@ class TestSettingsCard:
 def test_setup_seals_a_webhook_and_refuses_a_bad_one():
     config = _config()
     with TestClient(create_app(config), follow_redirects=False) as client:
-        bad = client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        bad = client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                           "password_confirm": PASSWORD,
                                           "discord_webhook_url": "https://example.com/x"})
         assert bad.status_code == 400 and "Copy Webhook URL" in bad.text
-        good = client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        good = client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                            "password_confirm": PASSWORD,
                                            "discord_webhook_url": HOOK})
         assert good.status_code in (302, 303)

@@ -33,7 +33,7 @@ def client():
     })
     config.app.data_dir.mkdir(parents=True, exist_ok=True)
     with TestClient(create_app(config), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                "password_confirm": PASSWORD})
         yield c
 

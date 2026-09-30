@@ -48,7 +48,7 @@ def saved_zone(config) -> str:  # type: ignore[no-untyped-def]
 def site():
     config = _config()
     with TestClient(create_app(config), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         yield client, config
 
@@ -59,7 +59,7 @@ class TestChoosing:
         with TestClient(create_app(config), follow_redirects=False) as client:
             page = client.get("/setup").text
             assert 'name="timezone"' in page and '<optgroup label="America">' in page
-            response = client.post("/setup", data={
+            response = client.post("/setup", data={"setup_code": client.app.state.setup_code, 
                 "username": "admin", "password": PASSWORD, "password_confirm": PASSWORD,
                 "timezone": "America/Chicago"})
             assert response.status_code == 303
@@ -68,7 +68,7 @@ class TestChoosing:
     def test_setup_refuses_a_zone_that_does_not_exist(self):
         config = _config()
         with TestClient(create_app(config), follow_redirects=False) as client:
-            response = client.post("/setup", data={
+            response = client.post("/setup", data={"setup_code": client.app.state.setup_code, 
                 "username": "admin", "password": PASSWORD, "password_confirm": PASSWORD,
                 "timezone": "Mars/Olympus_Mons"})
             assert response.status_code == 400 and "not a time zone" in response.text

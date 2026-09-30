@@ -92,10 +92,20 @@ Two things that look like details and are not:
   must be recovered to be used (SNMP credentials, the Discord webhook) --
   sealed with `vault.py` before they touch the database. Never plaintext in a
   table or a setting, and never rendered back into a page.
+- **Client addresses** are settled once, in `web/hardening.py`, from
+  `auth.proxy.trusted_proxies` (`proxies.py`). Routes read `request.client`;
+  anything deciding *trust* (proxy mode's identity header) reads
+  `request.state.peer`, the TCP peer. Never read `X-Forwarded-*` anywhere
+  else, and never turn uvicorn's `proxy_headers` back on. Anything about
+  addresses needs a test under a real uvicorn (`tests/test_live_server.py`);
+  the test client cannot see uvicorn's middleware.
+- **Argon2 runs in a thread** (`auth._hash_in_thread`), never on the event
+  loop: a login attempt is 120 ms and 64 MiB, and the loop is also every
+  check and poll.
 - **No new dependency without a reason that survives the question "what does
   this do that the standard library does not".** Every package in the closure
   is code that runs in a container holding `NET_RAW` on someone's
-  home network. The closure is 39 packages; keep it that way.
+  home network. The closure is 37 packages; keep it that way.
 
 ## Testing
 

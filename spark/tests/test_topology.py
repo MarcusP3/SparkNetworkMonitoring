@@ -412,7 +412,7 @@ def test_nothing_polled_says_nothing():
 @pytest.fixture
 def site(db):
     with TestClient(create_app(db), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         yield client
 
@@ -477,7 +477,7 @@ class TestPages:
     def test_no_snmp_no_card(self):
         config = _config()
         with TestClient(create_app(config), follow_redirects=False) as client:
-            client.post("/setup", data={"username": "admin", "password": PASSWORD,
+            client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                         "password_confirm": PASSWORD, "timezone": "UTC"})
             page = client.get("/map").text
         assert 'id="suggested"' not in page and 'class="alert info"' not in page

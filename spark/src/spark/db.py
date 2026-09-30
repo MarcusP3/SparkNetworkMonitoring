@@ -55,9 +55,14 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
-def init_engine(config: Config) -> AsyncEngine:
-    global _engine, _sessionmaker
+def open_engine(config: Config) -> AsyncEngine:
+    """An engine on the database, with SPARK's pragmas, owned by the caller.
 
+    `init_engine` uses it for the process-wide engine the app runs on; the
+    command-line tools (`spark-reset-password`) use it for one of their own,
+    so they can dispose of it without pulling the rug from under an app that
+    happens to share the process -- which is exactly what the tests do.
+    """
     url = f"sqlite+aiosqlite:///{config.app.db_path}"
     engine = create_async_engine(url, echo=False, future=True)
 
@@ -72,6 +77,13 @@ def init_engine(config: Config) -> AsyncEngine:
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
+    return engine
+
+
+def init_engine(config: Config) -> AsyncEngine:
+    global _engine, _sessionmaker
+
+    engine = open_engine(config)
     _engine = engine
     _sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     return engine
@@ -333,7 +345,33 @@ async def _add_api_options(session: AsyncSession) -> None:
         await session.execute(text("ALTER TABLE api_credential ADD COLUMN options JSON"))
 
 
-CURRENT_VERSION = 19
+@migration(20, "one administrator, enforced by the database")
+async def _single_admin_index(session: AsyncSession) -> None:
+    """Create the partial unique index on user.is_admin (see models.User).
+
+    A database that already holds more than one admin row -- possible only
+    through the first-run race this index closes -- cannot take the index, and
+    guessing which account to keep is not a migration's call. It stops with
+    the command that shows them, so the person can decide.
+    """
+    from .models import User
+
+    rows = (await session.execute(
+        text("SELECT id, username FROM user WHERE is_admin = 1 ORDER BY id")
+    )).all()
+    if len(rows) > 1:
+        listing = ", ".join(f"id {row_id} ({name!r})" for row_id, name in rows)
+        raise SystemExit(
+            f"SPARK found {len(rows)} administrator accounts: {listing}. There can be "
+            "only one. Keep the one you use and delete the rest, then start again:\n"
+            "    sqlite3 data/spark.db \"DELETE FROM user WHERE id != <the id to keep>\""
+        )
+    connection = await session.connection()
+    index = next(i for i in User.__table__.indexes if i.name == "ix_user_single_admin")
+    await connection.run_sync(index.create, checkfirst=True)
+
+
+CURRENT_VERSION = 20
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

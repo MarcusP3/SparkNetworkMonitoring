@@ -62,7 +62,7 @@ def client():
     run(seed())
     with TestClient(create_app(config), follow_redirects=False,
                     raise_server_exceptions=False) as c:
-        c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                "password_confirm": PASSWORD, "timezone": "UTC"})
         yield c
 
@@ -236,7 +236,7 @@ class TestValues:
     def test_setup_refuses_a_blank_username(self):
         config = _config()
         with TestClient(create_app(config), follow_redirects=False) as c:
-            response = c.post("/setup", data={"username": "   ", "password": PASSWORD,
+            response = c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "   ", "password": PASSWORD,
                                               "password_confirm": PASSWORD, "timezone": "UTC"})
             assert response.status_code == 400 and "Choose a username." in response.text
 

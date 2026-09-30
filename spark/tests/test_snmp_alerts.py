@@ -322,7 +322,7 @@ def site(db):
             s.add(Target(name="nas ping", check_type=CheckType.PING, address="10.0.0.5"))
     run(target())
     with TestClient(create_app(db), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         yield client
 

@@ -35,6 +35,7 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -738,7 +739,20 @@ class Notification(Base):
 
 
 class User(Base, TimestampMixin):
+    """The one account.
+
+    `ix_user_single_admin` is a partial unique index on the admin flag, so the
+    database itself allows exactly one administrator. First-run setup used to
+    be check-then-insert across two requests' sessions, with Argon2's ~120 ms
+    in between; several people posting /setup at once could each become an
+    admin. Now the second insert fails on the constraint (review finding #23).
+    """
+
     __tablename__ = "user"
+    __table_args__ = (
+        Index("ix_user_single_admin", "is_admin", unique=True,
+              sqlite_where=text("is_admin = 1")),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True)

@@ -134,7 +134,7 @@ class TestDashboard:
     def _site(self, config):  # type: ignore[no-untyped-def]
         client = TestClient(create_app(config), follow_redirects=False)
         client.__enter__()
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         return client
 

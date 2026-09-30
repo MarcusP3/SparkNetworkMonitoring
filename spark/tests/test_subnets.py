@@ -424,7 +424,7 @@ class TestUpgradeEndToEnd:
         asyncio.run(build_old())
 
         with TestClient(create_app(cfg), follow_redirects=False) as client:
-            client.post("/setup", data={"username": "admin", "password": PASSWORD,
+            client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                         "password_confirm": PASSWORD})
             settings = client.get("/settings").text
             assert "172.16.10.0/24" in settings and "172.16.20.0/24" in settings
@@ -460,7 +460,7 @@ def client():
     asyncio.run(seed_devices())
 
     with TestClient(create_app(cfg), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin", "password": PASSWORD,
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                "password_confirm": PASSWORD})
         yield c
 

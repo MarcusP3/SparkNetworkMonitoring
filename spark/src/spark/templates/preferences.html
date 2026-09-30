@@ -17,6 +17,75 @@
   {% if saved == 'session' %}<div class="alert ok">Saved. You'll be signed out after {{ idle_label }} without activity.</div>{% endif %}
   {% if saved == 'map' %}<div class="alert ok">Saved. The network map is
     {% if map_mode == 'automatic' %}automatic{% if placed %}: {{ placed }} device{{ 's' if placed != 1 }} placed from SNMP just now{% endif %}.{% else %}manual: SNMP suggests, you accept.{% endif %}</div>{% endif %}
+  {% if saved == 'password' %}<div class="alert ok">Password changed. Everywhere else you were signed in has been signed out; this browser has a fresh session.</div>{% endif %}
+  {% if saved == 'sessions' %}<div class="alert ok">{% if ended %}Signed out {{ ended }} other session{{ 's' if ended != 1 }}.{% else %}There was nothing else to sign out.{% endif %}</div>{% endif %}
+  {% if account_error %}<div class="alert error">{{ account_error }}</div>{% endif %}
+
+  <section class="card" id="account">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M10.9 12.1 20 3M15 8l2 2M18 5l2 2"/></svg></span>
+      <div>
+        <h2>Account</h2>
+        <p class="card-sub">
+          {% if proxy_mode %}
+          Sign-in is handled by your reverse proxy: change the password, and
+          end sessions, there.
+          {% else %}
+          Your password, and everywhere this account is signed in. Changing
+          the password signs out every session, this one included, and gives
+          this browser a fresh one. Lost it? On the machine SPARK runs on:
+          <code>docker compose exec spark spark-reset-password</code>.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    {% if not proxy_mode %}
+    <form method="post" action="/preferences/password" class="prefs-form" autocomplete="off">
+      <label class="stack-field">
+        <span class="muted small">Current password</span>
+        <input type="password" name="current_password" maxlength="1024" required autocomplete="current-password">
+      </label>
+      <label class="stack-field">
+        <span class="muted small">New password</span>
+        <input type="password" name="new_password" maxlength="1024" required minlength="{{ min_password }}" autocomplete="new-password">
+      </label>
+      <label class="stack-field">
+        <span class="muted small">New password again</span>
+        <input type="password" name="new_password_confirm" maxlength="1024" required minlength="{{ min_password }}" autocomplete="new-password">
+      </label>
+      <p class="muted small">At least {{ min_password }} characters. A short phrase you'll remember beats a short jumble you won't.</p>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Change password</button>
+      </div>
+    </form>
+
+    <div class="table-scroll">
+    <table class="table compact" id="sessions">
+      <thead>
+        <tr><th>Signed in</th><th>From</th><th>Browser</th><th>Last used</th></tr>
+      </thead>
+      <tbody>
+        {% for row, this_one in sessions %}
+        <tr>
+          <td>{{ row.created_at | local }}{% if this_one %} <span class="pill neutral">this browser</span>{% endif %}</td>
+          <td><code>{{ row.ip or '—' }}</code></td>
+          <td class="muted">{{ (row.user_agent or '—')[:80] }}</td>
+          <td>{{ row.last_seen_at | local }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <form method="post" action="/preferences/sessions/end-others" class="prefs-form">
+      <div class="form-actions">
+        <button type="submit" class="btn-quiet"{% if not others %} disabled{% endif %}>
+          Sign out everywhere else{% if others %} ({{ others }}){% endif %}
+        </button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
 
   <section class="card">
     <div class="card-head">

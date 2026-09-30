@@ -654,7 +654,7 @@ class TestAlerts:
 @pytest.fixture
 def site(db):
     with TestClient(create_app(db), follow_redirects=False) as client:
-        client.post("/setup", data={"username": "admin", "password": PASSWORD,
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin", "password": PASSWORD,
                                     "password_confirm": PASSWORD, "timezone": "UTC"})
         yield client
 
@@ -780,7 +780,7 @@ def test_migration_19_from_a_version_18_database():
         return columns, version
 
     assert run(shape(True)) == run(shape(False))
-    assert "options" in run(shape(False))[0] and run(shape(False))[1] == 19
+    assert "options" in run(shape(False))[0] and run(shape(False))[1] == D.CURRENT_VERSION
 
 
 def test_smart_and_watched_helpers():

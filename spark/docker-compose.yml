@@ -24,6 +24,18 @@ services:
     cap_add:
       - NET_RAW
 
+    # Containment. SPARK is one process with a small thread pool (Argon2
+    # runs in threads, at most two at once), so a process count anywhere near
+    # this means something has gone badly wrong, and stopping it there is
+    # better than letting it take the VM with it.
+    pids_limit: 256
+    # Memory: measure first. `docker stats spark` after a day shows the
+    # steady figure; three to four times that is a limit that catches a leak
+    # or a runaway response (the HTTP check keeps at most 1 MB of a body)
+    # without killing SPARK during a login burst. Too low and Docker kills
+    # the container (exit 137) and `restart: unless-stopped` loops it.
+    # mem_limit: 512m
+
     volumes:
       # spark.db and secret.key. Must be owned by uid 9700 on the host
       # (`sudo chown -R 9700:9700 data`); SPARK refuses to start, and says

@@ -7,7 +7,17 @@ authors = [{ name = "Marcus Pierce" }]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
+    # uvicorn without its [standard] extra, which also pulled in watchfiles
+    # (--reload) and python-dotenv (--env-file): development conveniences
+    # that never run in the container. The parts of the extra SPARK does use
+    # are named here so they cannot quietly disappear from the lock.
+    "uvicorn>=0.32",
+    "uvloop>=0.21",
+    "httptools>=0.6",
+    # The TrueNAS client (truenas.py) speaks JSON-RPC over a WebSocket. This
+    # used to arrive only through uvicorn[standard]; a dependency the code
+    # imports is declared by the code's own project.
+    "websockets>=15",
     "sqlalchemy>=2.0.36",
     "aiosqlite>=0.20",
     "pydantic>=2.9",
@@ -29,6 +39,7 @@ dependencies = [
 [project.scripts]
 spark = "spark.main:run"
 spark-probe = "spark.cli:probe_main"
+spark-reset-password = "spark.cli:reset_password_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -38,7 +49,7 @@ build-backend = "hatchling.build"
 packages = ["src/spark"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "watchfiles>=0.20"]  # watchfiles: `uvicorn --reload` in development
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,8 +2,15 @@
 
 Kept apart from Settings on purpose: Settings is what SPARK does on the
 network; this is how SPARK presents itself to you: the time zone every time
-on every page is shown in, how long you stay signed in without using it, and
-whether the network map is placed by you or by SNMP (with Wipe map).
+on every page is shown in, how long you stay signed in without using it,
+whether the network map is placed by you or by SNMP (with Wipe map), and --
+the Account card -- your password and where you are signed in.
+
+The Account card exists because there was no way to change the password
+short of editing the database (review finding #24). Changing it ends every
+session, this one included, and hands the person a fresh one; "Sign out
+everywhere else" ends every session but this one. `spark-reset-password`
+(cli.py) is the way back in when the password is lost.
 """
 
 from __future__ import annotations
@@ -15,19 +22,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
 from .. import prefs, topology
-from ..auth import end_idle_sessions
+from ..auth import (MIN_PASSWORD_LENGTH, SESSION_COOKIE, AuthError, change_password, client_ip,
+                    create_session, end_idle_sessions, list_sessions, revoke_other_sessions)
 from ..config import Config
 from ..models import User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
+from .routes_auth import _set_session_cookie
 
 router = APIRouter()
 
 
 async def _render(request: Request, session: AsyncSession, config: Config, user: User, *,
-                  error: str | None = None, saved: str = "", status_code: int = 200):  # type: ignore[no-untyped-def]
+                  error: str | None = None, saved: str = "", status_code: int = 200,
+                  account_error: str | None = None, ended: int | None = None):  # type: ignore[no-untyped-def]
     current = await prefs.get_timezone(session)
     idle = await prefs.get_idle_minutes(session)
     placed = request.query_params.get("placed", "")
+    proxy_mode = config.auth.mode == "proxy"
+    sessions = [] if proxy_mode else await list_sessions(
+        session, user.id, request.cookies.get(SESSION_COOKIE))
     return templates.TemplateResponse(
         request,
         "preferences.html",
@@ -40,12 +53,17 @@ async def _render(request: Request, session: AsyncSession, config: Config, user:
             "idle_minutes": idle,
             "idle_label": prefs.idle_label(idle),
             "idle_choices": [(m, prefs.idle_label(m)) for m in prefs.IDLE_CHOICES],
-            "proxy_mode": config.auth.mode == "proxy",
+            "proxy_mode": proxy_mode,
             "map_mode": await topology.get_mode(session),
             "placed": int(placed) if placed.isdigit() and len(placed) < 6 else None,
             "now": utcnow(),
             "error": error,
             "saved": saved,
+            "account_error": account_error,
+            "sessions": sessions,
+            "others": sum(1 for _, current_one in sessions if not current_one),
+            "ended": ended,
+            "min_password": MIN_PASSWORD_LENGTH,
         },
         status_code=status_code,
     )
@@ -59,8 +77,57 @@ async def preferences_page(
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
+    ended = request.query_params.get("ended", "")
     return await _render(request, session, config, user,
-                         saved=saved if saved in ("timezone", "session", "map") else "")
+                         saved=saved if saved in ("timezone", "session", "map", "password",
+                                                  "sessions") else "",
+                         ended=int(ended) if ended.isdigit() and len(ended) < 6 else None)
+
+
+@router.post("/preferences/password")
+async def save_password(
+    request: Request,
+    current_password: str = Form("", max_length=limits.PASSWORD),
+    new_password: str = Form("", max_length=limits.PASSWORD),
+    new_password_confirm: str = Form("", max_length=limits.PASSWORD),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Change the password. Every session ends, and this browser gets a new one."""
+    if config.auth.mode == "proxy":
+        return redirect("/preferences")
+    if new_password != new_password_confirm:
+        return await _render(request, session, config, user, status_code=400,
+                             account_error="The two new passwords do not match.")
+    try:
+        await change_password(session, user, current_password, new_password)
+    except AuthError as exc:
+        return await _render(request, session, config, user, status_code=400,
+                             account_error=str(exc))
+    token = await create_session(session, user, config.auth,
+                                 user_agent=request.headers.get("user-agent"),
+                                 ip=client_ip(request, config.auth))
+    await session.commit()      # before the redirect; see routes_auth.login_submit
+    response = redirect("/preferences?saved=password#account")
+    _set_session_cookie(request, response, token, config)
+    return response
+
+
+@router.post("/preferences/sessions/end-others")
+async def end_other_sessions(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Sign out everywhere else: every session but the one that pressed the button."""
+    if config.auth.mode == "proxy":
+        return redirect("/preferences")
+    token = request.cookies.get(SESSION_COOKIE) or ""
+    ended = await revoke_other_sessions(session, user.id, token)
+    await session.commit()
+    return redirect(f"/preferences?saved=sessions&ended={ended}#account")
 
 
 @router.post("/preferences")

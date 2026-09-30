@@ -195,7 +195,7 @@ def client():
     tmp = Path(tempfile.mkdtemp(prefix="spark-schedule-web-"))
     cfg = make_config(tmp)
     with TestClient(create_app(cfg), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin",
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin",
                                "password": "correct horse battery",
                                "password_confirm": "correct horse battery"})
         yield c
@@ -289,7 +289,7 @@ class TestScheduleForm:
     def test_the_schedule_form_needs_a_login(self):
         tmp = Path(tempfile.mkdtemp(prefix="spark-schedule-anon-"))
         with TestClient(create_app(make_config(tmp)), follow_redirects=False) as anon:
-            anon.post("/setup", data={"username": "admin",
+            anon.post("/setup", data={"setup_code": anon.app.state.setup_code, "username": "admin",
                                       "password": "correct horse battery",
                                       "password_confirm": "correct horse battery"})
             anon.post("/logout")
@@ -335,7 +335,7 @@ def client_with_device():
     asyncio.run(seed())
 
     with TestClient(create_app(cfg), follow_redirects=False) as c:
-        c.post("/setup", data={"username": "admin",
+        c.post("/setup", data={"setup_code": c.app.state.setup_code, "username": "admin",
                                "password": "correct horse battery",
                                "password_confirm": "correct horse battery"})
         yield c

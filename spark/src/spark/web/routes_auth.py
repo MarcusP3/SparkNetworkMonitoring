@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from urllib.parse import urlparse
 
@@ -14,13 +15,18 @@ from ..auth import (
     SESSION_COOKIE,
     AuthError,
     RateLimited,
+    announce_setup_code,
     authenticate,
+    check_rate_limit,
     client_ip,
     create_admin,
     create_session,
+    new_setup_code,
+    record_attempt,
     resolve_session,
     revoke_session,
     seconds_left,
+    setup_code_matches,
     setup_required,
 )
 from ..config import Config
@@ -28,6 +34,8 @@ from .. import prefs, topology
 from ..alerts import AlertError, set_webhook, validate_webhook
 from ..vault import vault_for
 from .deps import current_user, get_config, get_session, redirect, templates
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -78,6 +86,31 @@ def _safe_next(target: str) -> str:
 # --------------------------------------------------------------------------
 
 
+SETUP_CODE_HELP = ("The setup code is in SPARK's log: `docker compose logs spark` "
+                   "on the machine it runs on.")
+
+
+def setup_code_for(request: Request) -> str:
+    """The code this run of SPARK accepts, made and logged the first time it
+    is needed. Cleared once the administrator exists."""
+    state = request.app.state
+    code = getattr(state, "setup_code", None)
+    if not code:
+        code = state.setup_code = new_setup_code()
+        config = state.config
+        announce_setup_code(code, config.app.host, config.app.port)
+    return code
+
+
+def _setup_page(request: Request, config: Config, *, status_code: int = 200, **context):  # type: ignore[no-untyped-def]
+    return templates.TemplateResponse(
+        request, "setup.html",
+        {"config": config, "title": "Set up SPARK", "setup_help": SETUP_CODE_HELP,
+         "timezone_choices": prefs.timezone_choices(), **context},
+        status_code=status_code,
+    )
+
+
 @router.get("/setup")
 async def setup_form(
     request: Request,
@@ -86,17 +119,14 @@ async def setup_form(
 ):
     if not await setup_required(session):
         return redirect("/login")
-    return templates.TemplateResponse(
-        request,
-        "setup.html",
-        {"config": config, "title": "Set up SPARK",
-         "timezone_choices": prefs.timezone_choices()},
-    )
+    setup_code_for(request)  # logged now, so it is in the log by the time the page is read
+    return _setup_page(request, config)
 
 
 @router.post("/setup")
 async def setup_submit(
     request: Request,
+    setup_code: str = Form("", max_length=limits.SHORT),
     username: str = Form("admin", max_length=limits.USERNAME),
     password: str = Form(..., max_length=limits.PASSWORD),
     password_confirm: str = Form(..., max_length=limits.PASSWORD),
@@ -108,6 +138,24 @@ async def setup_submit(
 ):
     if not await setup_required(session):
         return redirect("/login")
+
+    # The code first, under the same lockout as a login: a wrong code is a
+    # failed attempt from this address, and ten of them close the door for
+    # lockout_minutes. Nothing else on the form is looked at until it matches.
+    ip = client_ip(request, config.auth)
+    try:
+        await check_rate_limit(session, ip, config.auth)
+    except RateLimited as exc:
+        minutes = max(1, exc.retry_after_seconds // 60)
+        return _setup_page(request, config, status_code=429,
+                           error=f"Too many wrong setup codes. Try again in {minutes} minutes.",
+                           username=username)
+    if not setup_code_matches(setup_code_for(request), setup_code):
+        await record_attempt(session, ip, ok=False)
+        await session.commit()
+        return _setup_page(request, config, status_code=400,
+                           error="That is not the setup code. " + SETUP_CODE_HELP.replace("`", ""),
+                           username=username, map_mode=map_mode)
 
     error: str | None = None
     if map_mode not in topology.MODES:
@@ -130,14 +178,11 @@ async def setup_submit(
             error = str(exc)
 
     if error:
-        return templates.TemplateResponse(
-            request,
-            "setup.html",
-            {"config": config, "title": "Set up SPARK", "error": error, "username": username,
-             "timezone": tz if prefs.valid(tz) else None,
-             "timezone_choices": prefs.timezone_choices(), "map_mode": map_mode},
-            status_code=400,
-        )
+        return _setup_page(request, config, status_code=400, error=error, username=username,
+                           timezone=tz if prefs.valid(tz) else None, map_mode=map_mode,
+                           # A right code is kept on the page, so a typo in the
+                           # password does not mean reading the log again.
+                           setup_code=setup_code)
 
     if webhook:
         await set_webhook(session, vault_for(config), webhook)
@@ -150,13 +195,16 @@ async def setup_submit(
         user,
         config.auth,
         user_agent=request.headers.get("user-agent"),
-        ip=client_ip(request, config.auth),
+        ip=ip,
     )
     # Committed here, not left to get_session: its commit runs after the
     # response has gone, and the browser follows this redirect at once -- so
     # the next request could arrive before the session row existed, and bounce
     # straight back to the sign-in page.
     await session.commit()
+    # Spent. A second claimant with the same code now meets "already exists".
+    request.app.state.setup_code = None
+    log.info("First-run setup completed from %s", ip)
     response = redirect("/")
     _set_session_cookie(request, response, token, config)
     return response

@@ -7,31 +7,37 @@ the login" isn't the default here. One password is proportionate.
 
 Two modes:
 
-  password  - single admin account, Argon2id, signed session cookie
+  password  - single admin account, Argon2id, an opaque session token in an
+              HttpOnly cookie and stored only as its SHA-256
   proxy     - trust an identity header from an allowlisted reverse proxy
               (Authelia, Tailscale, Cloudflare Access)
 
 Proxy mode refuses to start without a source allowlist. A trusted-header setup
 that accepts the header from anywhere is spoofable by any host on the network,
-which is worse than no auth because it looks like security.
+which is worse than no auth because it looks like security. The allowlist is
+checked against the TCP peer (`request.state.peer`, set by web/hardening.py),
+never against an address a header claims.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-import ipaddress
 import logging
 import secrets
+import weakref
 from datetime import timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Request
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import AuthConfig
 from .models import LoginAttempt, User, UserSession, utcnow
+from .proxies import is_trusted_proxy, parse_proxies
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +51,30 @@ _hasher = PasswordHasher()
 _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(32))
 
 MIN_PASSWORD_LENGTH = 12
+
+# Argon2 is deliberately slow (about 120 ms and 64 MiB per attempt with the
+# library's defaults). Run synchronously it stalled the event loop -- every
+# check, poll and alert -- for the length of each login attempt, and a flood
+# of attempts was a flood of stalls (review finding #28). It runs in a thread
+# now, and at most this many at once, so a flood costs threads and memory
+# that are bounded rather than the loop.
+HASH_CONCURRENCY = 2
+_slots: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def _slot() -> asyncio.Semaphore:
+    """One semaphore per event loop: an asyncio primitive binds to the loop it
+    first waits on, and the test suite runs the app on many loops in turn."""
+    loop = asyncio.get_running_loop()
+    slot = _slots.get(loop)
+    if slot is None:
+        slot = _slots[loop] = asyncio.Semaphore(HASH_CONCURRENCY)
+    return slot
+
+
+async def _hash_in_thread(fn, *args):  # type: ignore[no-untyped-def]
+    async with _slot():
+        return await asyncio.to_thread(fn, *args)
 
 # How stale a session's last-seen timestamp may get before it is rewritten.
 LAST_SEEN_RESOLUTION = 60.0
@@ -96,33 +126,24 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def client_ip(request: Request, auth_config: AuthConfig) -> str:
-    """The client's address, honouring X-Forwarded-For only behind a trusted proxy."""
-    direct = request.client.host if request.client else "unknown"
-    if auth_config.mode != "proxy":
-        return direct
-    if not _is_trusted_proxy(direct, auth_config):
-        return direct
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        # The *last* entry, not the first. A proxy appends the address it saw
-        # to whatever the client already sent, so the first entry is the
-        # client's to write -- which made the per-IP login limit a header
-        # away from useless -- and the last is the one the trusted proxy
-        # itself added.
-        return forwarded.split(",")[-1].strip() or direct
-    return direct
+def client_ip(request: Request, auth_config: AuthConfig | None = None) -> str:
+    """The client's address, as the login lockout and session records key it.
+
+    Already settled by the time a route runs: `web/hardening.py` replaces the
+    TCP peer with the last X-Forwarded-For entry when -- and only when -- the
+    peer is in `auth.proxy.trusted_proxies`, in either auth mode. Nothing here
+    reads the header again, so there is exactly one place that decides whom
+    to believe about addresses. The TCP peer itself is `request.state.peer`.
+    """
+    return request.client.host if request.client else "unknown"
 
 
-def _is_trusted_proxy(ip: str, auth_config: AuthConfig) -> bool:
-    try:
-        address = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    for entry in auth_config.proxy.trusted_proxies:
-        if address in ipaddress.ip_network(entry, strict=False):
-            return True
-    return False
+def peer_ip(request: Request) -> str:
+    """The address SPARK actually accepted the connection from -- never a header."""
+    peer = getattr(getattr(request, "state", None), "peer", None)
+    if peer:
+        return str(peer)
+    return request.client.host if request.client else ""
 
 
 # --------------------------------------------------------------------------
@@ -141,11 +162,68 @@ async def create_admin(session: AsyncSession, username: str, password: str) -> U
     if not username.strip():
         raise AuthError("Choose a username.")
     validate_password_strength(password)
-    user = User(username=username.strip(), password_hash=hash_password(password), is_admin=True)
+    digest = await _hash_in_thread(hash_password, password)
+    user = User(username=username.strip(), password_hash=digest, is_admin=True)
     session.add(user)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        # Someone else's insert landed between the count above and this one.
+        # The partial unique index on is_admin (models.User) makes that a
+        # refusal rather than a second administrator.
+        await session.rollback()
+        raise AuthError("An administrator account already exists") from None
     log.info("Created administrator account %r", user.username)
     return user
+
+
+# --------------------------------------------------------------------------
+# First-run setup code
+# --------------------------------------------------------------------------
+
+# Printed to the log when SPARK starts with no administrator, and required by
+# /setup. Without it the first person to reach the port -- on the LAN before
+# the owner got round to it, or from the internet on an exposed instance --
+# owned the install (review finding #23). Reading the container log is
+# something only the operator can do.
+_SETUP_CODE_BYTES = 6
+
+
+def new_setup_code() -> str:
+    """Twelve hex characters in three groups, easy to read off a log line."""
+    raw = secrets.token_hex(_SETUP_CODE_BYTES).upper()
+    return "-".join(raw[i:i + 4] for i in range(0, len(raw), 4))
+
+
+def setup_code_matches(expected: str | None, submitted: str) -> bool:
+    """Compare in constant time, ignoring case, spaces and the dashes."""
+    if not expected:
+        return False
+    normalise = lambda s: "".join(ch for ch in s.upper() if ch.isalnum())  # noqa: E731
+    return secrets.compare_digest(normalise(expected), normalise(submitted or ""))
+
+
+def announce_setup_code(code: str, host: str, port: int) -> None:
+    where = "localhost" if host in ("0.0.0.0", "::", "") else host
+    banner = "=" * 72
+    log.warning(
+        "\n%s\n"
+        "  SPARK has no administrator yet.\n"
+        "  Open http://%s:%s/setup and enter this setup code:\n\n"
+        "      %s\n\n"
+        "  It is shown only here, and changes when SPARK restarts.\n"
+        "%s",
+        banner, where, port, code, banner,
+    )
+
+
+async def record_attempt(session: AsyncSession, ip: str, ok: bool) -> None:
+    """A guess at the setup code counts toward the same lockout as a login."""
+    session.add(LoginAttempt(ip=ip, ok=ok))
+
+
+async def check_rate_limit(session: AsyncSession, ip: str, config: AuthConfig) -> None:
+    await _check_rate_limit(session, ip, config)
 
 
 async def _check_rate_limit(session: AsyncSession, ip: str, config: AuthConfig) -> None:
@@ -166,10 +244,10 @@ async def authenticate(
 
     user = await session.scalar(select(User).where(User.username == username.strip()))
     if user is not None and user.password_hash:
-        ok = verify_password(user.password_hash, password)
+        ok = await _hash_in_thread(verify_password, user.password_hash, password)
     else:
         # Spend the same work on a missing user as on a wrong password.
-        verify_password(_DUMMY_HASH, password)
+        await _hash_in_thread(verify_password, _DUMMY_HASH, password)
         ok = False
 
     session.add(LoginAttempt(ip=ip, ok=ok))
@@ -180,7 +258,7 @@ async def authenticate(
         raise AuthError("Incorrect username or password")
 
     if user.password_hash and needs_rehash(user.password_hash):
-        user.password_hash = hash_password(password)
+        user.password_hash = await _hash_in_thread(hash_password, password)
 
     user.last_login_at = utcnow()
     return user
@@ -189,13 +267,25 @@ async def authenticate(
 async def change_password(
     session: AsyncSession, user: User, current: str, new: str
 ) -> None:
-    if not user.password_hash or not verify_password(user.password_hash, current):
+    """Set a new password after checking the current one.
+
+    Every session is revoked, this one included -- a changed password is the
+    moment to end anything signed in from somewhere else -- so the caller
+    must issue a fresh cookie for the person who just did it.
+    """
+    if not user.password_hash or not await _hash_in_thread(verify_password,
+                                                            user.password_hash, current):
         raise AuthError("Current password is incorrect")
     validate_password_strength(new)
-    user.password_hash = hash_password(new)
-    # Every session is now stale, this one included. The caller is responsible
-    # for issuing a fresh cookie; previously the comment claimed "every other"
-    # while the code revoked all of them, including the one in hand.
+    user.password_hash = await _hash_in_thread(hash_password, new)
+    await revoke_all_sessions(session, user.id)
+
+
+async def set_password(session: AsyncSession, user: User, new: str) -> None:
+    """Replace the password without knowing the old one: `spark-reset-password`,
+    run on the machine SPARK runs on. Every session is revoked."""
+    validate_password_strength(new)
+    user.password_hash = await _hash_in_thread(hash_password, new)
     await revoke_all_sessions(session, user.id)
 
 
@@ -318,6 +408,28 @@ async def revoke_all_sessions(session: AsyncSession, user_id: int) -> None:
     await session.execute(delete(UserSession).where(UserSession.user_id == user_id))
 
 
+async def revoke_other_sessions(session: AsyncSession, user_id: int, keep_token: str) -> int:
+    """"Sign out everywhere else": every session but the one in hand. Returns how many."""
+    result = await session.execute(
+        delete(UserSession).where(UserSession.user_id == user_id,
+                                  UserSession.token_hash != _token_hash(keep_token))
+    )
+    return result.rowcount or 0
+
+
+async def list_sessions(session: AsyncSession, user_id: int, current_token: str | None):
+    """Live sessions for the Preferences page: (row, is_this_one), newest use first."""
+    now = utcnow()
+    rows = (await session.execute(
+        select(UserSession)
+        .where(UserSession.user_id == user_id, UserSession.revoked.is_(False),
+               UserSession.expires_at >= now)
+        .order_by(UserSession.last_seen_at.desc())
+    )).scalars().all()
+    current = _token_hash(current_token) if current_token else None
+    return [(row, row.token_hash == current) for row in rows]
+
+
 async def purge_expired(session: AsyncSession) -> None:
     await session.execute(delete(UserSession).where(UserSession.expires_at < utcnow()))
     await session.execute(
@@ -333,11 +445,15 @@ async def purge_expired(session: AsyncSession) -> None:
 async def resolve_proxy_user(
     session: AsyncSession, request: Request, config: AuthConfig
 ) -> User | None:
-    direct = request.client.host if request.client else ""
-    if not _is_trusted_proxy(direct, config):
+    # The TCP peer, never the address a header claims. `request.client` may
+    # already be the forwarded address (hardening.py rewrites it behind a
+    # trusted proxy), which is exactly the thing that must not be consulted
+    # here: whoever sent X-Forwarded-For chose it.
+    peer = peer_ip(request)
+    if not is_trusted_proxy(peer, parse_proxies(config.proxy.trusted_proxies)):
         log.warning(
             "Identity header presented from %s, which is not in auth.proxy.trusted_proxies",
-            direct,
+            peer,
         )
         return None
     username = request.headers.get(config.proxy.header.lower())

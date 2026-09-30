@@ -1,5 +1,86 @@
 # Changelog
 
+## Unreleased — security review, round three (2026-09-30)
+
+Findings #22–#24, #28, #30, #31, #33 and #34 of the 2026-09-30 review. Nothing
+here changes how SPARK is reached: same port, same URL, same sign-in. Rebuild
+required (`docker compose up -d --build`): the lock and a console script
+changed. Back up `data/` first — there is a migration.
+
+### Security
+
+- **SPARK decides which peers are proxies; uvicorn no longer does** (#22,
+  High). uvicorn's proxy-header handling trusted 127.0.0.1 and ::1 by default
+  and rewrote the client address from `X-Forwarded-For` before SPARK saw it.
+  With host networking, loopback is every container and process on the VM,
+  so from there anyone could pick their own address: a fresh login-lockout
+  bucket per request, and in proxy mode a forged `X-Forwarded-For` naming the
+  real proxy satisfied `trusted_proxies` — admin with no password. A proxy
+  on the same host, meanwhile, was refused. Now `proxy_headers=False`, and
+  `web/hardening.py` applies `X-Forwarded-For`/`-Proto` only from a peer in
+  `auth.proxy.trusted_proxies` (`proxies.py`), in both auth modes; the
+  identity header is checked against the TCP peer (`request.state.peer`),
+  never against a header. Setting `trusted_proxies` in password mode now
+  keys the lockout on real clients behind a TLS proxy and makes the cookie
+  `Secure` when the proxy says https (#27). Proxy mode logs a warning when
+  listening on every interface.
+- **First-run setup needs a code from the log** (#23). `/setup` was owned by
+  whoever reached the port first. SPARK now prints a 12-character setup
+  code when it starts with no account (and makes one on demand if the
+  account is ever deleted); the form requires it, wrong guesses count
+  toward the login lockout, and it is spent once the account exists. A
+  partial unique index on `user.is_admin` (migration 20) makes the database
+  itself allow exactly one administrator, so concurrent claims yield one
+  account, not several; a database that somehow already has two stops at
+  start with the command to fix it.
+- **The password can be changed, and lost ones reset** (#24). Preferences →
+  Account: change the password (ends every session and gives this browser a
+  fresh one), see every session with its address and browser, **Sign out
+  everywhere else**. `spark-reset-password`, run with `docker compose exec
+  spark spark-reset-password`, sets a new password from the machine SPARK
+  runs on and signs out every session.
+- **Argon2 runs in a thread, at most two at once** (#28). It ran on the
+  event loop, so each login attempt (120 ms, 64 MiB) stalled every check and
+  poll, and a flood of attempts was a flood of stalls.
+- **The HTTP check keeps at most 1 MB of a body** (#30), streamed, and only
+  when `expect_body` is set; `expect_body` matches within that. A monitored
+  host serving something enormous could push SPARK out of memory.
+  `pids_limit: 256` in compose; `mem_limit` is there commented, with how to
+  size it.
+- **Everything under `data/` is 0600** (#31): umask 077 at start, and the
+  database, its `-wal`/`-shm` and `secret.key` are chmod-ed if an older
+  version left them 0644. Reading `data/` from the host now takes `sudo`.
+- **`websockets` is declared** (#33): the TrueNAS client imports it and it
+  arrived only through `uvicorn[standard]`. `uvloop` and `httptools` are
+  declared too, the `[standard]` extra is dropped, and `watchfiles` and
+  `python-dotenv` — development conveniences that never ran in the
+  container — leave the closure: 39 packages → 37. Lock regenerated with
+  every other pin and hash unchanged.
+- The version number is no longer on the sign-in page, and the proxy-mode
+  sign-in page no longer names the identity header (#34).
+
+### Docs
+
+README: Quick start (setup code), Monitoring (body cap), Preferences
+(Account card, `spark-reset-password`), Authentication (proxies, both
+layouts, first run, files), dependency count, project layout. CLAUDE.md:
+client-address and Argon2 conventions, closure count.
+
+### Tests
+
+50 new: `test_live_server.py` (under a real uvicorn — the test client never
+saw uvicorn's middleware, which is why #22 went unnoticed), `test_setup_code.py`,
+`test_account.py`, `test_http_check.py`, `test_data_privacy.py`; proxy-header
+tests in `test_hardening.py` rewritten against the middleware. Every setup
+POST in the suite and the smoke test now sends the code.
+
+### Known, unfixed
+
+Findings #25 (TLS of SPARK's own), #26 (CI, Dependabot, SECURITY.md, tags),
+#29 (`Host` allowlist) and #32 (`spark.yaml` tracked) are the visible batch
+and wait for their own commits. Argon2 has no global attempt budget on
+purpose: with one it would be a login-DoS handle for anyone on the LAN.
+
 ## Unreleased — targets open their device (2026-09-30)
 
 ### Added

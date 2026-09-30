@@ -83,7 +83,16 @@ bind mount it belongs to root, and SPARK refuses to start (with this same
 command in the message) rather than run as root.
 
 Open `http://<host>:9700` and create the admin account when prompted. The
-password minimum is 12 characters.
+form asks for a **setup code**, which SPARK printed when it started with no
+account:
+
+```bash
+docker compose logs spark | grep -A3 "setup code"
+```
+
+Only whoever can read that log can create the account, so the first person to
+find the port on the network cannot. The code changes whenever SPARK restarts
+and is spent once the account exists. The password minimum is 12 characters.
 
 Verify it came up:
 
@@ -120,7 +129,7 @@ underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
 
 ### Dependencies and the supply chain
 
-15 direct dependencies, 39 packages in the full closure, no npm and no build
+18 direct dependencies, 37 packages in the full closure, no npm and no build
 step. Everything is pinned by version **and SHA-256 hash** in
 `requirements.lock`, and the image installs from it with `--require-hashes`.
 
@@ -238,6 +247,10 @@ with no device, such as an outside website, is plain text.
 Checks never raise. A poller that throws when the thing it polls is broken has
 failed at its only job, so every failure path returns a result with a reason
 attached.
+
+An `http` check reads at most the first 1 MB of a response, and only when
+`expect_body` is set; the phrase has to appear within that. A monitored host
+that starts serving something enormous cannot push SPARK out of memory.
 
 ### Three states, not two
 
@@ -419,7 +432,24 @@ itself does not, so a dashboard left open still times out, and the tab goes
 back to the sign-in page on its own. Sign in again and you land where you
 were. In proxy mode the proxy decides instead, and the card says so.
 
-Both are settings for the instance, since SPARK has one account.
+**Account** changes the password — the current one, then the new one twice —
+and lists everywhere the account is signed in (when, from which address, which
+browser, last used), with **Sign out everywhere else** to end all of them but
+the one you are using. Changing the password ends every session, this one
+included, and gives your browser a fresh one on the spot.
+
+If the password is lost, on the machine SPARK runs on:
+
+```bash
+docker compose exec spark spark-reset-password
+```
+
+It prompts twice, sets the new password and signs out every session. There is
+no reset by email and no back door from the network: being at the machine is
+the credential. In proxy mode the card only says that the proxy owns sign-in.
+
+The time zone and the timeout are settings for the instance, since SPARK has
+one account.
 
 ## Alerts
 
@@ -881,26 +911,68 @@ service on it, and references to credentials that reach your Docker hosts. That
 makes it the highest-value target on the LAN, which is why there is no
 "it's internal, skip the login" mode.
 
-To put it behind Authelia, Tailscale or Cloudflare Access instead:
+Passwords are hashed in a thread, at most two at a time, so a burst of login
+attempts costs bounded threads and memory rather than stalling every check
+and poll for the length of each attempt.
+
+**First run.** With no account in the database, SPARK prints a setup code to
+its log and `/setup` requires it (see [Quick start](#quick-start)). Wrong
+codes count toward the same lockout as wrong passwords, and the database
+itself allows exactly one administrator (a partial unique index on
+`user.is_admin`), so concurrent attempts to claim a fresh install produce one
+account, not several.
+
+**Reverse proxies.** SPARK, not the web server underneath it, decides which
+peers are proxies. `auth.proxy.trusted_proxies` is that list, in **both** auth
+modes: only a connection from an address on it has its `X-Forwarded-For`
+(the last entry — the one that proxy added) and `X-Forwarded-Proto`
+believed. Everything else is taken at its TCP address. In password mode the
+list is optional; set it when a proxy fronts SPARK so the login lockout keys
+on real clients rather than on the proxy, and so the cookie is `Secure` when
+the proxy terminated TLS. uvicorn's own proxy-header handling is switched
+off: it trusted loopback by default, and with host networking loopback is
+every container and process on the VM.
+
+To put it behind Authelia, Tailscale or Cloudflare Access instead, the proxy
+authenticates and passes an identity header:
 
 ```yaml
 auth:
   mode: proxy
   proxy:
     header: Remote-User
-    trusted_proxies: [172.16.10.5]
+    trusted_proxies: [172.16.10.5]   # the proxy's address as SPARK sees it
 ```
+
+Two layouts, and the difference matters:
+
+- **Proxy on another machine:** list its address, as above, and firewall port
+  9700 on the SPARK host so only that address can reach it. The identity
+  header is only as private as the port.
+- **Proxy on the same VM** (Caddy, nginx, Traefik on the host, or a container
+  with host networking): list `127.0.0.1`, and set `app.host: 127.0.0.1` so
+  the port is not on the LAN at all. SPARK logs a warning at start if it is
+  listening on every interface in proxy mode.
+
+In either case the proxy must **set** the identity header itself, never pass
+through one a client sent. The identity header is checked against the
+connection's real peer address, never against anything a header claims, so a
+request from anywhere else carrying `X-Forwarded-For: <proxy>` is still a
+request from anywhere else.
 
 SPARK refuses to start in proxy mode with an empty `trusted_proxies`. Trusting
 an identity header from any source is forgeable by anything on the network —
 worse than no auth, because it looks like security.
 
-> **Known gaps.** There is no TLS of SPARK's own; on plain HTTP the session
+**Files.** Everything under `data/` is created readable by SPARK alone
+(`0600`), the database and its write-ahead log included; a database from an
+older version is made private at the next start. Reading it from the host
+therefore takes `sudo`.
+
+> **Known gap.** There is no TLS of SPARK's own; on plain HTTP the session
 > cookie cannot be `Secure` without silently never being sent, so put it
-> behind a reverse proxy before exposing it beyond the LAN. Rate limiting is
-> per source IP, which is the right key for a single-account instance but
-> means a lockout is also a way to lock the real admin out from that address
-> for fifteen minutes.
+> behind a reverse proxy — and list that proxy — before exposing it beyond
+> the LAN.
 
 ---
 
@@ -942,8 +1014,9 @@ spark/
     config.py           YAML + env config loading
     models.py           full Phase 1 schema, UTC datetime and enum column types
     db.py               engine, sessions, migration runner
-    auth.py             Argon2 passwords, sessions, proxy mode
-    cli.py              spark-probe
+    auth.py             Argon2 passwords (hashed off the event loop), sessions, setup code, proxy mode
+    proxies.py          which peers are trusted proxies and what their X-Forwarded-* headers say
+    cli.py              spark-probe, spark-reset-password
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
     events.py           in-process pub/sub for live page updates
@@ -991,7 +1064,7 @@ spark/
     web/                routes and dependencies
       routes_device_page.py  the per-device page
       routes_credentials.py  Settings → Credentials
-      hardening.py      security headers, CSP nonces, same-origin check on writes
+      hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only
     templates/          Jinja templates
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
@@ -1032,7 +1105,12 @@ spark/
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file
-    test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy-mode fixes, form bounds
+    test_hardening.py   headers, CSP nonces, cross-site POSTs, proxy headers and proxy mode, form bounds
+    test_live_server.py  under a real uvicorn: loopback cannot pick its address, same-host proxies work, one admin however many race
+    test_setup_code.py  the setup code: logged not shown, required, rate-limited, spent; one administrator enforced by the database
+    test_account.py     change password, sessions listed, sign out everywhere else, spark-reset-password
+    test_http_check.py  the HTTP check against a local server: 1 MB body cap, endless bodies cut
+    test_data_privacy.py  data/ files are 0600, an older database is made private at start
     test_no_homelab_details.py  no real host names or address scheme in anything shipped
     test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
     test_watch_selected.py  tick devices and watch them all; skips, duplicates, junk, first checks queued
