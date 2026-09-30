@@ -34,6 +34,9 @@ ROLE_ORDER = list(ROLE_LABELS)
 _SEVERITY = [HealthStatus.DOWN, HealthStatus.DEGRADED, HealthStatus.UNKNOWN,
              HealthStatus.UP, HealthStatus.PAUSED]
 
+INFRA_ROLES = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HOST}
+PROBLEM = {"bad", "warn"}
+
 # Status colours only for real statuses (brand spec): up, degraded, down.
 _KIND = {HealthStatus.UP: "ok", HealthStatus.DEGRADED: "warn", HealthStatus.DOWN: "bad"}
 
@@ -63,6 +66,40 @@ class Node:
     @property
     def count(self) -> int:
         return 1 + sum(child.count for child in self.children)
+
+    # The map draws infrastructure as rows and end devices as small tiles
+    # under their parent: a phone does not need the room a switch does.
+    @property
+    def infra(self) -> bool:
+        return bool(self.children) or self.device.role in INFRA_ROLES
+
+    @property
+    def branches(self) -> list[Node]:
+        return [c for c in self.children if c.infra]
+
+    @property
+    def leaves(self) -> list[Node]:
+        return [c for c in self.children if not c.infra]
+
+    @property
+    def watched(self) -> list[ServiceRow]:
+        return [s for s in self.services if s.target]
+
+    @property
+    def problem(self) -> bool:
+        """Down, degraded or not answering, or a watched port that is."""
+        return self.state.kind in PROBLEM or any(
+            s.state is not None and s.state.kind in PROBLEM for s in self.watched)
+
+    @property
+    def find(self) -> str:
+        """What the map's Find box matches: name, addresses, MAC, vendor,
+        role, and each service's name and port."""
+        d = self.device
+        bits = [d.display_name, d.hostname, d.primary_ip, d.mac, d.vendor,
+                self.role if d.role != DeviceRole.UNKNOWN else None]
+        bits += [f"{s.service.name or ''} {s.service.port}" for s in self.services]
+        return " ".join(str(b) for b in bits if b).lower()
 
 
 @dataclass

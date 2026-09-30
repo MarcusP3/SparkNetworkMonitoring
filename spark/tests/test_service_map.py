@@ -309,7 +309,19 @@ class TestPages:
         assert '<a href="/map" class="active">' in page, "the nav link is live"
         assert re.search(r'<ul class="tree">.*gateway.*core-switch.*nas', page, re.S)
         assert "Not placed yet" in page and "laptop" in page and "old-box" not in page
-        assert "Plex" in page and ":32400" in page
+        assert 'data-find="nas 10.0.0.20 aa:bb:cc:00:00:03 server smb 445 plex 32400"' in page, \
+            "ports are found by the Find box even while folded to a count"
+
+    def test_the_toolbar(self, site):
+        page = " ".join(site.get("/map").text.split())
+        assert page.index('id="map-toolbar"') < page.index('<div id="live">'), \
+            "outside the live region, so a refresh never takes the text being typed"
+        assert '<div class="map-toolbar js-only" id="map-toolbar">' in page
+        assert '<input type="search" id="map-find" placeholder="Find a device: name, address, port"' in page
+        assert '<span>Problems only (<span id="map-problem-count">0</span>)</span>' in page
+        assert ('<button type="button" data-mode="infra" aria-pressed="true">Infrastructure</button> '
+                '<button type="button" data-mode="all" aria-pressed="false">Everything</button>') in page
+        assert "'spark.map.mode'" in page and "'spark.map.open'" in page
 
     def test_branches_fold_and_the_page_remembers_which(self, site):
         page = " ".join(site.get("/map").text.split())
@@ -321,10 +333,10 @@ class TestPages:
         assert "'spark.map.folded'" in page and "addEventListener('spark:live-updated', apply)" in page
         assert "new CustomEvent('spark:live-updated')" in page, "the live refresh says when it swapped"
 
-    def test_unwatched_ports_are_folded_under_their_count(self, site):
+    def test_unwatched_ports_are_a_count_linking_to_services(self, site):
         page = " ".join(site.get("/map").text.split())
-        tree = page[page.index('<ul class="tree">'):page.index("Not placed yet")]
-        assert re.search(r'<details class="more-ports" data-ports="3"> <summary[^>]*>2 ports</summary>', tree)
+        tree = page[page.index('<ul class="tree">'):]
+        assert re.search(r'<a class="more-ports" href="/services\?q=10.0.0.20" title="[^"]*">2 ports</a>', tree)
 
         async def watch_plex():
             async with D.session_scope() as s:
@@ -332,11 +344,45 @@ class TestPages:
                              device_id=3, service_id=1))
         run(watch_plex())
         page = " ".join(site.get("/map").text.split())
-        tree = page[page.index('<ul class="tree">'):page.index("Not placed yet")]
-        services = tree[tree.index('<div class="map-services">'):]
-        assert services.index("Plex") < services.index("<details"), "the watched one stays in view"
-        assert re.search(r'<summary[^>]*>\+1 more</summary> <div class="more-ports-list"> '
-                         r'<span class="pill neutral"[^>]*> SMB', services)
+        tree = page[page.index('<ul class="tree">'):]
+        row = tree[tree.index('<li data-branch="3">'):]
+        assert row.index("Plex") < row.index('class="more-ports"'), "the watched one stays in view"
+        assert re.search(r'<a class="more-ports" href="/services\?q=10.0.0.20" title="[^"]*">\+1 port</a>', row)
+
+    def test_end_devices_are_tiles_under_their_parent(self, site):
+        async def place():
+            async with D.session_scope() as s:
+                laptop = await s.get(Device, 4)
+                laptop.parent_device_id, laptop.role = 2, DeviceRole.CLIENT
+                s.add(Target(name="laptop ping", check_type=CheckType.PING, address="10.0.0.50",
+                             device_id=4, status="down"))
+        run(place())
+        page = " ".join(site.get("/map").text.split())
+        tree = page[page.index('<ul class="tree">'):]
+        assert '<li class="leaf-row" data-leaves="2">' in tree
+        assert re.search(r'<button type="button" class="leaf-toggle js-only" aria-expanded="false" '
+                         r'aria-controls="leaves-2"> 1 device <span class="leaf-trouble">· 1 with a problem</span>', tree)
+        assert re.search(r'<a href="/devices/4" class="chip is-bad" data-find="laptop 10.0.0.50[^"]*" data-problem '
+                         r'title="laptop — 10.0.0.50 — down — 1 port">', tree)
+        assert '<span class="chip-name">laptop</span> <span class="chip-ip">50</span>' in tree
+        assert tree.index('data-leaves="2"') < tree.index('<li data-branch="3">'), "tiles, then the branches"
+        assert '<span>Problems only (<span id="map-problem-count">1</span>)</span>' in page
+
+    def test_a_watched_port_down_is_a_problem(self, site):
+        async def watch():
+            async with D.session_scope() as s:
+                s.add(Target(name="plex web", check_type=CheckType.TCP, address="10.0.0.20:32400",
+                             device_id=3, service_id=1, status="down"))
+        run(watch())
+        page = " ".join(site.get("/map").text.split())
+        assert re.search(r'<div class="map-node" data-find="nas [^"]*" data-problem>', page)
+
+    def test_not_placed_is_one_line_of_tiles(self, site):
+        page = " ".join(site.get("/map").text.split())
+        assert '<details class="card strip unplaced" data-strip="unplaced">' in page
+        strip = page[page.index('data-strip="unplaced"'):]
+        assert '<span class="pill neutral">1</span> <strong>Not placed yet</strong>' in strip
+        assert '<a href="/devices/4" class="chip"' in strip
 
     def test_searching_services(self, site):
         page = site.get("/services?q=8080").text

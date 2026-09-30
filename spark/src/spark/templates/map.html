@@ -13,6 +13,16 @@
 {% macro state_pill(s) -%}
 <span class="pill {{ s.kind }}{% if s.kind != 'neutral' %} dot{% endif %}" title="From {{ s.source }}">{{ s.label }}</span>
 {%- endmacro %}
+{% macro chip(n) -%}
+<a href="/devices/{{ n.device.id }}" class="chip{% if n.state.kind in ('bad', 'warn') %} is-{{ n.state.kind }}{% endif %}"
+   data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}
+   title="{{ n.device.display_name }}{% if n.device.primary_ip %} — {{ n.device.primary_ip }}{% endif %} — {{ n.state.label }}{% if n.services %} — {{ n.services | length }} port{{ 's' if n.services | length != 1 }}{% endif %}">
+  <span class="status-dot {{ n.state.kind }}" aria-hidden="true"></span>
+  <span class="chip-name">{{ n.device.display_name }}</span>
+  {% if n.device.primary_ip %}<span class="chip-ip">{{ n.device.primary_ip.rsplit('.', 1)[-1] if '.' in n.device.primary_ip else '' }}</span>{% endif %}
+  <span class="visually-hidden">{{ n.state.label }}</span>
+</a>
+{%- endmacro %}
 {% block content %}
 <div class="page">
   <div class="page-head">
@@ -23,6 +33,20 @@
         <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page; every service, searchable, is under <a href="/services">Services</a>.</p>
       </div>
     </div>
+  </div>
+
+  {# The toolbar sits outside #live: a live refresh swaps what is inside, and
+     must not take the text out of the Find box while someone is typing. #}
+  <div class="map-toolbar js-only" id="map-toolbar">
+    <input type="search" id="map-find" placeholder="Find a device: name, address, port" maxlength="100"
+           aria-label="Find a device on the map" autocomplete="off">
+    <button type="button" class="btn-quiet problems-toggle" id="map-problems" aria-pressed="false">
+      <span class="status-dot bad" aria-hidden="true"></span><span>Problems only (<span id="map-problem-count">{{ problems }}</span>)</span></button>
+    <span class="seg" role="group" aria-label="Show">
+      <button type="button" data-mode="infra" aria-pressed="true">Infrastructure</button>
+      <button type="button" data-mode="all" aria-pressed="false">Everything</button>
+    </span>
+    <span class="map-count" id="map-count" aria-live="polite"></span>
   </div>
 
   <div id="live">
@@ -43,50 +67,67 @@
     {% if discovery.reason %}<br>{{ discovery.reason }}{% endif %}
   </div>
   {% elif suggested %}
-  <section class="card suggest-card" id="suggested">
-    <div class="card-head">
-      <div>
-        <h2>Found by SNMP</h2>
-        <p class="card-sub">
-          Where your switches' MAC tables{% if discovery.found | selectattr('source', 'equalto', 'lldp') | list %} and LLDP{% endif %} put
-          {{ suggested | length }} device{{ 's' if suggested | length != 1 }} that {{ 'are' if suggested | length != 1 else 'is' }} not placed yet.
-          Nothing changes until you accept it, and a place set by hand is never replaced.
-        </p>
-      </div>
+  {# One line until opened, like Not placed yet below. Accept and Not right
+     are sent in the background (data-stay) and the strip stays open. #}
+  <details class="card strip suggest-card" id="suggested" data-strip="suggested">
+    <summary>
+      <span class="pill neutral">{{ suggested | length }}</span>
+      <strong>Found by SNMP</strong>
+      <span class="muted small">where your switches' MAC tables{% if discovery.found | selectattr('source', 'equalto', 'lldp') | list %} and LLDP{% endif %} put {{ 'them' if suggested | length != 1 else 'it' }} — nothing changes until you accept</span>
+      <svg class="strip-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+    <div class="strip-body">
       {% if suggested | length > 1 %}
       <form method="post" action="/map/suggestions/accept-all" data-stay>
         <button type="submit" class="btn-quiet" title="Accept every suggestion below">Accept all {{ suggested | length }}</button>
       </form>
       {% endif %}
+      <ul class="suggest-list">
+        {% for f in suggested %}
+        <li>
+          <div>
+            <span>
+              <a href="/devices/{{ f.device.id }}">{{ f.device.display_name }}</a>
+              {% if f.parent and not f.device.parent_device_id %}→ <a href="/devices/{{ f.parent.id }}">{{ f.parent.display_name }}</a>{% endif %}
+              {% if f.role and f.device.role == 'unknown' %}<span class="pill neutral">as {{ f.role_label | lower }}</span>{% endif %}
+            </span>
+            <span class="muted small">Seen: {{ f.where() }}.</span>
+          </div>
+          <div class="suggest-actions">
+            <form method="post" action="/map/suggestions/{{ f.device.id }}/accept" data-stay>
+              <input type="hidden" name="back" value="/map#suggested">
+              <button type="submit" class="btn-quiet">Accept</button>
+            </form>
+            <form method="post" action="/map/suggestions/{{ f.device.id }}/dismiss" data-stay>
+              <input type="hidden" name="back" value="/map#suggested">
+              <button type="submit" class="btn-quiet" title="Stop suggesting this">Not right</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
     </div>
-    <ul class="suggest-list">
-      {% for f in suggested %}
-      <li>
-        <div>
-          <span>
-            <a href="/devices/{{ f.device.id }}">{{ f.device.display_name }}</a>
-            {% if f.parent and not f.device.parent_device_id %}→ <a href="/devices/{{ f.parent.id }}">{{ f.parent.display_name }}</a>{% endif %}
-            {% if f.role and f.device.role == 'unknown' %}<span class="pill neutral">as {{ f.role_label | lower }}</span>{% endif %}
-          </span>
-          <span class="muted small">Seen: {{ f.where() }}.</span>
-        </div>
-        <div class="suggest-actions">
-          <form method="post" action="/map/suggestions/{{ f.device.id }}/accept" data-stay>
-            <input type="hidden" name="back" value="/map#suggested">
-            <button type="submit" class="btn-quiet">Accept</button>
-          </form>
-          <form method="post" action="/map/suggestions/{{ f.device.id }}/dismiss" data-stay>
-            <input type="hidden" name="back" value="/map#suggested">
-            <button type="submit" class="btn-quiet" title="Stop suggesting this">Not right</button>
-          </form>
-        </div>
-      </li>
-      {% endfor %}
-    </ul>
-  </section>
+  </details>
   {% elif discovery.reason %}
   <div class="alert info">{{ discovery.reason }}</div>
   {% endif %}
+
+  {% if map.unplaced %}
+  <details class="card strip unplaced" data-strip="unplaced">
+    <summary>
+      <span class="pill neutral">{{ map.unplaced | length }}</span>
+      <strong>Not placed yet</strong>
+      <span class="muted small">no role or connection — open one to place it</span>
+      <svg class="strip-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </summary>
+    <div class="strip-body">
+      <div class="chips">
+        {% for n in map.unplaced %}{{ chip(n) }}{% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
   <section class="card">
     <div class="card-head">
       <div>
@@ -94,14 +135,14 @@
         <p class="card-sub">
           Status comes from each device's targets, or its SNMP polling if it has none.
           While anything is down, nothing below it alerts — you hear about the switch,
-          not everything behind it. Ports you watch show on each device; the rest
-          are folded under their count.
+          not everything behind it. Ports you watch show on each device; the rest are
+          counted, and listed under <a href="/services">Services</a>.
         </p>
       </div>
     </div>
     {% if map.roots %}
-    {# Folding is JavaScript's (the script below): without it every branch is
-       open and the fold buttons are not shown. #}
+    {# Folding, finding and the Infrastructure view are JavaScript's (the
+       script below): without it every branch is open and every device shows. #}
     <div class="tree-actions js-only">
       <button type="button" class="btn-quiet" data-fold="all">Collapse all</button>
       <button type="button" class="btn-quiet" data-fold="none">Expand all</button>
@@ -109,12 +150,26 @@
     <ul class="tree">
       {% for n in map.roots recursive %}
       <li data-branch="{{ n.device.id }}">
-        <div class="map-node">
+        <div class="map-node" data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}>
           <span class="map-icon">{{ role_icon(n.device.role) }}</span>
           <a href="/devices/{{ n.device.id }}" class="map-name">{{ n.device.display_name }}</a>
           {% if n.device.primary_ip %}<code class="small muted">{{ n.device.primary_ip }}</code>{% endif %}
           {% if n.device.role != 'unknown' %}<span class="muted small">{{ n.role }}</span>{% endif %}
           {{ state_pill(n.state) }}
+          {# Ports someone watches carry a status, so they stay in view. The
+             rest are only what the port scan found: counted, and listed on
+             the Services tab under this device's address. #}
+          {% for s in n.watched %}
+            <span class="pill {{ s.state.kind if s.state else 'neutral' }}"
+                  title="Watched by {{ s.target.name }}: {{ s.state.label }}">
+              {{ s.service.name or s.service.port }}<span class="muted"> :{{ s.service.port }}</span>
+            </span>
+          {% endfor %}
+          {% set others = n.services | length - n.watched | length %}
+          {% if others %}
+          <a class="more-ports" href="/services?q={{ (n.device.primary_ip or n.device.display_name) | urlencode }}"
+             title="Found by the port scan; not watched">{% if n.watched %}+{{ others }} port{{ 's' if others != 1 }}{% else %}{{ others }} port{{ 's' if others != 1 }}{% endif %}</a>
+          {% endif %}
           {% if n.children %}
           <button type="button" class="branch-toggle js-only" aria-expanded="true"
                   aria-controls="branch-{{ n.device.id }}"
@@ -124,38 +179,28 @@
           </button>
           {% endif %}
         </div>
-        {% if n.services %}
-        {# Ports someone watches carry a status, so they stay in view. The
-           rest are only what the port scan found: counted, and folded. #}
-        {% set watched = n.services | selectattr('target') | list %}
-        {% set others = n.services | rejectattr('target') | list %}
-        <div class="map-services">
-          {% for s in watched %}
-            <span class="pill {{ s.state.kind if s.state else 'neutral' }}"
-                  title="Watched by {{ s.target.name }}: {{ s.state.label }}">
-              {{ s.service.name or s.service.port }}<span class="muted"> :{{ s.service.port }}</span>
-            </span>
-          {% endfor %}
-          {% if others %}
-          <details class="more-ports" data-ports="{{ n.device.id }}">
-            <summary title="Found by the port scan; not watched">
-              {%- if watched %}+{{ others | length }} more{% else %}{{ others | length }} port{{ 's' if others | length != 1 }}{% endif -%}
-            </summary>
-            <div class="more-ports-list">
-              {% for s in others %}
-              <span class="pill neutral" title="Found by the port scan; not watched">
-                {{ s.service.name or s.service.port }}<span class="muted"> :{{ s.service.port }}</span>
-              </span>
-              {% endfor %}
+        {% if n.children %}
+        <ul id="branch-{{ n.device.id }}">
+          {% set leaves = n.leaves %}
+          {% if leaves %}
+          {% set trouble = leaves | selectattr('problem') | list | length %}
+          <li class="leaf-row" data-leaves="{{ n.device.id }}">
+            <button type="button" class="leaf-toggle js-only" aria-expanded="false" aria-controls="leaves-{{ n.device.id }}">
+              {{ leaves | length }} device{{ 's' if leaves | length != 1 }}{% if trouble %} <span class="leaf-trouble">· {{ trouble }} with a problem</span>{% endif %}
+              <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+            <div class="chips" id="leaves-{{ n.device.id }}">
+              {% for c in leaves %}{{ chip(c) }}{% endfor %}
             </div>
-          </details>
+          </li>
           {% endif %}
-        </div>
+          {{ loop(n.branches) }}
+        </ul>
         {% endif %}
-        {% if n.children %}<ul id="branch-{{ n.device.id }}">{{ loop(n.children) }}</ul>{% endif %}
       </li>
       {% endfor %}
     </ul>
+    <p class="muted small map-nothing" id="map-nothing" hidden>Nothing on the map matches.</p>
     {% else %}
     <div class="empty-state">
       <p class="muted">
@@ -167,82 +212,150 @@
     </div>
     {% endif %}
   </section>
-
-  {% if map.unplaced %}
-  <details class="card unplaced">
-    <summary>
-      <strong>Not placed yet</strong>
-      <span class="muted small">{{ map.unplaced | length }} device{{ 's' if map.unplaced | length != 1 }} with no role or connection — open one to place it</span>
-    </summary>
-    <ul class="unplaced-list">
-      {% for n in map.unplaced %}
-      <li>
-        <a href="/devices/{{ n.device.id }}">{{ n.device.display_name }}</a>
-        {% if n.device.primary_ip %}<code class="small muted">{{ n.device.primary_ip }}</code>{% endif %}
-        {{ state_pill(n.state) }}
-      </li>
-      {% endfor %}
-    </ul>
-  </details>
-  {% endif %}
-
   </div>
 </div>
 <script nonce="{{ request.state.csp_nonce }}">
-  // Folding branches of the map. Which ones are folded is remembered in this
-  // browser only, by device id, and put back after every live refresh (which
-  // replaces the whole tree). An opened "+N more" is put back too, for as long
-  // as the page is open.
+  // The map's Find box, Problems only, Infrastructure / Everything, and
+  // folding. Folded branches, the view and opened device groups are
+  // remembered in this browser; the Find text and Problems only last while
+  // the page is open. All of it is put back after every live refresh, which
+  // replaces the whole tree.
   (function () {
-    var KEY = 'spark.map.folded';
+    var FOLDED = 'spark.map.folded', MODE = 'spark.map.mode', OPEN = 'spark.map.open';
     document.body.classList.add('js-fold');
-    function load() {
-      try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; }
+    function load(key, fallback) {
+      try { var v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+      catch (e) { return fallback; }
     }
-    function save(ids) {
-      try { localStorage.setItem(KEY, JSON.stringify(ids)); } catch (e) { /* private window */ }
+    function save(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private window */ }
     }
-    var folded = load();
-    var openPorts = {};
+    var folded = load(FOLDED, []), open = load(OPEN, []), mode = load(MODE, 'infra');
+    var strips = {}, query = '', problems = false;
+    var find = document.getElementById('map-find');
+    var problemsButton = document.getElementById('map-problems');
+
+    function words() { return query.toLowerCase().split(/\s+/).filter(Boolean); }
+    function filtering() { return words().length > 0 || problems; }
+    function matches(el) {
+      var text = el.getAttribute('data-find') || '';
+      return words().every(function (w) { return text.indexOf(w) !== -1; }) &&
+        (!problems || el.hasAttribute('data-problem'));
+    }
+
+    // One branch: whether it, or anything below it, is to be shown.
+    function filter(li) {
+      var node = li.querySelector(':scope > .map-node');
+      var hit = matches(node);
+      var shown = hit, n = hit ? 1 : 0;
+      node.classList.toggle('hit', hit && words().length > 0);
+      var row = li.querySelector(':scope > ul > .leaf-row');
+      if (row) {
+        var any = 0;
+        row.querySelectorAll('.chip').forEach(function (chip) {
+          var ok = matches(chip);
+          chip.hidden = !ok;
+          chip.classList.toggle('hit', ok && words().length > 0);
+          if (ok) any++;
+        });
+        row.hidden = any === 0;
+        n += any;
+        shown = shown || any > 0;
+      }
+      li.querySelectorAll(':scope > ul > li[data-branch]').forEach(function (child) {
+        var r = filter(child);
+        n += r;
+        if (r) shown = true;
+      });
+      li.hidden = !shown;
+      return shown ? Math.max(n, 1) : 0;
+    }
+    function unfilter() {
+      document.querySelectorAll('.tree [hidden], .tree .hit').forEach(function (el) {
+        el.hidden = false;
+        el.classList.remove('hit');
+      });
+    }
 
     function apply() {
+      var tree = document.querySelector('.tree');
+      document.querySelectorAll('[data-mode]').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-mode') === mode ? 'true' : 'false');
+      });
+      problemsButton.setAttribute('aria-pressed', problems ? 'true' : 'false');
+      document.querySelectorAll('details[data-strip]').forEach(function (d) {
+        if (strips[d.getAttribute('data-strip')]) d.open = true;
+      });
+      var count = document.getElementById('map-count');
+      if (!tree) { count.textContent = ''; return; }
+      tree.classList.toggle('show-all', mode === 'all');
+      tree.classList.toggle('filtering', filtering());
       document.querySelectorAll('.tree li[data-branch]').forEach(function (li) {
         var button = li.querySelector(':scope > .map-node > .branch-toggle');
         if (!button) return;
         var fold = folded.indexOf(li.getAttribute('data-branch')) !== -1;
         li.classList.toggle('folded', fold);
-        button.setAttribute('aria-expanded', fold ? 'false' : 'true');
+        button.setAttribute('aria-expanded', fold && !filtering() ? 'false' : 'true');
       });
-      document.querySelectorAll('details.more-ports').forEach(function (d) {
-        if (openPorts[d.getAttribute('data-ports')]) d.open = true;
+      document.querySelectorAll('.tree .leaf-row').forEach(function (row) {
+        var on = mode === 'all' || filtering() || open.indexOf(row.getAttribute('data-leaves')) !== -1;
+        row.classList.toggle('open', on);
+        row.querySelector('.leaf-toggle').setAttribute('aria-expanded', on ? 'true' : 'false');
       });
+      unfilter();
+      var nothing = document.getElementById('map-nothing');
+      if (filtering()) {
+        var found = 0;
+        tree.querySelectorAll(':scope > li[data-branch]').forEach(function (li) { found += filter(li); });
+        var n = [].filter.call(tree.querySelectorAll('.map-node, .chip'), function (el) {
+          return matches(el) && el.closest('[hidden]') === null;
+        }).length;
+        nothing.hidden = found > 0;
+        count.textContent = n === 0 ? 'No matches'
+          : n + ' match' + (n === 1 ? '' : 'es') + ', and the path to ' + (n === 1 ? 'it' : 'them');
+      } else {
+        nothing.hidden = true;
+        var total = tree.querySelectorAll('.map-node, .chip').length;
+        count.textContent = total + ' device' + (total === 1 ? '' : 's') + ' on the map';
+      }
+      var p = document.getElementById('map-problem-count');
+      if (p) p.textContent = tree.querySelectorAll('.map-node[data-problem], .tree .chip[data-problem]').length;
     }
 
     document.addEventListener('click', function (event) {
-      var button = event.target.closest('.branch-toggle');
-      var all = event.target.closest('[data-fold]');
-      if (button) {
-        var id = button.closest('li').getAttribute('data-branch');
+      var t;
+      if ((t = event.target.closest('.branch-toggle'))) {
+        var id = t.closest('li').getAttribute('data-branch');
         var at = folded.indexOf(id);
         if (at === -1) folded.push(id); else folded.splice(at, 1);
-      } else if (all) {
-        folded = all.getAttribute('data-fold') === 'all'
+        save(FOLDED, folded);
+      } else if ((t = event.target.closest('[data-fold]'))) {
+        folded = t.getAttribute('data-fold') === 'all'
           ? [].map.call(document.querySelectorAll('.branch-toggle'), function (b) {
               return b.closest('li').getAttribute('data-branch');
             })
           : [];
+        save(FOLDED, folded);
+      } else if ((t = event.target.closest('.leaf-toggle'))) {
+        var group = t.closest('.leaf-row').getAttribute('data-leaves');
+        var i = open.indexOf(group);
+        if (i === -1) open.push(group); else open.splice(i, 1);
+        save(OPEN, open);
+      } else if ((t = event.target.closest('[data-mode]'))) {
+        mode = t.getAttribute('data-mode');
+        save(MODE, mode);
+      } else if (event.target.closest('#map-problems')) {
+        problems = !problems;
       } else {
         return;
       }
-      save(folded);
       apply();
     });
+    find.addEventListener('input', function () { query = find.value; apply(); });
     // toggle does not bubble: listen on the way down.
     document.addEventListener('toggle', function (event) {
       var d = event.target;
-      if (d.matches && d.matches('details.more-ports')) {
-        openPorts[d.getAttribute('data-ports')] = d.open;
-      }
+      if (d.matches && d.matches('details[data-strip]')) strips[d.getAttribute('data-strip')] = d.open;
     }, true);
     document.addEventListener('spark:live-updated', apply);
     apply();

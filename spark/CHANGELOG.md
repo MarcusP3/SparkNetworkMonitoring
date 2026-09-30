@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — a compact, searchable network map (2026-09-30)
+
+### Changed
+
+- **The network map is built to find things.** A **Find** box (name,
+  address, MAC, vendor, role, ports) keeps the matches and the path to
+  them; **Problems only** keeps what is down, degraded or not answering.
+  Both ignore folds while in use, and the count says how many matched.
+- **End devices are tiles**, in a grid under the switch or access point
+  they hang off; infrastructure stays as rows. **Infrastructure** (the
+  default) folds each group to its count ("9 devices · 1 with a problem
+  ▸"); **Everything** shows them all.
+- **Found by SNMP** and **Not placed yet** are one line each at the top
+  until opened, and stay open across Accept / Not right.
+- Unwatched ports are a count ("+6 ports") linking to that device on the
+  Services tab, instead of a list to open on each row.
+- The view, folds and opened groups are remembered in the browser; the
+  Find text and Problems only survive live refreshes. On a phone the tree
+  is indented less and tiles sit two across.
+
+### Tests
+
+`test_service_map.py`: the toolbar, tiles and their problem counts, ports
+as a count, Not placed yet as tiles; `test_topology.py` for the new strip.
+Find, Problems only, the views, remembering, and a live refresh keeping
+the Find text were checked in a browser. `pytest` and `smoke_test.py` pass.
+
 ## Unreleased — suppressed alerts leave the dashboard (2026-09-30)
 
 ### Changed

@@ -1805,3 +1805,74 @@ code.fingerprint.small { display: inline; }
 .suppress-link { color: var(--accent); text-decoration: none; }
 .suppress-link:hover { text-decoration: underline; }
 .js-supp .supp-form:not(.is-truenas) .supp-detail { display: none; }
+
+/* ---- Network map: compact (map.html) ------------------------------------ */
+/* Find, Problems only, Infrastructure / Everything. */
+.js-fold .map-toolbar { display: flex; }
+.map-toolbar { flex-wrap: wrap; align-items: center; gap: .5rem .6rem; margin-bottom: 1rem; }
+.map-toolbar input[type="search"] { flex: 1 1 16rem; min-width: 0; max-width: 24rem; padding: .45rem .7rem; }
+.problems-toggle { gap: .4rem; }
+.problems-toggle[aria-pressed="true"] { color: var(--bad); background: var(--bad-bg);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.seg button { background: none; border: 0; padding: .35rem .7rem; color: var(--text-muted); font: inherit;
+  font-size: .8125rem; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--tile-1); color: var(--accent); font-weight: 600; }
+.map-count { font-size: .8125rem; color: var(--text-muted); margin-left: auto; }
+.status-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; display: inline-block;
+  background: var(--text-muted); opacity: .55; }
+.status-dot.ok { background: var(--ok); opacity: 1; }
+.status-dot.warn { background: var(--warn); opacity: 1; }
+.status-dot.bad { background: var(--bad); opacity: 1; }
+
+/* Found by SNMP and Not placed yet: one line each until opened. */
+.card.strip { padding: 0; margin-bottom: .6rem; }
+.strip > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center;
+  gap: .3rem .6rem; padding: .6rem .9rem; font-size: .875rem; }
+.strip > summary::-webkit-details-marker { display: none; }
+.strip-chevron { width: .95rem; height: .95rem; color: var(--text-muted); margin-left: auto; transition: transform .15s; }
+.strip[open] > summary .strip-chevron { transform: rotate(180deg); }
+.strip-body { padding: .2rem .9rem .9rem; display: flex; flex-direction: column; gap: .7rem; }
+.strip-body > form { margin: 0; }
+.strip .chips { margin: 0; }
+
+/* Rows stay one line: watched ports inline, the rest a count. */
+.map-node > .pill { font-size: .6875rem; }
+.map-node .more-ports { font-size: .75rem; color: var(--text-muted); text-decoration: none; }
+.map-node .more-ports:hover { color: var(--accent); text-decoration: underline; }
+.map-node.hit .map-name { background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; padding: 0 .2rem; }
+
+/* End devices: small tiles under their parent. */
+.tree li.leaf-row { padding: .35rem 0 .25rem; }
+.chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: .35rem; }
+.chip { display: flex; align-items: center; gap: .4rem; min-width: 0; padding: .3rem .55rem;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  font-size: .8125rem; color: var(--text); text-decoration: none; }
+.chip:hover { border-color: var(--accent); }
+.chip.is-bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+.chip.is-warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.chip.hit { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-ip { margin-left: auto; font-family: var(--mono); font-size: .6875rem; color: var(--text-muted); }
+.leaf-toggle { align-items: center; gap: .3rem; background: none; border: 1px dashed var(--border);
+  border-radius: 999px; color: var(--accent); font: inherit; font-size: .75rem; padding: .15rem .65rem; cursor: pointer; }
+.leaf-toggle .chevron { width: .8rem; height: .8rem; transition: transform .15s; }
+.leaf-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+.leaf-trouble { color: var(--bad); font-weight: 600; }
+/* Infrastructure view: groups folded to their count until opened. */
+.js-fold .tree .leaf-row:not(.open) .chips { display: none; }
+.js-fold .tree .leaf-row.open .leaf-toggle { margin-bottom: .4rem; }
+.tree.show-all .leaf-toggle, .tree.filtering .leaf-toggle { display: none; }
+/* While finding, folds give way: the path to a match is always open. */
+.tree.filtering li.folded > ul { display: block; }
+.tree.filtering li.folded > .map-node .branch-count { display: none; }
+.tree.filtering li.folded > .map-node .chevron { transform: none; }
+.map-nothing { margin: .5rem 0 0; }
+@media (max-width: 640px) {
+  .tree ul { margin-left: .5rem; padding-left: .6rem; }
+  .tree ul > li::before { left: -.6rem; width: .45rem; }
+  .chips { grid-template-columns: repeat(auto-fill, minmax(6rem, 1fr)); }
+  .chip-ip { display: none; }
+  .map-count { margin-left: 0; flex-basis: 100%; }
+}

@@ -363,12 +363,29 @@ Devices page and on both devices' pages. Nothing is merged until you press
 good. The SNMP **Test** lists "Its own IP addresses" and "ARP table" when the
 device supports them.
 
-**Folding.** A device with things connected below it has a ▾ beside it:
-click to fold that branch away ("12 below ▸"), or use **Collapse all** /
-**Expand all**. What you fold is remembered in that browser. Ports: the ones
-you watch with a target show on each device; the rest are folded under their
-count ("+6 more") and open on a click. The **Services** tab still lists
-every one.
+**Finding things.** The map is built to be read without scrolling past
+everything:
+
+- **Find** (the box above the map) matches a device's name, address, MAC,
+  vendor, role, or any of its ports ("plex", "192.168.1.4", "445"). It
+  keeps the matches and the path down to them, and highlights the match.
+- **Problems only** keeps devices that are down, degraded or not answering,
+  or with a watched port that is, and the path to them.
+- **Infrastructure / Everything.** Gateways, switches, access points and
+  servers are rows. The end devices under each (phones, laptops, cameras)
+  are small tiles in a grid: in **Infrastructure**, the default, folded to
+  a count ("9 devices · 1 with a problem ▸") that opens on a click; in
+  **Everything**, all shown.
+- **Folding.** A device with things below it has a ▾: fold that branch
+  away ("12 below ▸"), or **Collapse all** / **Expand all**. Finding
+  ignores folds while it is in use.
+- **Found by SNMP** and **Not placed yet** are one line each at the top
+  until opened.
+- Ports: the ones you watch with a target show on each device; the rest
+  are a count ("+6 ports") linking to them on the **Services** tab.
+
+Folds, the view and opened groups are remembered in that browser. Without
+JavaScript every branch and device simply shows.
 
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a

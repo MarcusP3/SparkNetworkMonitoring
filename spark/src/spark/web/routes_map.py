@@ -36,6 +36,7 @@ async def network_map(
         request,
         "map.html",
         {"config": config, "user": user, "title": "Network map", "map": result,
+         "problems": sum(1 for n in _placed(result) if n.problem),
          "discovery": discovery, "suggested": suggested,
          "mode": await topology.get_mode(session),
          "accepted": _count(accepted), "wiped": _count(wiped)},
@@ -59,6 +60,15 @@ async def services_page(
         {"config": config, "user": user, "title": "Services", "map": result, "q": query,
          "total": sum(len(n.services) for n in _nodes(result))},
     )
+
+
+def _placed(result: servicemap.ServiceMap):  # type: ignore[no-untyped-def]
+    """Every node on the map itself, not the unplaced list."""
+    stack = list(result.roots)
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(node.children)
 
 
 def _nodes(result: servicemap.ServiceMap):  # type: ignore[no-untyped-def]

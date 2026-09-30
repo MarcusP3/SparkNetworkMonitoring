@@ -424,7 +424,8 @@ def flat(html: str) -> str:
 class TestPages:
     def test_the_map_lists_them(self, site):
         page = flat(site.get("/map").text)
-        assert '<section class="card suggest-card" id="suggested">' in page
+        assert '<details class="card strip suggest-card" id="suggested" data-strip="suggested">' in page
+        assert '<span class="pill neutral">4</span> <strong>Found by SNMP</strong>' in page
         assert "Accept all 4" in page
         assert ('<a href="/devices/7">phone</a> → <a href="/devices/6">ap-hall</a>' in page)
         assert "Seen: behind ap-hall on office-switch, Port 8." in page
