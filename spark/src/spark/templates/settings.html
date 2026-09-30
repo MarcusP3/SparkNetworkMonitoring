@@ -1152,7 +1152,7 @@
     {% endif %}
 
     <h3 class="sub-title" id="add">Add or change one</h3>
-    <form method="post" action="/settings/suppressions" class="supp-form">
+    <form method="post" action="/settings/suppressions" class="supp-form{% if f.rule == 'truenas_alerts' %} is-truenas{% endif %}">
       <label class="stack-field"><span class="muted small">Device</span>
         <select name="device_id" required>
           <option value="">Choose a device</option>
@@ -1161,7 +1161,7 @@
           {% endfor %}
         </select></label>
       <label class="stack-field"><span class="muted small">Alert</span>
-        <select name="rule" required>
+        <select name="rule" class="supp-rule" required>
           {% for r in supp.rules %}
           <option value="{{ r.key }}" {% if f.rule == r.key %}selected{% endif %}>{{ r.label }}{% if r.line is not none %} (everywhere: {{ r.line }}{{ r.unit }}){% endif %}</option>
           {% endfor %}
@@ -1173,7 +1173,7 @@
           <input type="number" name="threshold" min="1" max="120" value="{{ f.threshold or '' }}" aria-label="Its own line"></label>
         <span class="muted small">A line applies to CPU, memory, temperature, port traffic, pool and disk space, and drive temperature. The rest can only be off.</span>
       </fieldset>
-      <label class="stack-field"><span class="muted small">TrueNAS alert type (TrueNAS alerts only)</span>
+      <label class="stack-field supp-detail"><span class="muted small">TrueNAS alert type</span>
         <input type="text" name="detail" maxlength="64" list="truenas-classes" value="{{ f.detail or '' }}" placeholder="Empty: every TrueNAS alert" autocomplete="off">
         <datalist id="truenas-classes">{% for c in supp.classes %}<option value="{{ c }}">{% endfor %}</datalist></label>
       <div class="form-actions">
@@ -1316,6 +1316,19 @@
     if (!box || !field) return;
     function sync() { field.classList.toggle('dimmed', !box.checked); }
     box.addEventListener('change', sync);
+    sync();
+  })();
+
+  // Suppressions: the TrueNAS alert type only when the alert is "A TrueNAS
+  // alert". Hidden with a class on <html>, so with JS off it simply shows and
+  // the server ignores it for any other alert.
+  (function () {
+    var form = document.querySelector('.supp-form');
+    if (!form) return;
+    document.documentElement.classList.add('js-supp');
+    var rule = form.querySelector('.supp-rule');
+    function sync() { form.classList.toggle('is-truenas', rule.value === 'truenas_alerts'); }
+    rule.addEventListener('change', sync);
     sync();
   })();
 

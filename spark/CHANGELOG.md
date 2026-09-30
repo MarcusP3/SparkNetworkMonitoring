@@ -14,6 +14,8 @@
 - Fully quiet: no Discord message and no incident. Saving or removing one
   starts that rule afresh for that device, so an alert standing at the time
   closes as "suppressed" instead of hanging on below a raised line.
+- The TrueNAS alert type field shows only when the alert chosen is "A
+  TrueNAS alert".
 - A **Suppress** link beside each alert on the dashboard's Recent
   incidents, which opens the form filled in with that device and rule (and
   the TrueNAS alert type).

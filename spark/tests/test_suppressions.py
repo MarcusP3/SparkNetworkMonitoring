@@ -160,6 +160,11 @@ class TestPage:
         assert "Nothing suppressed." in page
         assert '<option value="1" selected>core-switch — 10.0.0.2</option>' in page
         assert '<option value="memory" selected>Memory (everywhere: 90%)</option>' in page
+        assert '<form method="post" action="/settings/suppressions" class="supp-form">' in page
+        assert '<label class="stack-field supp-detail">' in page, "there with JS off; hidden by class"
+        assert "document.documentElement.classList.add('js-supp')" in page
+        page = flat(site.get("/settings/suppressions?device=1&rule=truenas_alerts").text)
+        assert '<form method="post" action="/settings/suppressions" class="supp-form is-truenas">' in page
 
     def test_save_list_and_remove(self, site):
         response = site.post("/settings/suppressions", data={

@@ -1804,3 +1804,4 @@ code.fingerprint.small { display: inline; }
 .supp-table td:nth-child(2) { overflow-wrap: anywhere; }
 .suppress-link { color: var(--accent); text-decoration: none; }
 .suppress-link:hover { text-decoration: underline; }
+.js-supp .supp-form:not(.is-truenas) .supp-detail { display: none; }
