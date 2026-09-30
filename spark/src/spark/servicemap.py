@@ -34,7 +34,10 @@ ROLE_ORDER = list(ROLE_LABELS)
 _SEVERITY = [HealthStatus.DOWN, HealthStatus.DEGRADED, HealthStatus.UNKNOWN,
              HealthStatus.UP, HealthStatus.PAUSED]
 
-INFRA_ROLES = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HOST}
+# Rows on the map; every other role is a tile under its parent. A NAS and a
+# UPS are infrastructure; a camera is an end device like a phone.
+INFRA_ROLES = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HOST,
+               DeviceRole.NAS, DeviceRole.UPS}
 PROBLEM = {"bad", "warn"}
 
 # Status colours only for real statuses (brand spec): up, degraded, down.

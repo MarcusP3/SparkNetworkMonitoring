@@ -294,7 +294,8 @@ its status and a **Watch** button for the ones not watched yet. An old
 `/map?q=…` link goes there. The dashboard's Services tile opens it too.
 
 **Placing a device** is done on its own page, in the **On the network map**
-card: a **Role** (gateway, switch, access point, server, client) and
+card: a **Role** (gateway, switch, access point, server, NAS, UPS, client,
+camera) and
 **Connected to** (the device it is plugged into). Set it for your handful of
 infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be

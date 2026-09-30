@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — NAS, UPS and camera roles (2026-09-30)
+
+### Added
+
+- **Three more device roles**: NAS, UPS and Camera, each with its own icon
+  on the map, chosen on a device's page like the others. A NAS and a UPS
+  are rows on the map, like a server; a camera is a tile, like a phone. A
+  NAS also counts as something devices can sit behind on a switch port
+  (its apps and VMs) when the map is read from SNMP.
+- Stored as text, so no migration.
+
+### Tests
+
+2 new (`test_service_map.py`, `test_topology.py`).
+
 ## Unreleased — a compact, searchable network map (2026-09-30)
 
 ### Changed

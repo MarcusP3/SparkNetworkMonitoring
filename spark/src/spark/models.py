@@ -150,6 +150,11 @@ class DeviceRole(enum.StrEnum):
     CLIENT = "client"
     UNKNOWN = "unknown"
     ACCESS_POINT = "access_point"
+    # Stored as text (enum_column, no CHECK constraint): new members need no
+    # migration.
+    NAS = "nas"
+    UPS = "ups"
+    CAMERA = "camera"
 
 
 # How each role reads on a page, in the order the service map sorts siblings:
@@ -159,7 +164,10 @@ ROLE_LABELS: dict[DeviceRole, str] = {
     DeviceRole.SWITCH: "Switch",
     DeviceRole.ACCESS_POINT: "Access point",
     DeviceRole.HOST: "Server",
+    DeviceRole.NAS: "NAS",
+    DeviceRole.UPS: "UPS",
     DeviceRole.CLIENT: "Client device",
+    DeviceRole.CAMERA: "Camera",
     DeviceRole.UNKNOWN: "Not set",
 }
 

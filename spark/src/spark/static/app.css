@@ -1876,3 +1876,5 @@ code.fingerprint.small { display: inline; }
   .chip-ip { display: none; }
   .map-count { margin-left: 0; flex-basis: 100%; }
 }
+.chip-icon { display: inline-flex; color: var(--text-muted); flex: none; }
+.chip-icon .icon { width: .9rem; height: .9rem; }

@@ -509,3 +509,9 @@ def test_migration_12_from_a_version_11_database():
     assert run(shape(True)) == run(shape(False))
     assert run(shape(False))[1] == D.CURRENT_VERSION >= 12
     assert run(shape(False))[2] == {"pairs": []}
+
+
+def test_a_nas_can_have_things_behind_it_a_camera_or_ups_cannot():
+    from spark import topology
+    assert DeviceRole.NAS in topology.INFRA_ROLES
+    assert DeviceRole.CAMERA not in topology.INFRA_ROLES and DeviceRole.UPS not in topology.INFRA_ROLES

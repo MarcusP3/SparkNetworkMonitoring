@@ -5,6 +5,9 @@
 {%- elif role == 'switch' -%}<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h.01"/>
 {%- elif role == 'access_point' -%}<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/>
 {%- elif role == 'host' -%}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>
+{%- elif role == 'nas' -%}<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M8 6h.01M8 12h.01M8 18h.01"/>
+{%- elif role == 'ups' -%}<rect x="3" y="7" width="16" height="10" rx="2"/><path d="M22 11v2M12 9l-2 3.5h3L11 15"/>
+{%- elif role == 'camera' -%}<path d="M3 7h11l3 3v1H3z"/><path d="M17 8.5 21 7v5l-4-1.5M8 11v3M5 17h6"/>
 {%- elif role == 'client' -%}<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/>
 {%- else -%}<circle cx="12" cy="12" r="4"/>
 {%- endif -%}
@@ -18,6 +21,7 @@
    data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}
    title="{{ n.device.display_name }}{% if n.device.primary_ip %} — {{ n.device.primary_ip }}{% endif %} — {{ n.state.label }}{% if n.services %} — {{ n.services | length }} port{{ 's' if n.services | length != 1 }}{% endif %}">
   <span class="status-dot {{ n.state.kind }}" aria-hidden="true"></span>
+  {% if n.device.role not in ('client', 'unknown') %}<span class="chip-icon" title="{{ n.role }}">{{ role_icon(n.device.role) }}</span>{% endif %}
   <span class="chip-name">{{ n.device.display_name }}</span>
   {% if n.device.primary_ip %}<span class="chip-ip">{{ n.device.primary_ip.rsplit('.', 1)[-1] if '.' in n.device.primary_ip else '' }}</span>{% endif %}
   <span class="visually-hidden">{{ n.state.label }}</span>

@@ -377,6 +377,31 @@ class TestPages:
         page = " ".join(site.get("/map").text.split())
         assert re.search(r'<div class="map-node" data-find="nas [^"]*" data-problem>', page)
 
+    def test_nas_ups_and_camera(self, site):
+        page = " ".join(site.get("/devices/4").text.split())
+        assert re.search(r'<option value="host" ?>Server</option> <option value="nas" ?>NAS</option> '
+                         r'<option value="ups" ?>UPS</option> <option value="client" ?>Client device</option> '
+                         r'<option value="camera" ?>Camera</option>', page)
+        for device_id, role, parent in ((3, "nas", "2"), (4, "camera", "2")):
+            response = site.post(f"/devices/{device_id}/place", data={
+                "role": role, "parent_id": parent, "back": f"/devices/{device_id}"})
+            assert response.status_code == 303
+        assert _device(3).role == DeviceRole.NAS and _device(4).role == DeviceRole.CAMERA
+
+        async def ups():
+            async with D.session_scope() as s:
+                s.add(Device(mac="aa:bb:cc:00:00:10", primary_ip="10.0.0.30", friendly_name="ups",
+                             role=DeviceRole.UPS, parent_device_id=2, last_seen=utcnow()))
+        run(ups())
+        page = " ".join(site.get("/map").text.split())
+        tree = page[page.index('<ul class="tree">'):]
+        # A NAS and a UPS are rows; a camera is a tile.
+        assert re.search(r'<li data-branch="3"> <div class="map-node" data-find="nas [^"]* nas smb', tree)
+        assert re.search(r'<li data-branch="6"> <div class="map-node" data-find="ups 10.0.0.30 [^"]* ups"', tree)
+        assert re.search(r'<a href="/devices/4" class="chip" data-find="laptop 10.0.0.50 [^"]* camera http-alt 8080"', tree)
+        assert '<span class="muted small">NAS</span>' in tree and '<span class="muted small">UPS</span>' in tree
+        assert tree.index('data-branch="3"') < tree.index('data-branch="6"'), "NAS before UPS"
+
     def test_not_placed_is_one_line_of_tiles(self, site):
         page = " ".join(site.get("/map").text.split())
         assert '<details class="card strip unplaced" data-strip="unplaced">' in page
