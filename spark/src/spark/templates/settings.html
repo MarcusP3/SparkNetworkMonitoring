@@ -1268,8 +1268,15 @@
           <label class="stack-field"><span class="muted small">Device</span>{{ device_select(r.device_id) }}</label>
           <label class="stack-field"><span class="muted small">Address</span>
             <input type="text" name="host" maxlength="255" value="{{ r.host }}" autocomplete="off"></label>
-          <label class="stack-field"><span class="muted small">{{ 'API token' if r.kind == 'proxmox' else 'API key' }}</span>
+          {% if r.kind == 'proxmox' %}
+          <label class="stack-field"><span class="muted small">Token ID</span>
+            <input type="text" name="token_id" maxlength="128" autocomplete="off" spellcheck="false" placeholder="Saved — leave empty to keep it"></label>
+          <label class="stack-field"><span class="muted small">Secret</span>
             <input type="password" name="api_key" maxlength="1024" autocomplete="new-password" placeholder="Saved — leave empty to keep it"></label>
+          {% else %}
+          <label class="stack-field"><span class="muted small">API key</span>
+            <input type="password" name="api_key" maxlength="1024" autocomplete="new-password" placeholder="Saved — leave empty to keep it"></label>
+          {% endif %}
           <p class="muted small">A new address or key forgets the trusted certificate; Test and trust it again.</p>
           <button type="submit" class="btn-quiet">Save {{ r.name }}</button>
         </form>
@@ -1279,29 +1286,32 @@
 
     <details class="add-cred" {% if not creds.rows or cred_form %}open{% endif %}>
       <summary class="sub-title">Add a credential</summary>
-      <form method="post" action="/settings/credentials" class="cred-form">
+      <form method="post" action="/settings/credentials" class="cred-form add-cred-form{% if cred_form.kind == 'proxmox' %} is-proxmox{% endif %}">
         <label class="stack-field"><span class="muted small">Kind</span>
-          <select name="kind">
+          <select name="kind" class="cred-kind">
             {% for value, label in creds.kinds %}<option value="{{ value }}" {% if cred_form.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
           </select></label>
         <label class="stack-field"><span class="muted small">Name</span>
-          <input type="text" name="name" maxlength="64" required value="{{ cred_form.name or '' }}" placeholder="truenas"></label>
+          <input type="text" name="name" maxlength="64" required value="{{ cred_form.name or '' }}" placeholder="What SPARK calls it"></label>
         <label class="stack-field"><span class="muted small">Device</span>{{ device_select(cred_form.device_id) }}</label>
         <label class="stack-field"><span class="muted small">Address <em class="optional">if not the device's</em></span>
           <input type="text" name="host" maxlength="255" value="{{ cred_form.host or '' }}" placeholder="192.168.1.20 or truenas.lan" autocomplete="off"></label>
-        <label class="stack-field"><span class="muted small">API key or token</span>
+        <label class="stack-field for-proxmox"><span class="muted small">Token ID</span>
+          <input type="text" name="token_id" maxlength="128" value="{{ cred_form.token_id or '' }}" placeholder="spark@pve!monitor" autocomplete="off" spellcheck="false"></label>
+        <label class="stack-field"><span class="muted small"><span class="for-truenas">API key</span><span class="for-proxmox">Secret</span></span>
           <input type="password" name="api_key" maxlength="1024" required autocomplete="new-password"></label>
-        <p class="muted small">
+        <p class="muted small for-truenas">
           For TrueNAS: a key for a user with the Read-Only Administrator role is all SPARK
           needs. TrueNAS revokes a key sent over plain HTTP.
         </p>
-        <p class="muted small">
-          For Proxmox: an API token with the PVEAuditor role on <code>/</code>, pasted whole as
-          <code>USER@REALM!TOKENID=SECRET</code> (for example <code>spark@pve!monitor=…</code>).
-          PVEAuditor can read but change nothing. Port 8006 unless the address says otherwise.
+        <p class="muted small for-proxmox">
+          For Proxmox: the <strong>Token ID</strong> and <strong>Secret</strong> exactly as Proxmox
+          showed them when the token was made (Datacenter → Permissions → API Tokens lists the
+          ID; the secret is shown only once). The token needs the PVEAuditor role on <code>/</code>,
+          which can read but change nothing. Port 8006 unless the address says otherwise.
         </p>
         <p class="muted small">
-          Either is only ever sent over HTTPS, and only after you have trusted the certificate.
+          The key or secret is only ever sent over HTTPS, and only after you have trusted the certificate.
           Saving tests the connection straight away without sending it, to show you that certificate.
         </p>
         <button type="submit" class="btn-primary">Add credential</button>
@@ -1331,6 +1341,19 @@
     if (!box || !field) return;
     function sync() { field.classList.toggle('dimmed', !box.checked); }
     box.addEventListener('change', sync);
+    sync();
+  })();
+
+  // Credentials: the Token ID and Proxmox's words only for Proxmox, the
+  // TrueNAS words only for TrueNAS. With JS off everything shows and the
+  // server ignores a token ID for TrueNAS.
+  (function () {
+    var form = document.querySelector('.add-cred-form');
+    if (!form) return;
+    document.documentElement.classList.add('js-cred');
+    var kind = form.querySelector('.cred-kind');
+    function sync() { form.classList.toggle('is-proxmox', kind.value === 'proxmox'); }
+    kind.addEventListener('change', sync);
     sync();
   })();
 

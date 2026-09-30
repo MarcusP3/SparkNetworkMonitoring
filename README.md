@@ -787,10 +787,12 @@ with an API token, and only ever with GET.
    ```
 
    The third command shows the token's secret once.
-2. In SPARK, Settings → Credentials → **Add a credential**: Proxmox, a name,
-   the device, and the token pasted whole as `USER@REALM!TOKENID=SECRET` —
-   for the commands above, `spark@pve!monitor=` followed by the secret. Port
-   8006 is assumed; give `address:port` for another.
+2. In SPARK, Settings → Credentials → **Add a credential**: Proxmox, a name
+   (SPARK's own label), the device, and the **Token ID** and **Secret** as
+   Proxmox showed them — for the commands above, `spark@pve!monitor` and the
+   secret. A whole `USER@REALM!TOKENID=SECRET` pasted as the secret works
+   too. On an edit, either half left empty keeps the saved one. Port 8006 is
+   assumed; give `address:port` for another.
 3. Compare the fingerprint SPARK shows with the node → System → Certificates
    (`pveproxy-ssl.pem` if there is one, otherwise `pve-ssl.pem`), or run
    `pvenode cert info` on the host, and press **Trust this certificate**.

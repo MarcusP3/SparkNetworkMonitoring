@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Proxmox token in two fields (2026-09-30)
+
+### Changed
+
+- **Adding a Proxmox credential asks for the Token ID and the Secret
+  separately**, as Proxmox shows them when a token is made, instead of one
+  `USER@REALM!TOKENID=SECRET` string. A whole token pasted as the secret
+  still works. The Token ID field and Proxmox's instructions show only when
+  Proxmox is chosen (TrueNAS's only for TrueNAS). On an edit, either half
+  left empty keeps the saved one. Errors say which half is wrong, and the
+  Token ID typed is kept on the form (the secret never is).
+- The Name placeholder says it is SPARK's own label.
+
+### Tests
+
+10 new (`test_proxmox.py`).
+
 ## Unreleased — Proxmox over its API (2026-09-30)
 
 ### Added

@@ -17,9 +17,11 @@ router = APIRouter()
 PAGE = "/settings/credentials"
 
 
-def _form(kind: str, name: str, device_id: str, host: str) -> dict:
-    """What was typed, to put back on the page after an error. Never the key."""
-    return {"kind": kind, "name": name, "device_id": device_id, "host": host}
+def _form(kind: str, name: str, device_id: str, host: str, token_id: str = "") -> dict:
+    """What was typed, to put back on the page after an error. Never the key
+    or secret; a Proxmox token ID is only a name, and goes back."""
+    return {"kind": kind, "name": name, "device_id": device_id, "host": host,
+            "token_id": token_id}
 
 
 @router.post("/settings/credentials")
@@ -29,6 +31,7 @@ async def add_credential(
     name: str = Form("", max_length=limits.NAME),
     device_id: str = Form("", max_length=limits.SHORT),
     host: str = Form("", max_length=limits.ADDRESS),
+    token_id: str = Form("", max_length=limits.NAME * 2),
     api_key: str = Form("", max_length=limits.SECRET),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
@@ -37,10 +40,11 @@ async def add_credential(
     try:
         row = await credentials.add(session, vault_for(config), kind=kind, name=name,
                                     device_id=limits.as_id(device_id) if device_id.strip() else None,
-                                    host=host, api_key=api_key)
+                                    host=host, api_key=api_key, token_id=token_id)
     except credentials.CredentialError as exc:
         return await _render(request, session, config, user, section="credentials",
-                             cred_error=str(exc), cred_form=_form(kind, name, device_id, host),
+                             cred_error=str(exc),
+                             cred_form=_form(kind, name, device_id, host, token_id),
                              status_code=400)
     # Straight to a Test: it fetches the certificate (sending nothing) so
     # the page can ask for it to be trusted.
@@ -56,6 +60,7 @@ async def edit_credential(
     name: str = Form("", max_length=limits.NAME),
     device_id: str = Form("", max_length=limits.SHORT),
     host: str = Form("", max_length=limits.ADDRESS),
+    token_id: str = Form("", max_length=limits.NAME * 2),
     api_key: str = Form("", max_length=limits.SECRET),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
@@ -67,7 +72,7 @@ async def edit_credential(
     try:
         await credentials.update(session, vault_for(config), row, name=name,
                                  device_id=limits.as_id(device_id) if device_id.strip() else None,
-                                 host=host, api_key=api_key)
+                                 host=host, api_key=api_key, token_id=token_id)
     except credentials.CredentialError as exc:
         await session.rollback()
         return await _render(request, session, config, user, section="credentials",

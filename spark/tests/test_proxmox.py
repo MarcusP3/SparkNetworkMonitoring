@@ -225,6 +225,35 @@ class TestToken:
             proxmox.check_token(raw)
 
 
+TOKEN_ID, SECRET = GOOD.split("=")
+
+
+class TestTwoFields:
+    """The Token ID and Secret, as Proxmox shows them when a token is made."""
+
+    def test_joined(self):
+        assert proxmox.join_token(TOKEN_ID, SECRET) == GOOD
+        assert proxmox.join_token(f" {TOKEN_ID} ", f" {SECRET}\n") == GOOD
+        assert proxmox.split_token(GOOD) == (TOKEN_ID, SECRET)
+
+    def test_a_whole_token_in_the_secret_field_is_fine(self):
+        assert proxmox.join_token("", GOOD) == GOOD
+        assert proxmox.join_token(TOKEN_ID, GOOD) == GOOD
+        with pytest.raises(ValueError, match="different token ID"):
+            proxmox.join_token("root@pam!other", GOOD)
+
+    @pytest.mark.parametrize("token_id, secret, why", [
+        ("", SECRET, "Enter the token ID as well"),
+        ("spark@pve", SECRET, "is not a token ID"),
+        ("monitor", SECRET, "is not a token ID"),
+        (TOKEN_ID, "", "Paste the token's secret"),
+        (TOKEN_ID, "a b", "not a token secret"),
+    ])
+    def test_refused(self, token_id, secret, why):
+        with pytest.raises(ValueError, match=why):
+            proxmox.join_token(token_id, secret)
+
+
 class TestHosts:
     def test_default_port_8006(self):
         assert proxmox.split_host("192.168.1.30") == ("192.168.1.30", 8006)
@@ -412,13 +441,27 @@ def states():  # type: ignore[no-untyped-def]
 
 
 class TestCredential:
-    def test_a_half_token_is_refused_on_add(self, db):
+    def test_a_secret_without_its_id_is_refused_on_add(self, db):
         async def go():  # type: ignore[no-untyped-def]
             async with D.session_scope() as s:
                 await credentials.add(s, vault_for(db), kind="proxmox", name="pve", device_id=1,
-                                      host="", api_key="0b8e3c2a-1111-2222-3333-444455556666")
-        with pytest.raises(credentials.CredentialError, match="Paste the whole token"):
+                                      host="", api_key=SECRET)
+        with pytest.raises(credentials.CredentialError, match="Enter the token ID as well"):
             run(go())
+
+    def test_two_fields_are_stored_as_one_token(self, db, fake):
+        ident = run(_trusted(db, fake.host, api_key=SECRET, token_id=TOKEN_ID))
+        assert vault_for(db).open(run(_row(ident)).key_sealed) == GOOD
+        assert credentials.state(run(_row(ident))) == "ok"
+
+    def test_a_token_id_on_truenas_is_ignored(self, db):
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                row = await credentials.add(s, vault_for(db), kind="truenas", name="nas",
+                                            device_id=1, host="", api_key="1-key",
+                                            token_id="x@y!z")
+                return vault_for(db).open(row.key_sealed)
+        assert run(go()) == "1-key"
 
     def test_add_trust_and_read(self, db, fake):
         ident = run(_trusted(db, fake.host))
@@ -438,15 +481,22 @@ class TestCredential:
     def test_a_blank_key_on_edit_keeps_it_a_bad_one_is_refused(self, db, fake):
         ident = run(_trusted(db, fake.host))
 
-        async def edit(key):  # type: ignore[no-untyped-def]
+        async def edit(key, token_id=""):  # type: ignore[no-untyped-def]
             async with D.session_scope() as s:
                 row = await s.get(ApiCredential, ident)
                 await credentials.update(s, vault_for(db), row, name="pve", device_id=1,
-                                         host=fake.host, api_key=key)
+                                         host=fake.host, api_key=key, token_id=token_id)
         run(edit(""))
         assert run(_row(ident)).cert_sha256 == fake.fingerprint
         with pytest.raises(credentials.CredentialError):
-            run(edit("nonsense"))
+            run(edit("a b"))
+        # Either half alone keeps the other from the saved token.
+        run(edit("new-secret"))
+        assert vault_for(db).open(run(_row(ident)).key_sealed) == f"{TOKEN_ID}=new-secret"
+        run(edit("", token_id="root@pam!spark"))
+        assert vault_for(db).open(run(_row(ident)).key_sealed) == "root@pam!spark=new-secret"
+        with pytest.raises(credentials.CredentialError, match="is not a token ID"):
+            run(edit("", token_id="nonsense"))
 
 
 class TestAlerts:
@@ -623,12 +673,32 @@ class TestPages:
         assert '<span class="pill ok dot">connected</span> Proxmox 9.1.8 · pve1' in page
         assert GOOD not in page and GOOD.split("=")[1] not in page
 
-    def test_a_half_token_says_why(self, site):
+    def test_a_missing_token_id_says_why_and_keeps_what_was_typed(self, site):
+        response = site.post("/settings/credentials", data={
+            "kind": "proxmox", "name": "pve", "device_id": "1", "host": "", "api_key": SECRET})
+        assert response.status_code == 400 and "Enter the token ID as well" in response.text
+        assert SECRET not in response.text
         response = site.post("/settings/credentials", data={
             "kind": "proxmox", "name": "pve", "device_id": "1", "host": "",
-            "api_key": "0b8e3c2a-1111-2222-3333-444455556666"})
-        assert response.status_code == 400 and "USER@REALM!TOKENID=SECRET" in response.text
-        assert "0b8e3c2a-1111" not in response.text
+            "token_id": "spark@pve", "api_key": SECRET})
+        page = flat(response.text)
+        assert "is not a token ID" in page and 'value="spark@pve"' in page and SECRET not in page
+        assert 'class="cred-form add-cred-form is-proxmox"' in page
+
+    def test_the_two_fields_from_the_page(self, site, fake):
+        page = flat(site.get("/settings/credentials").text)
+        assert ('<label class="stack-field for-proxmox"><span class="muted small">Token ID</span>'
+                in page)
+        assert '<span class="for-truenas">API key</span><span class="for-proxmox">Secret</span>' in page
+        response = site.post("/settings/credentials", data={
+            "kind": "proxmox", "name": "pve", "device_id": "1", "host": fake.host,
+            "token_id": TOKEN_ID, "api_key": SECRET})
+        assert response.status_code == 303
+        site.post("/settings/credentials/1/trust", data={"fingerprint": fake.fingerprint})
+        page = flat(site.get("/settings/credentials").text)
+        assert '<span class="pill ok dot">connected</span> Proxmox 9.1.8' in page
+        assert '<span class="muted small">Token ID</span>' in page, "on the edit form too"
+        assert SECRET not in page
 
     def test_the_card_and_watching(self, site, db, fake):
         fake.answers["/nodes/pve1/disks/list"] = _disks(**{"/dev/sda": "FAILED"})

@@ -127,27 +127,38 @@ async def _name(session: AsyncSession, name: str, *, not_id: int | None = None) 
     return name
 
 
-def _key(kind: str, raw: str) -> str:
-    """The key as it will be sent. A Proxmox token must be whole."""
+def _key(kind: str, raw: str, token_id: str = "", saved: str | None = None) -> str:
+    """The key as it will be sent; empty for "keep the saved one".
+
+    Proxmox asks for two fields, the Token ID and the Secret, as Proxmox
+    shows them when the token is made; they are joined here. On an edit, the
+    one left empty is taken from the saved token."""
     key = (raw or "").strip()
-    if key and kind == "proxmox":
-        try:
-            return proxmox.check_token(key)
-        except ValueError as exc:
-            raise CredentialError(str(exc)) from None
-    return key
+    if kind != "proxmox":
+        return key
+    token_id = (token_id or "").strip()
+    if not key and not token_id:
+        return ""
+    if saved is not None:
+        old_id, old_secret = proxmox.split_token(saved)
+        token_id, key = token_id or old_id, key or old_secret
+    try:
+        return proxmox.join_token(token_id, key)
+    except ValueError as exc:
+        raise CredentialError(str(exc)) from None
 
 
 async def add(session: AsyncSession, vault: Vault, *, kind: str, name: str,
-              device_id: int | None, host: str, api_key: str) -> ApiCredential:
+              device_id: int | None, host: str, api_key: str,
+              token_id: str = "") -> ApiCredential:
     if kind not in KINDS:
         raise CredentialError("Choose what kind of API this is.")
     name = await _name(session, name)
     device = await _device(session, device_id)
     address = clean_host(host or (device.primary_ip if device else "") or "")
-    key = _key(kind, api_key)
+    key = _key(kind, api_key, token_id)
     if not key:
-        raise CredentialError("Paste the API token." if kind == "proxmox" else "Paste the API key.")
+        raise CredentialError("Paste the API key.")
     row = ApiCredential(kind=kind, name=name, device_id=device.id if device else None,
                         host=address, key_sealed=vault.seal(key))
     session.add(row)
@@ -156,13 +167,20 @@ async def add(session: AsyncSession, vault: Vault, *, kind: str, name: str,
 
 
 async def update(session: AsyncSession, vault: Vault, row: ApiCredential, *, name: str,
-                 device_id: int | None, host: str, api_key: str) -> None:
+                 device_id: int | None, host: str, api_key: str, token_id: str = "") -> None:
     """A blank key keeps the saved one. A new address forgets the trusted
     certificate; so does a new key, since it may be for another box."""
     row.name = await _name(session, name, not_id=row.id)
     device = await _device(session, device_id)
     address = clean_host(host or (device.primary_ip if device else "") or "")
-    key = _key(row.kind, api_key)
+    saved = None
+    if row.kind == "proxmox" and bool((api_key or "").strip()) != bool((token_id or "").strip()):
+        try:
+            saved = vault.open(row.key_sealed)
+        except SecretUnavailable:
+            raise CredentialError("The saved token cannot be read any more: enter both the "
+                                  "token ID and the secret.") from None
+    key = _key(row.kind, api_key, token_id, saved)
     if address != row.host or key:
         row.cert_sha256 = row.pending_sha256 = None
         row.last_ok_at = row.last_info = row.readings = None

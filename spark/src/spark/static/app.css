@@ -1818,6 +1818,13 @@ code.fingerprint.small { display: inline; }
 .suppress-link { color: var(--accent); text-decoration: none; }
 .suppress-link:hover { text-decoration: underline; }
 .js-supp .supp-form:not(.is-truenas) .supp-detail { display: none; }
+/* Add a credential: Proxmox's Token ID and words only for Proxmox. With JS
+   off both show, and the key's label reads "API key Secret" -- so the pair
+   gets a slash between them there. */
+.add-cred-form .for-truenas + .for-proxmox::before { content: " / "; }
+.js-cred .add-cred-form:not(.is-proxmox) .for-proxmox { display: none; }
+.js-cred .add-cred-form.is-proxmox .for-truenas { display: none; }
+.js-cred .add-cred-form .for-truenas + .for-proxmox::before { content: none; }
 
 /* ---- Network map: compact (map.html) ------------------------------------ */
 /* Find, Problems only, Infrastructure / Everything. */

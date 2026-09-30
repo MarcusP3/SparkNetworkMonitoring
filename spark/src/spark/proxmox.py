@@ -55,6 +55,7 @@ MAX_BODY = 16 * 1024 * 1024
 # USER@REALM!TOKENID=SECRET. The secret is a UUID today; anything without
 # spaces is let through, in case that changes.
 TOKEN = re.compile(r"^[^\s@!=]+@[^\s@!=]+![A-Za-z][A-Za-z0-9._-]*=\S+$")
+TOKEN_ID = re.compile(r"^[^\s@!=]+@[^\s@!=]+![A-Za-z][A-Za-z0-9._-]*$")
 
 
 class ProxmoxError(Exception):
@@ -95,6 +96,36 @@ def check_token(raw: str) -> str:
             "Paste the whole token: USER@REALM!TOKENID=SECRET, for example "
             "spark@pve!monitor=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
     return token
+
+
+def join_token(token_id: str, secret: str) -> str:
+    """The Token ID and Secret as Proxmox shows them when a token is made,
+    joined for the header. A whole token pasted as the secret is fine too.
+    ValueError says what is wrong, for a person."""
+    token_id, secret = (token_id or "").strip(), (secret or "").strip()
+    if TOKEN.match(secret.removeprefix("PVEAPIToken=")):
+        whole = check_token(secret)
+        if token_id and not whole.startswith(f"{token_id}="):
+            raise ValueError("The secret pasted is a whole token for a different token ID.")
+        return whole
+    if not token_id:
+        raise ValueError("Enter the token ID as well, for example spark@pve!monitor.")
+    if not TOKEN_ID.match(token_id):
+        raise ValueError(
+            f"{token_id!r} is not a token ID. It is the user, then ! and the token's name, "
+            "for example spark@pve!monitor (Datacenter → Permissions → API Tokens lists it).")
+    if not secret:
+        raise ValueError("Paste the token's secret.")
+    if any(c.isspace() for c in secret) or "=" in secret:
+        raise ValueError("That is not a token secret. It looks like "
+                         "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.")
+    return f"{token_id}={secret}"
+
+
+def split_token(token: str) -> tuple[str, str]:
+    """(token ID, secret) from a whole token."""
+    token_id, _, secret = token.partition("=")
+    return token_id, secret
 
 
 def split_host(host: str) -> tuple[str, int]:
