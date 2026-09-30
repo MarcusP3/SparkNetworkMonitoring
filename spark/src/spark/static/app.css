@@ -1557,6 +1557,9 @@ html.js-snmp .snmp-form.is-v3 .v2c-only { display: none; }
 .snmp-add-all { display: flex; align-items: center; gap: .6rem; margin: .5rem 0 0; }
 
 /* A pill that is also a link (the SNMP column on Devices). */
+/* A target's name opens its device's page (targets.html). */
+a.target-link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text-muted) 55%, transparent); text-underline-offset: 3px; }
+a.target-link:hover { color: var(--accent); text-decoration-color: currentColor; }
 a.pill { text-decoration: none; }
 a.pill:hover { filter: brightness(1.12); }
 

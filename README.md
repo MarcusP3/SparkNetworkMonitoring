@@ -222,6 +222,10 @@ exactly as its own Watch button would give it, and their first checks run
 within seconds. Devices already watched, ignored, or without an address have
 no box.
 
+On the Targets list a target's name opens its device's page — the device it
+was watched from, or the device at its address (a URL's host counts). One
+with no device, such as an outside website, is plain text.
+
 ### Check types
 
 | Check | Address | Useful params |

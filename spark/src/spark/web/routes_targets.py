@@ -9,6 +9,7 @@ exactly the experience the Setting model was written to avoid.
 from __future__ import annotations
 
 import json
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
@@ -28,6 +29,8 @@ from ..models import (
     DEFAULT_RECOVERY_THRESHOLD,
     DEFAULT_TIMEOUT_SECONDS,
     CheckType,
+    Device,
+    DeviceAddress,
     HealthStatus,
     Incident,
     Target,
@@ -168,6 +171,45 @@ async def _form_context(
     }
 
 
+def target_host(address: str) -> str:
+    """The host a target's address points at: from a URL, host:port,
+    [v6]:port, or a bare name or address. Lower case."""
+    raw = (address or "").strip()
+    if "://" in raw:
+        try:
+            return (urlsplit(raw).hostname or "").lower()
+        except ValueError:
+            return ""
+    if raw.startswith("["):
+        return raw[1:].partition("]")[0].lower()
+    host, sep, tail = raw.rpartition(":")
+    if sep and tail.isdigit() and ":" not in host:
+        return host.lower()
+    return raw.lower()
+
+
+async def devices_for(session: AsyncSession, targets: list[Target]) -> dict[int, Device]:
+    """The device each target belongs to, for linking to its page: the one
+    it was made from (Watch), or else the device at its address -- primary,
+    merged, or by host name. Ignored devices are left out."""
+    devices = {d.id: d for d in (await session.execute(
+        select(Device).where(Device.ignored.is_(False)))).scalars()}
+    by_host: dict[str, int] = {}
+    for d in devices.values():
+        for name in (d.hostname, d.primary_ip):
+            if name:
+                by_host.setdefault(name.lower(), d.id)
+    for ip, device_id in (await session.execute(
+            select(DeviceAddress.ip, DeviceAddress.device_id))).all():
+        by_host.setdefault(ip.lower(), device_id)
+    out: dict[int, Device] = {}
+    for t in targets:
+        device_id = t.device_id if t.device_id in devices else by_host.get(target_host(t.address))
+        if device_id in devices:
+            out[t.id] = devices[device_id]
+    return out
+
+
 @router.get("/targets")
 async def list_targets(
     request: Request,
@@ -196,6 +238,8 @@ async def list_targets(
             "title": "Targets",
             "targets": targets,
             "open_counts": open_counts,
+            # Each target's device, to link its name to the device's page.
+            "device_of": await devices_for(session, targets),
         },
     )
 

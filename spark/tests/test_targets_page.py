@@ -177,3 +177,42 @@ class TestFailureCount:
         finally:
             client.__exit__(None, None, None)
             asyncio.run(D.close_engine())
+
+
+class TestDeviceLinks:
+    """A target's name opens its device's page: the device it was watched
+    from, or else the device at its address."""
+
+    def test_names_link_to_their_devices(self):
+        from spark.models import Device, DeviceAddress
+        from spark.web.routes_targets import target_host
+        client = client_with([
+            Device(id=1, mac="aa:00:00:00:00:01", primary_ip="192.168.1.10", friendly_name="nas"),
+            Device(id=2, mac="aa:00:00:00:00:02", primary_ip="192.168.1.20", hostname="hv.lan"),
+            Device(id=3, mac="aa:00:00:00:00:03", primary_ip="192.168.1.1"),
+            Device(id=4, mac="aa:00:00:00:00:04", primary_ip="192.168.1.99", ignored=True),
+            DeviceAddress(device_id=3, ip="192.168.20.1"),
+            Target(name="watched", check_type=CheckType.PING, address="192.168.1.10", device_id=1),
+            Target(name="web-ui", check_type=CheckType.HTTP, address="https://hv.lan:8006/"),
+            Target(name="ssh", check_type=CheckType.TCP, address="192.168.1.20:22"),
+            Target(name="vlan-gw", check_type=CheckType.PING, address="192.168.20.1"),
+            Target(name="hidden", check_type=CheckType.PING, address="192.168.1.99"),
+            Target(name="outside", check_type=CheckType.HTTP, address="https://example.com"),
+        ])
+        try:
+            page = client.get("/targets").text
+            assert '<a class="target-link" href="/devices/1" title="Open nas"><strong>watched</strong></a>' in page
+            assert 'href="/devices/2" title="Open hv.lan"><strong>web-ui</strong>' in page
+            assert 'href="/devices/2" title="Open hv.lan"><strong>ssh</strong>' in page
+            assert 'href="/devices/3" title="Open 192.168.1.1"><strong>vlan-gw</strong>' in page
+            for name in ("hidden", "outside"):
+                row = row_for(page, f"<strong>{name}</strong>")
+                assert "target-link" not in row, f"{name} has no device to open"
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+        assert target_host("https://HV.lan:8006/x") == "hv.lan"
+        assert target_host("[fe80::1]:22") == "fe80::1"
+        assert target_host("fe80::1") == "fe80::1"
+        assert target_host("nas:445") == "nas"
+        assert target_host("http://[bad") == ""

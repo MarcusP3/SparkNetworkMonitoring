@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — targets open their device (2026-09-30)
+
+### Added
+
+- **A target's name on the Targets page opens its device's page**: the
+  device it was watched from, or else the device at its address (primary,
+  merged, or by host name; a URL's host counts). A target with no device
+  to open, such as an outside website, stays plain text.
+
+### Tests
+
+1 new (`test_targets_page.py`).
+
 ## Unreleased — Proxmox token in two fields (2026-09-30)
 
 ### Changed

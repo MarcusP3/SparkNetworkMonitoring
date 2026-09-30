@@ -51,7 +51,9 @@
             {% endif %}
           </td>
           <td>
-            <strong>{{ target.name }}</strong>
+            {% set dev = device_of.get(target.id) %}
+            {% if dev %}<a class="target-link" href="/devices/{{ dev.id }}" title="Open {{ dev.display_name }}"><strong>{{ target.name }}</strong></a>
+            {% else %}<strong>{{ target.name }}</strong>{% endif %}
             {% if target.depends_on %}
               <div class="muted small">depends on {{ target.depends_on.name }}</div>
             {% endif %}
