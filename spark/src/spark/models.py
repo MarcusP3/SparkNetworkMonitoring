@@ -625,6 +625,34 @@ class AlertState(Base):
     value: Mapped[float | None] = mapped_column(Float)
 
 
+class AlertIncident(Base):
+    """An alert rule's incident: from when it fired until it cleared.
+
+    What Incident is for a target, for everything decided by alert_state --
+    SNMP thresholds, ports, storage, API credentials, drives, TrueNAS's own
+    alerts -- and for a polled device that stops answering SNMP. The
+    dashboard lists both. Recorded whether or not a message was sent (a muted
+    device still had the problem); not recorded while the rule is switched
+    off. Keyed like the rule state it follows (migration 17).
+    """
+
+    __tablename__ = "alert_incident"
+    __table_args__ = (Index("ix_alert_incident_key_open", "key", "closed_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64))
+    device_id: Mapped[int | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(256))
+    detail: Mapped[str | None] = mapped_column(Text)
+    opened_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    closed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # "recovered", or "no longer watched" when the thing it was about went
+    # away (a port unstarred, a credential removed).
+    resolution: Mapped[str | None] = mapped_column(String(32))
+
+
 class NotificationStatus(enum.StrEnum):
     PENDING = "pending"    # waiting for the dispatcher
     HELD = "held"          # arrived during quiet hours; goes out in the digest

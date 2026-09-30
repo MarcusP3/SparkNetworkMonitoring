@@ -26,6 +26,7 @@ from .models import (
     DEFAULT_SETTINGS,
     AlertMute,
     ApiCredential,
+    AlertIncident,
     AlertState,
     Base,
     CheckRollup,
@@ -308,7 +309,13 @@ async def _add_api_readings(session: AsyncSession) -> None:
         await session.execute(text("ALTER TABLE api_credential ADD COLUMN readings JSON"))
 
 
-CURRENT_VERSION = 16
+@migration(17, "Incidents for SNMP, storage and API alerts, for the dashboard")
+async def _add_alert_incident(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(AlertIncident.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 17
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

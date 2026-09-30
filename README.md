@@ -400,6 +400,15 @@ Both are settings for the instance, since SPARK has one account.
 
 ## Alerts
 
+**The dashboard's incidents** are every kind of problem, not only outages: a
+target down, and every alert rule that fired — SNMP thresholds, starred
+ports, storage, a device that stopped answering SNMP, an API credential that
+stopped working, a drive with errors, TrueNAS's own alerts. Each shows where
+it came from (Target, SNMP, Port, Storage, API, TrueNAS), links to its
+device, and stays *ongoing* until the rule clears. **Open incidents** counts
+both kinds. They are recorded even for a muted device (the problem was real;
+only the message is held back), but not while a rule is switched off.
+
 **Settings → Alerts.** Paste a Discord webhook (in Discord: Server Settings →
 Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and press
 **Send a test**. The URL is stored encrypted, like SNMP credentials, and never
@@ -895,6 +904,7 @@ spark/
     test_targets_page.py  what the targets list says about failures, and when
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_incidents.py   one open incident per target, across pause/resume
+    test_alert_incidents.py  incidents for alert rules: opened on firing, closed on clearing, on the dashboard
     test_ports.py       the scanner against real sockets; the service store
     test_paging.py      one device per page, exactly once, whatever the filter
     test_port_catalogue.py  the editable port list, and what it costs to scan

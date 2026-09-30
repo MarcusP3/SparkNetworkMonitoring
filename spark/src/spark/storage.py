@@ -198,9 +198,10 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
     async def run(key: str, *, breached: bool, cleared: bool, value: float | None,
                   hold: timedelta, reads: int, on: bool, fire: tuple[str, str],
                   clear: tuple[str, str], kind: str) -> None:
-        out = await snmp_alerts.step(session, key, breached=breached, cleared=cleared,
-                                     value=value, now=now, hold=hold, min_polls=reads,
-                                     interval=interval)
+        out = await snmp_alerts.step(
+            session, key, breached=breached, cleared=cleared, value=value, now=now, hold=hold,
+            min_polls=reads, interval=interval,
+            record=snmp_alerts.Record(device.id, fire[0], fire[1]) if on else None)
         if out.fired and on and sending:
             await alerts.enqueue(session, kind=f"{kind}_bad", tone="bad", subject=fire[0],
                                  body=fire[1],

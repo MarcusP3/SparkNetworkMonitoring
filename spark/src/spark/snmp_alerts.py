@@ -24,13 +24,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import alerts
 from .charts import fmt_bps
 from .db import get_setting, save_setting
 from .engine.state import human_duration
-from .models import DEFAULT_SETTINGS, AlertState, Device, SnmpInterface, SnmpPoll
+from .models import DEFAULT_SETTINGS, AlertIncident, AlertState, Device, SnmpInterface, SnmpPoll
 
 SETTING = "alert_rules"
 
@@ -150,6 +151,43 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
 # --------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Record:
+    """What the dashboard's incident says while a fired rule stands: the
+    alert's own subject and body. None when the rule is switched off."""
+
+    device_id: int | None
+    title: str
+    detail: str | None = None
+
+
+RECOVERED = "recovered"
+GONE = "no longer watched"
+
+
+async def open_incident(session: AsyncSession, key: str, record: Record,
+                        since: datetime) -> None:
+    """The open incident for this rule, made if there is none yet -- also for
+    an alert that fired before incidents were recorded."""
+    found = await session.scalar(select(AlertIncident.id).where(
+        AlertIncident.key == key, AlertIncident.closed_at.is_(None)).limit(1))
+    if found is None:
+        session.add(AlertIncident(
+            key=key, device_id=record.device_id, title=record.title[:256],
+            detail=(record.detail or "").replace("`", "")[:2000] or None, opened_at=since))
+
+
+async def close_incidents(session: AsyncSession, now: datetime, *, key: str | None = None,
+                          prefix: str | None = None, resolution: str = RECOVERED) -> None:
+    query = select(AlertIncident).where(AlertIncident.closed_at.is_(None))
+    if key is not None:
+        query = query.where(AlertIncident.key == key)
+    if prefix is not None:
+        query = query.where(AlertIncident.key.startswith(prefix))
+    for row in (await session.execute(query)).scalars():
+        row.closed_at, row.resolution = now, resolution
+
+
 @dataclass
 class Outcome:
     fired: bool = False       # crossed into alerting on this poll
@@ -160,13 +198,30 @@ class Outcome:
 
 async def step(session: AsyncSession, key: str, *, breached: bool, cleared: bool,
                value: float | None, now: datetime, hold: timedelta, min_polls: int,
-               interval: int) -> Outcome:
+               interval: int, record: Record | None = None) -> Outcome:
     """Advance one rule by one poll.
 
     `breached`: over the line now. `cleared`: back under it by the margin.
     Neither: in between, which holds a fired alert and breaks an unfired
     streak. The caller decides whether to send anything.
+
+    `record`: while fired, keep an incident open for the dashboard; closed
+    when the rule clears.
     """
+    out = await _step(session, key, breached=breached, cleared=cleared, value=value, now=now,
+                      hold=hold, min_polls=min_polls, interval=interval)
+    if out.cleared:
+        await close_incidents(session, now, key=key)
+    elif record is not None and out.since is not None:
+        state = await session.get(AlertState, key)
+        if state is not None and state.fired:
+            await open_incident(session, key, record, out.since)
+    return out
+
+
+async def _step(session: AsyncSession, key: str, *, breached: bool, cleared: bool,
+                value: float | None, now: datetime, hold: timedelta, min_polls: int,
+                interval: int) -> Outcome:
     state = await session.get(AlertState, key)
     if state is not None and not state.fired:
         if (now - state.seen_at).total_seconds() > GAP_POLLS * max(interval, 1):
@@ -231,20 +286,22 @@ async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: 
             continue      # not reported this time: neither breach nor all-clear
         limit = float(rules.get(metric.limit_key) or 0)
         key = f"{metric.key}:{row_id}"
+        on = bool(rules.get(metric.key, True))
+        minutes = int(rules.get(f"{metric.key}_minutes") or 1)
+        hot = "is running hot" if metric.key == "temperature" else "is high"
+        subject = f"{device.display_name}: {metric.what} {hot} ({metric.show(value)})"
+        body = (f"{address} — over {metric.show(limit)} for {minutes} minute"
+                f"{'s' if minutes != 1 else ''}.")
         out = await step(
             session, key, breached=value > limit, cleared=value <= limit - metric.margin,
-            value=value, now=now, hold=timedelta(minutes=int(rules.get(f"{metric.key}_minutes") or 1)),
+            value=value, now=now, hold=timedelta(minutes=minutes),
             min_polls=1, interval=interval,
+            record=Record(device.id, subject, body) if on else None,
         )
-        on = bool(rules.get(metric.key, True))
         if out.fired and on and sending:
-            minutes = int(rules.get(f"{metric.key}_minutes") or 1)
-            hot = "is running hot" if metric.key == "temperature" else "is high"
             await alerts.enqueue(
                 session, kind=f"{metric.key}_high", tone="bad",
-                subject=f"{device.display_name}: {metric.what} {hot} ({metric.show(value)})",
-                body=f"{address} — over {metric.show(limit)} for {minutes} minute"
-                     f"{'s' if minutes != 1 else ''}.",
+                subject=subject, body=body,
                 dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire",
             )
             await _mark_notified(session, key)
@@ -270,17 +327,17 @@ async def _port_down(session, iface, device, rules, now, interval, address,  # t
                      sending, recoveries) -> None:
     key = f"port:{iface.id}"
     down = (iface.oper_status or "").lower() != "up"
-    out = await step(session, key, breached=down, cleared=not down, value=None, now=now,
-                     hold=timedelta(0), min_polls=PORT_DOWN_POLLS, interval=interval)
     on = bool(rules.get("port_down", True))
     disabled = (iface.admin_status or "").lower() == "down"
+    subject = f"{device.display_name}: port {iface.label} is down"
+    body = (f"{address} — " + ("switched off on the device (admin down)." if disabled
+                               else f"link {iface.oper_status or 'lost'}."))
+    out = await step(session, key, breached=down, cleared=not down, value=None, now=now,
+                     hold=timedelta(0), min_polls=PORT_DOWN_POLLS, interval=interval,
+                     record=Record(device.id, subject, body) if on else None)
     if out.fired and on and sending:
         await alerts.enqueue(
-            session, kind="port_down", tone="bad",
-            subject=f"{device.display_name}: port {iface.label} is down",
-            body=f"{address} — "
-                 + ("switched off on the device (admin down)." if disabled
-                    else f"link {iface.oper_status or 'lost'}."),
+            session, kind="port_down", tone="bad", subject=subject, body=body,
             dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire",
         )
         await _mark_notified(session, key)
@@ -301,17 +358,17 @@ async def _port_busy(session, iface, device, rules, now, interval, address,  # t
         return
     limit = float(rules.get("port_busy_percent") or 80)
     minutes = int(rules.get("port_busy_minutes") or 10)
-    out = await step(session, key, breached=pct > limit, cleared=pct <= limit - PERCENT_MARGIN,
-                     value=pct, now=now, hold=timedelta(minutes=minutes), min_polls=1,
-                     interval=interval)
     on = bool(rules.get("port_busy", True))
     speed = fmt_bps(iface.speed_mbps * 1_000_000)
+    subject = f"{device.display_name}: port {iface.label} is busy ({pct:.0f}% of {speed})"
+    body = (f"{address} — over {limit:.0f}% for {minutes} minute{'s' if minutes != 1 else ''}. "
+            f"In {fmt_bps(iface.in_bps)}, out {fmt_bps(iface.out_bps)}.")
+    out = await step(session, key, breached=pct > limit, cleared=pct <= limit - PERCENT_MARGIN,
+                     value=pct, now=now, hold=timedelta(minutes=minutes), min_polls=1,
+                     interval=interval, record=Record(device.id, subject, body) if on else None)
     if out.fired and on and sending:
         await alerts.enqueue(
-            session, kind="port_busy", tone="bad",
-            subject=f"{device.display_name}: port {iface.label} is busy ({pct:.0f}% of {speed})",
-            body=f"{address} — over {limit:.0f}% for {minutes} minute{'s' if minutes != 1 else ''}. "
-                 f"In {fmt_bps(iface.in_bps)}, out {fmt_bps(iface.out_bps)}.",
+            session, kind="port_busy", tone="bad", subject=subject, body=body,
             dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire",
         )
         await _mark_notified(session, key)
@@ -326,8 +383,12 @@ async def _port_busy(session, iface, device, rules, now, interval, address,  # t
 
 
 async def forget(session: AsyncSession, *keys: str) -> None:
-    """Drop rule state, e.g. when a port is unstarred: a later star starts fresh."""
+    """Drop rule state, e.g. when a port is unstarred: a later star starts
+    fresh, and an incident open for it closes as no longer watched."""
+    from .models import utcnow
+
     for key in keys:
         state = await session.get(AlertState, key)
         if state is not None:
             await session.delete(state)
+        await close_incidents(session, utcnow(), key=key, resolution=GONE)

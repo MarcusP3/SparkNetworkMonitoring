@@ -1134,6 +1134,9 @@ input.narrow { max-width: 5.5rem; }
 
 .timeline .what { min-width: 0; flex: 1; }
 .timeline .what strong { font-size: .875rem; font-weight: 600; display: block; }
+/* An alert's incident links to its device, in the accent like every link. */
+.timeline .what strong a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.timeline .what strong a:hover { text-decoration: underline; }
 
 /* Block, not inline. The cause and the outcome are two separate facts, and run
    together they read as one sentence: "3/3 replies timed out Lasted 2m 0s". */

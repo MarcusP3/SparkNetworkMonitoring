@@ -170,6 +170,16 @@ def check(db, ident):  # type: ignore[no-untyped-def]
     return run(credentials.check_one(db, ident))
 
 
+def open_incidents():  # type: ignore[no-untyped-def]
+    from spark.models import AlertIncident
+
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return [(r.key, r.title, r.closed_at is None, r.resolution) for r in
+                    (await s.execute(select(AlertIncident).order_by(AlertIncident.id))).scalars()]
+    return run(go())
+
+
 def subjects():  # type: ignore[no-untyped-def]
     return [(kind, subject) for kind, subject, _ in run(_sent())]
 
@@ -215,9 +225,12 @@ class TestDriveAlerts:
         assert [(k, s) for k, s, _ in sent] == [("drive_health_bad", "nas: drive sda has 3 errors")]
         assert sent[0][2] == ("`" + fake.host + "` — pool tank, raidz2-0: ONLINE; 0 read, 0 write, "
                               "3 checksum errors. MB012000JWDFD.")
+        assert (f"apidrive:{ident}:sda", "nas: drive sda has 3 errors", True, None) in open_incidents()
         fake.answers["pool.query"] = _pools()
         check(db, ident)
         assert subjects()[-1] == ("drive_health_ok", "nas: drive sda is ONLINE with no errors")
+        assert (f"apidrive:{ident}:sda", "nas: drive sda has 3 errors", False, "recovered") \
+            in open_incidents()
 
     def test_not_online(self, db, fake):
         ident = run(_trusted(db, fake.host))
@@ -314,6 +327,8 @@ class TestTrueNASAlerts:
                 await credentials.forget_alert(s, ident)
         run(remove())
         assert run(keys()) == []
+        assert open_incidents() and all(not is_open and why == "no longer watched"
+                                        for _, _, is_open, why in open_incidents())
 
 
 # --------------------------------------------------------------------------

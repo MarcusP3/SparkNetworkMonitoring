@@ -253,6 +253,8 @@ async def forget_alert(session: AsyncSession, cred_id: int) -> None:
     found = await session.get(AlertState, _alert_key(cred_id))
     if found is not None:
         await session.delete(found)
+    await snmp_alerts.close_incidents(session, utcnow(), key=_alert_key(cred_id),
+                                      resolution=snmp_alerts.GONE)
     await truenas_health.forget(session, cred_id)
 
 
@@ -292,9 +294,6 @@ async def check_one(config, cred_id: int) -> bool:  # type: ignore[no-untyped-de
 async def evaluate(session: AsyncSession, row: ApiCredential, worked: bool,
                    now: datetime) -> None:
     key = _alert_key(row.id)
-    out = await snmp_alerts.step(session, key, breached=not worked, cleared=worked, value=None,
-                                 now=now, hold=timedelta(0), min_polls=FAILS_BEFORE_ALERT,
-                                 interval=CHECK_MINUTES * 60)
     rules = await snmp_alerts.load(session)
     settings = await alerts.load(session)
     device = await session.get(Device, row.device_id) if row.device_id else None
@@ -302,11 +301,16 @@ async def evaluate(session: AsyncSession, row: ApiCredential, worked: bool,
         device is not None and await alerts.is_muted(session, device_id=device.id))
     name = device.display_name if device else row.name
     what = KINDS.get(row.kind, row.kind)
-    if out.fired and rules.get("api_down", True) and sending:
+    on = bool(rules.get("api_down", True))
+    subject = f"{name}: SPARK cannot use the {what} API"
+    body = f"`{row.host}` — {row.last_error or 'no answer'}"
+    out = await snmp_alerts.step(session, key, breached=not worked, cleared=worked, value=None,
+                                 now=now, hold=timedelta(0), min_polls=FAILS_BEFORE_ALERT,
+                                 interval=CHECK_MINUTES * 60,
+                                 record=snmp_alerts.Record(row.device_id, subject, body) if on else None)
+    if out.fired and on and sending:
         await alerts.enqueue(
-            session, kind="api_down", tone="bad",
-            subject=f"{name}: SPARK cannot use the {what} API",
-            body=f"`{row.host}` — {row.last_error or 'no answer'}",
+            session, kind="api_down", tone="bad", subject=subject, body=body,
             dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire")
         await snmp_alerts._mark_notified(session, key)
     elif out.cleared and out.notified and settings.get("notify_on_recovery", True) and sending:

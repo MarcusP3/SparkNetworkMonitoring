@@ -435,6 +435,14 @@ class TestScheduled:
         assert run(_sent())[1][1] == "truenas: the TrueNAS API is working again"
         assert run(_alert_state(ident)) is None
 
+        async def incident():  # type: ignore[no-untyped-def]
+            from spark.models import AlertIncident
+            async with D.session_scope() as s:
+                return (await s.execute(select(AlertIncident))).scalars().one()
+        row = run(incident())
+        assert (row.key, row.title, row.resolution) == (
+            f"api:{ident}", "truenas: SPARK cannot use the TrueNAS API", "recovered")
+
     def test_one_failure_then_working_says_nothing(self, db, fake):
         ident = run(_trusted(db, fake.host))
         run(_set_key(db, ident, "1-revoked"))
@@ -480,9 +488,18 @@ class TestScheduled:
         run(_set_key(db, ident, "1-revoked"))
         run(credentials.check_one(db, ident))
         assert run(_alert_state(ident)) is not None
+        run(credentials.check_one(db, ident))       # two failures: fired, incident open
+
+        async def api_incident(ident):  # type: ignore[no-untyped-def]
+            from spark.models import AlertIncident
+            async with D.session_scope() as s:
+                row = await s.scalar(select(AlertIncident).where(AlertIncident.key == f"api:{ident}"))
+                return row and (row.closed_at is None, row.resolution)
+        assert run(api_incident(ident)) == (True, None)
         site.post(f"/settings/credentials/{ident}", data={
             "name": "truenas", "device_id": "1", "host": "truenas.lan", "api_key": ""})
         assert run(_alert_state(ident)) is None and run(_row(ident)).cert_sha256 is None
+        assert run(api_incident(ident)) == (False, "no longer watched")
 
         ident = run(_trusted(db, fake.host, name="second"))
         run(_set_key(db, ident, "1-revoked"))

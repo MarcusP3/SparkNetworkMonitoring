@@ -17,10 +17,26 @@ from .. import subnets as subnet_service
 from ..config import Config
 from ..db import get_setting
 from ..engine.state import human_duration
-from ..models import CheckResult, Device, HealthStatus, Incident, Service, Target, User
+from ..models import (AlertIncident, CheckResult, Device, HealthStatus, Incident, Service, Target,
+                      User)
 from .deps import get_config, get_session, require_user, templates
 
 router = APIRouter()
+
+RECENT = 10
+
+# Where an alert incident came from, by its rule key's prefix (the keys
+# alert_state uses: snmp_alerts, storage, credentials, truenas_health).
+SOURCES = {
+    "cpu": "SNMP", "memory": "SNMP", "temperature": "SNMP", "snmpdown": "SNMP",
+    "port": "Port", "busy": "Port",
+    "pool": "Storage", "space": "Storage", "drive": "Storage",
+    "api": "API", "apidrive": "TrueNAS", "tnalert": "TrueNAS",
+}
+
+
+def source_of(key: str) -> str:
+    return SOURCES.get(key.split(":", 1)[0], "Alert")
 
 
 def _greeting() -> str:
@@ -65,7 +81,9 @@ async def dashboard(
         "targets": await count(Target, Target.enabled.is_(True)),
         "down": await count(Target, Target.status == HealthStatus.DOWN),
         "degraded": await count(Target, Target.status == HealthStatus.DEGRADED),
-        "open_incidents": await count(Incident, Incident.closed_at.is_(None)),
+        # Outages and every other kind of alert standing now.
+        "open_incidents": await count(Incident, Incident.closed_at.is_(None))
+        + await count(AlertIncident, AlertIncident.closed_at.is_(None)),
     }
 
     targets = list(
@@ -116,11 +134,13 @@ async def dashboard(
         select(Incident, Target.name)
         .join(Target, Target.id == Incident.target_id)
         .order_by(Incident.opened_at.desc())
-        .limit(10)
+        .limit(RECENT)
     )
     incidents = [
         {
             "target_name": name,
+            "source": "Target",
+            "href": None,
             "opened_at": incident.opened_at,
             "closed_at": incident.closed_at,
             "duration": human_duration(incident.duration_seconds),
@@ -130,6 +150,24 @@ async def dashboard(
         }
         for incident, name in incident_rows.all()
     ]
+    # SNMP, storage and API alerts beside the outages, the newest ten of both.
+    for row in (await session.execute(
+        select(AlertIncident).order_by(AlertIncident.opened_at.desc()).limit(RECENT)
+    )).scalars():
+        closed = row.closed_at
+        incidents.append({
+            "target_name": row.title,
+            "source": source_of(row.key),
+            "href": f"/devices/{row.device_id}" if row.device_id else None,
+            "opened_at": row.opened_at,
+            "closed_at": closed,
+            "duration": human_duration((closed - row.opened_at).total_seconds()) if closed else None,
+            "cause": row.detail,
+            "resolution": row.resolution,
+            "suppressed_by_dependency": False,
+        })
+    incidents.sort(key=lambda i: i["opened_at"], reverse=True)
+    incidents = incidents[:RECENT]
 
     alerting = await get_setting(session, "alerting")
     warnings: list[str] = []

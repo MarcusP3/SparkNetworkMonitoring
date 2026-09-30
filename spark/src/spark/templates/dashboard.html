@@ -180,14 +180,14 @@
 
     {# Incidents, not "activity". A timeline is the right shape for events at
        points in time, but the heading says what is actually in the list: every
-       entry is an outage, and "activity" would promise a feed of everything
-       the app does. #}
+       entry is something that went wrong -- an outage, or an alert rule that
+       fired -- and "activity" would promise a feed of everything the app does. #}
     <section class="card">
       <div class="card-head">
         <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
         <div>
           <h2>Recent incidents</h2>
-          <p class="card-sub">The last ten, newest first.</p>
+          <p class="card-sub">Outages, and SNMP, storage and API alerts. The last ten, newest first.</p>
         </div>
       </div>
 
@@ -198,9 +198,10 @@
           <span class="tl-dot {% if not incident.closed_at %}bad{% elif incident.resolution == 'recovered' %}ok{% else %}warn{% endif %}"
                 aria-hidden="true"></span>
           <span class="what">
-            <strong>{{ incident.target_name }}</strong>
+            <strong>{% if incident.href %}<a href="{{ incident.href }}">{{ incident.target_name }}</a>{% else %}{{ incident.target_name }}{% endif %}</strong>
             <span class="detail">{{ incident.cause or 'No cause recorded' }}</span>
             <span class="detail">
+              <span class="pill neutral">{{ incident.source }}</span>
               {% if not incident.closed_at %}
                 <span class="pill bad dot">ongoing</span>
               {% else %}
@@ -212,6 +213,9 @@
                   · <span title="Monitoring was paused while this target was
                         down, so the outage may have continued past this
                         point">paused, not recovered</span>
+                {% elif incident.resolution == 'no longer watched' %}
+                  · <span title="What it was about stopped being watched (a port
+                        unstarred, a credential removed) while it stood">no longer watched</span>
                 {% elif incident.resolution == 'superseded' %}
                   · <span title="Left open by an older bug and closed when the
                         next incident opened">superseded</span>
@@ -227,7 +231,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="muted">Nothing has gone down yet.</p>
+      <p class="muted">Nothing has gone wrong yet.</p>
       {% endif %}
     </section>
 

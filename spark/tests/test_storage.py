@@ -205,8 +205,15 @@ class TestAlerts:
         run(read(1, at=at(0), pools=[pool(health="DEGRADED")]))
         assert run(_sent()) == ["truenas: pool tank is DEGRADED"]
         run(read(1, at=at(5), pools=[pool(health="DEGRADED")]))
+
+        async def incidents():  # type: ignore[no-untyped-def]
+            from spark.models import AlertIncident
+            async with D.session_scope() as s:
+                return [(r.title, r.closed_at) for r in (await s.execute(select(AlertIncident))).scalars()]
+        assert run(incidents()) == [("truenas: pool tank is DEGRADED", None)]
         run(read(1, at=at(10), pools=[pool()]))
         assert run(_sent())[1:] == ["truenas: pool tank is ONLINE again"]
+        assert run(incidents()) == [("truenas: pool tank is DEGRADED", at(10))]
 
     def test_pool_space_needs_two_reads_and_clears_below_the_margin(self, db):
         run(read(1, at=at(0), pools=[pool(86)]))

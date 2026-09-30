@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — alerts are incidents too (2026-09-30)
+
+### Added
+
+- **The dashboard's incidents include alerts, not only outages.** Every
+  alert rule that fires opens an incident — SNMP CPU, memory, temperature,
+  starred ports, storage (pools, space, drive heat), a polled device that
+  stops answering SNMP, an API credential that stops working, a drive with
+  errors, TrueNAS's own alerts — and it closes when the rule clears. **Open
+  incidents** counts them with the target outages; **Recent incidents**
+  lists both, newest first, each with where it came from (Target, SNMP,
+  Port, Storage, API, TrueNAS) and a link to its device.
+- Recorded for a muted device too (only the message is held back); not
+  while a rule is switched off. Unstarring a port or removing a credential
+  closes its incident as "no longer watched". An alert already standing
+  when this is deployed gets its incident on its next check.
+
+### Changed
+
+- Migration 17: the `alert_incident` table.
+- A polled device that stops answering SNMP while muted, or with alerts
+  switched off, now records the incident and still sends nothing.
+
+### Tests
+
+13 new (`test_alert_incidents.py`), and incident checks added to the
+storage, credential and TrueNAS tests; sixteen deliberate breaks each
+caught. `pytest` and `smoke_test.py` pass; checked in a browser in both
+themes and at phone width.
+
 ## Unreleased — Network map, and Services as its own tab (2026-09-29)
 
 ### Changed

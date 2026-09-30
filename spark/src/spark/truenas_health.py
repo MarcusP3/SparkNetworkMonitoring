@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import alerts, snmp_alerts
 from .engine.state import human_duration
-from .models import AlertState, ApiCredential, Device
+from .models import AlertState, ApiCredential, Device, utcnow
 from .storage import fmt_bytes
 from .truenas import LEVELS
 
@@ -65,6 +65,8 @@ def _alert_prefix(cred_id: int) -> str:
 async def forget(session: AsyncSession, cred_id: int) -> None:
     for prefix in (_drive_prefix(cred_id), _alert_prefix(cred_id)):
         await session.execute(delete(AlertState).where(AlertState.key.startswith(prefix)))
+        await snmp_alerts.close_incidents(session, utcnow(), prefix=prefix,
+                                          resolution=snmp_alerts.GONE)
 
 
 async def context(session: AsyncSession, row: ApiCredential) -> tuple[str, bool, bool, dict]:
@@ -92,9 +94,10 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
 
     async def run(key: str, *, breached: bool, on: bool, kind: str,
                   fire: tuple[str, str, str], clear: tuple[str, str]) -> None:
-        out = await snmp_alerts.step(session, key, breached=breached, cleared=not breached,
-                                     value=None, now=now, hold=timedelta(0), min_polls=1,
-                                     interval=INTERVAL_SECONDS)
+        out = await snmp_alerts.step(
+            session, key, breached=breached, cleared=not breached, value=None, now=now,
+            hold=timedelta(0), min_polls=1, interval=INTERVAL_SECONDS,
+            record=snmp_alerts.Record(row.device_id, fire[0], fire[1]) if on and fire[0] else None)
         if out.fired and on and sending:
             await alerts.enqueue(session, kind=f"{kind}_bad", tone=fire[2], subject=fire[0],
                                  body=fire[1],
@@ -132,6 +135,7 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
         # watch. Dropped quietly; a pool missing a drive lists it UNAVAIL.
         for key in await _keys(session, prefix) - seen:
             await session.delete(await session.get(AlertState, key))
+            await snmp_alerts.close_incidents(session, now, key=key, resolution=snmp_alerts.GONE)
 
     listed = readings.get("alerts")
     if listed is not None:

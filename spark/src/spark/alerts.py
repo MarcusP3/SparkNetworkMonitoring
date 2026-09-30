@@ -300,13 +300,19 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
     Keyed by when the device last answered, which stays the same for the whole
     outage: that is what makes "already alerted" a lookup rather than a column.
     """
+    from .snmp_alerts import Record, close_incidents, open_incident
+
+    incident = f"snmpdown:{row_id}"
+    if answered:
+        await close_incidents(session, now, key=incident)
     if previous_ok is None:
         return  # never answered: a configuration problem, not an outage
     settings = await load(session)
-    if not settings.get("enabled", True) or not settings.get("notify_on_snmp", True):
+    if not settings.get("notify_on_snmp", True):
         return
-    if await is_muted(session, device_id=device_id):
-        return
+    # Muted, or alerts switched off: the outage is still an incident on the
+    # dashboard, only no message is sent.
+    sending = settings.get("enabled", True) and not await is_muted(session, device_id=device_id)
     key = f"snmp:{row_id}:{previous_ok.isoformat()}"
 
     if not answered:
@@ -327,15 +333,15 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
             return
         from .engine.state import human_duration
 
-        await enqueue(
-            session, kind="snmp_down", tone="bad",
-            subject=f"{device_name} stopped answering SNMP",
-            body=(f"`{address or '—'}` — no answer for {human_duration(silent_for)}."
-                  + (f"\n{error}" if error else "")),
-            dedupe_key=f"{key}:down",
-        )
+        subject = f"{device_name} stopped answering SNMP"
+        body = (f"`{address or '—'}` — no answer for {human_duration(silent_for)}."
+                + (f"\n{error}" if error else ""))
+        await open_incident(session, incident, Record(device_id, subject, body), previous_ok)
+        if sending:
+            await enqueue(session, kind="snmp_down", tone="bad", subject=subject, body=body,
+                          dedupe_key=f"{key}:down")
     elif was_failing and await _queued(session, f"{key}:down"):
-        if not settings.get("notify_on_recovery", True):
+        if not sending or not settings.get("notify_on_recovery", True):
             return
         from .engine.state import human_duration
 
