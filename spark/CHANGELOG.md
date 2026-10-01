@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — the sessions list shows only live sessions (2026-10-01)
+
+### Fixed
+
+- **Preferences → Account listed every session that had timed out** as if
+  it were still signed in. A session that goes unused past the timeout (30
+  minutes unless changed) is refused on its next request, but its row
+  stayed until its 30-day expiry — so each time-out and fresh sign-in added
+  a row, and "Sign out everywhere else" counted them all. The list and the
+  count now leave timed-out sessions out, using the timeout set under
+  Preferences, and the startup and nightly clean-ups delete them.
+
+### Tests
+
+3 new (`test_account.py`), which fail without the fix.
+
 ## Unreleased — performance review: memory, CPU, shutdown, logs (2026-10-01)
 
 Findings P1–P4 of the 2026-10-01 performance review. No change to what

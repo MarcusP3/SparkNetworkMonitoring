@@ -514,8 +514,10 @@ were. In proxy mode the proxy decides instead, and the card says so.
 **Account** changes the password — the current one, then the new one twice —
 and lists everywhere the account is signed in (when, from which address, which
 browser, last used), with **Sign out everywhere else** to end all of them but
-the one you are using. Changing the password ends every session, this one
-included, and gives your browser a fresh one on the spot.
+the one you are using. A session that has timed out is not listed — it can
+never be used again — and is deleted at startup and in the nightly
+clean-up. Changing the password ends every session, this one included, and
+gives your browser a fresh one on the spot.
 
 If the password is lost, on the machine SPARK runs on:
 

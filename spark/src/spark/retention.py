@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import prefs
 from .auth import purge_expired
 from .db import get_setting, save_setting, session_scope
 from .models import FIVE_MINUTES, ONE_HOUR, utcnow
@@ -293,7 +294,7 @@ async def run_retention() -> dict:
 
             # Expired sessions and old login attempts used to be cleared only
             # at startup, so an instance that stayed up never cleared them.
-            await purge_expired(session)
+            await purge_expired(session, timedelta(minutes=await prefs.get_idle_minutes(session)))
 
             summary["finished_at"] = utcnow().isoformat()
             await save_setting(session, STATE_KEY, summary)

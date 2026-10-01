@@ -178,6 +178,72 @@ class TestSessions:
         assert response.headers["location"].endswith("ended=0#account")
 
 
+class TestTimedOutSessions:
+    """A session that timed out is refused on its next request, but its row
+    used to stay until its 30-day expiry -- so every time-out was listed as
+    a session still signed in. Signed in again 24 times in a week, the list
+    said 25 sessions when one was."""
+
+    @staticmethod
+    def _age(cookie: str, minutes: float) -> None:
+        import asyncio
+        from datetime import timedelta
+
+        from sqlalchemy import update
+
+        from spark import db as D
+        from spark.auth import _token_hash
+        from spark.models import UserSession, utcnow
+
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                await s.execute(update(UserSession)
+                                .where(UserSession.token_hash == _token_hash(cookie))
+                                .values(last_seen_at=utcnow() - timedelta(minutes=minutes)))
+        asyncio.run(go())
+
+    def test_a_timed_out_session_is_not_listed_or_counted(self):
+        config = _config()
+        c = _signed_in(config)
+        gone = _second_browser(c)
+        live = _second_browser(c)
+        self._age(gone, 31)          # the default timeout is 30 minutes
+        self._age(live, 29)
+        page = c.get("/preferences").text
+        assert "Sign out everywhere else (1)" in page
+        rows = page.split('id="sessions"')[1].split("</table>")[0].count("<tr")
+        assert rows == 3, "the header, this browser, and the one still live"
+        assert _as(c, gone) == 303 and _as(c, live) == 200
+
+    def test_a_longer_timeout_keeps_them_listed(self):
+        config = _config()
+        c = _signed_in(config)
+        c.post("/preferences", data={"idle_minutes": "60"})
+        other = _second_browser(c)
+        self._age(other, 45)
+        assert "Sign out everywhere else (1)" in c.get("/preferences").text
+
+    def test_the_purge_deletes_them(self):
+        import asyncio
+        from datetime import timedelta
+
+        from spark import db as D
+        from spark.auth import purge_expired
+
+        config = _config()
+        c = _signed_in(config)
+        gone = _second_browser(c)
+        _second_browser(c)
+        self._age(gone, 31)
+
+        async def purge():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                await purge_expired(s, timedelta(minutes=30))
+        asyncio.run(purge())
+        assert _live_sessions(config) == 2, "this browser and the live one"
+        assert c.get("/").status_code == 200
+
+
 class TestResetCommand:
     def test_it_sets_the_password_and_signs_everyone_out(self, monkeypatch, capsys):
         import getpass

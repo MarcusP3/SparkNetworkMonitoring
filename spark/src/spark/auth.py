@@ -493,21 +493,34 @@ async def revoke_other_sessions(session: AsyncSession, user_id: int, keep_token:
     return result.rowcount or 0
 
 
-async def list_sessions(session: AsyncSession, user_id: int, current_token: str | None):
-    """Live sessions for the Preferences page: (row, is_this_one), newest use first."""
+async def list_sessions(session: AsyncSession, user_id: int, current_token: str | None,
+                        idle: timedelta | None = None):
+    """Live sessions for the Preferences page: (row, is_this_one), newest use first.
+
+    Live means what _live means: not revoked, not past its expiry, and --
+    with `idle` -- used within the inactivity timeout. A session that timed
+    out is refused on its next request but its row stays until the nightly
+    purge, so without the last test every time-out showed here as a
+    session still signed in.
+    """
     now = utcnow()
-    rows = (await session.execute(
-        select(UserSession)
-        .where(UserSession.user_id == user_id, UserSession.revoked.is_(False),
-               UserSession.expires_at >= now)
-        .order_by(UserSession.last_seen_at.desc())
-    )).scalars().all()
+    query = (select(UserSession)
+             .where(UserSession.user_id == user_id, UserSession.revoked.is_(False),
+                    UserSession.expires_at >= now))
+    if idle is not None:
+        query = query.where(UserSession.last_seen_at >= now - idle)
+    rows = (await session.execute(query.order_by(UserSession.last_seen_at.desc()))).scalars().all()
     current = _token_hash(current_token) if current_token else None
     return [(row, row.token_hash == current) for row in rows]
 
 
-async def purge_expired(session: AsyncSession) -> None:
+async def purge_expired(session: AsyncSession, idle: timedelta | None = None) -> None:
+    """Delete sessions past their expiry -- and, with `idle`, the ones that
+    timed out (no use within the inactivity timeout), which can never be
+    used again -- and login attempts older than a week."""
     await session.execute(delete(UserSession).where(UserSession.expires_at < utcnow()))
+    if idle is not None:
+        await end_idle_sessions(session, idle)
     await session.execute(
         delete(LoginAttempt).where(LoginAttempt.ts < utcnow() - timedelta(days=7))
     )

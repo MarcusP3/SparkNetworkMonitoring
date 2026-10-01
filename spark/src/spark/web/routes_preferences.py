@@ -41,7 +41,7 @@ async def _render(request: Request, session: AsyncSession, config: Config, user:
     placed = request.query_params.get("placed", "")
     proxy_mode = config.auth.mode == "proxy"
     sessions = [] if proxy_mode else await list_sessions(
-        session, user.id, session_token(request))
+        session, user.id, session_token(request), timedelta(minutes=idle))
     return templates.TemplateResponse(
         request,
         "preferences.html",

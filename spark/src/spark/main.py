@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -152,8 +153,11 @@ def create_app(config: Config | None = None) -> FastAPI:
         from .auth import announce_setup_code, new_setup_code, purge_expired, setup_required
         from .subnets import count_enabled, seed_from_config
 
+        from . import prefs
+
         async with session_scope() as session:
-            await purge_expired(session)
+            # Timed-out sessions too: none of them can be used again.
+            await purge_expired(session, timedelta(minutes=await prefs.get_idle_minutes(session)))
             # No administrator yet: /setup needs the code this prints. Made
             # here so it is in the startup log, where the Quick start says
             # to look; routes_auth makes one on demand if it is ever missing.
