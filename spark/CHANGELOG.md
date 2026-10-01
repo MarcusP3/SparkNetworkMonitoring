@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — performance review: memory, CPU, shutdown, logs (2026-10-01)
+
+Findings P1–P4 of the 2026-10-01 performance review. No change to what
+SPARK does or how it is reached; `docker compose up -d --build` and you are
+done. Measured on the same workload before and after (30 SNMP devices
+polling every 30 s, a burst of 30 concurrent Tests at 2½ minutes):
+CPU 113 s → 69 s over six minutes, resident memory 153 MB → 137 MB, and the
+burst added 4 MB instead of 17.
+
+### Changed
+
+- **One SNMP engine per credential, reused across polls** (P1). Every poll
+  used to build its own pysnmp engine, and building one reads thirteen MIB
+  modules from disk and compiles them — 70–80 ms of CPU and ~5 MB of
+  objects per poll, thrown away a second later. Overlapping polls (the first
+  minute after a start, Find, Test on several rows) left the heap 20–50 MB
+  larger for good. Engines now live for the life of the process, one per
+  distinct credential — never one for the whole process, because pysnmp
+  keys SNMPv3 users by name and two profiles sharing a user name with
+  different keys would fight over one engine. A socket or dispatcher error
+  evicts the engine and the next poll builds a new one; a timeout or a
+  refused credential is the device talking and keeps it. For SNMPv3 this is
+  also fewer packets: the agent's engine ID is remembered rather than
+  discovered on every poll.
+- **Shutdown is bounded to 3 seconds** (P2). Since HTTPS, closing an idle
+  browser connection meant waiting up to 30 s for a TLS close_notify from a
+  peer that was not reading — and Docker SIGKILLs after 10 s, so every
+  `docker compose restart` with a tab open ended in a kill with no scheduler
+  shutdown. uvicorn now stops waiting after 3 s and runs the shutdown; the
+  compose file's `stop_grace_period: 8s` sits above that. Measured: 30.1 s
+  before, 3.2 s after. uvicorn's note about it is logged at INFO, not ERROR.
+- **APScheduler's per-job log lines are off** (P3). "Running job" and
+  "executed successfully" were 84 % of the log — 10–15 MB a day into
+  Docker's log, which the compose file now caps at 5 × 10 MB. A missed run,
+  a skipped overlap and a job's own traceback still log.
+- `MALLOC_ARENA_MAX=2` in the image (P4): 4 % less resident memory, free.
+- `mem_limit: 512m` is on, with the measurement behind it in the compose
+  file: ~100 MB is Python and its libraries, 141 MB on a real network,
+  160 MB with thirty SNMP devices, plus 128 MB of transient peak when two
+  people sign in at once (Argon2 at 64 MB a hash, two allowed). Exit 137 in
+  `docker compose ps` means it was hit.
+
+### Not changed, measured
+
+- No leak: a 12-minute soak at 60 polls a minute sat flat at 161.7 MB.
+- Disk: one SQLite commit per check or poll writes about 40 KB (WAL frames,
+  then the checkpoint). On a real network that was 2.6 GB in 14 hours —
+  harmless for an SSD's lifetime, worth knowing on ZFS. Batching commits
+  would cut it several-fold; not done, since it changes when a result is
+  on disk. In the backlog.
+
 ## Unreleased — security review, round three: the visible batch (2026-09-30)
 
 Findings #25, #26, #29 and #32 of the 2026-09-30 review, and its

@@ -102,6 +102,23 @@ Two things that look like details and are not:
 - **Argon2 runs in a thread** (`auth._hash_in_thread`), never on the event
   loop: a login attempt is 120 ms and 64 MiB, and the loop is also every
   check and poll.
+- **Never construct `SnmpEngine()` in a poll.** `SnmpCollector` takes its
+  engine from `collectors.snmp.engine_for` -- one per credential, for the
+  life of the loop -- and `close()` lets go of the target only. Building an
+  engine compiles thirteen MIB modules (70-80 ms, ~5 MB) and doing it per
+  poll was a third of each poll's CPU and the reason memory ratcheted up
+  after every burst of overlapping polls. A new scheduled job that uses
+  SNMP goes through `SnmpCollector`; the lifespan closes the engines.
+- **Shutdown is bounded** (`main.GRACEFUL_SHUTDOWN_SECONDS`, 3 s): over
+  HTTPS an idle browser connection would otherwise hold uvicorn for 30 s
+  and Docker kills at 10 s. Anything that starts uvicorn -- `run`, the
+  live-server test fixtures -- passes `main.server_arguments(config)`, so
+  the tests run the server the way the container does. Keep the compose
+  file's `stop_grace_period` above the constant.
+- **Logs are for the operator.** APScheduler's per-job INFO lines are off
+  in `configure_logging`; a new scheduled job must not log its own
+  "running" line either. Anything at WARNING or above should be something
+  a person would act on.
 - **HTTPS is the default** (`app.tls: auto`, `tls.py`). Anything that reads
   the session cookie goes through `auth.session_token` (two names: plain and
   `__Host-`); anything that sets it goes through `routes_auth._set_session_cookie`.
@@ -151,4 +168,8 @@ on the binary (an effective file capability the kernel cannot grant makes
 `cap_add`, `ping_group_range` on the host — is the only way to have both.
 `docker compose up -d --build` is needed after any dependency change; a plain
 `up -d` reuses the existing image. It serves HTTPS on 9700 with a self-signed
-certificate unless `app.tls` says otherwise.
+certificate unless `app.tls` says otherwise. The container has a 512 MB
+memory limit, set from measurement (README, *What it costs to run*): the
+floor is ~100 MB of Python and libraries, a real network sits at ~140 MB,
+and a login peaks 64 MB above steady per hash. A change that moves those
+numbers moves the limit and the README together.

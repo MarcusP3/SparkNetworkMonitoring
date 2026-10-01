@@ -11,6 +11,21 @@ services:
     container_name: spark
     restart: unless-stopped
 
+    # SPARK stops waiting for idle browser connections after 3 s and runs its
+    # shutdown (main.py, GRACEFUL_SHUTDOWN_SECONDS). Docker's deadline sits
+    # above that, so a `docker compose restart` ends in a clean exit rather
+    # than the SIGKILL the default 10 s used to produce once HTTPS made the
+    # TLS close wait on peers that were not reading.
+    stop_grace_period: 8s
+
+    # The container's log, capped. Docker's default is unlimited, and a
+    # monitoring tool that logs every poll fills a VM disk one line at a time.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
     # Host networking is required, not a preference. ARP and ICMP sweeps only
     # see the LAN from the host's network namespace; on a bridge network SPARK
     # sits behind NAT and discovery finds nothing at all.
@@ -64,12 +79,16 @@ services:
     # this means something has gone badly wrong, and stopping it there is
     # better than letting it take the VM with it.
     pids_limit: 256
-    # Memory: measure first. `docker stats spark` after a day shows the
-    # steady figure; three to four times that is a limit that catches a leak
-    # or a runaway response (the HTTP check keeps at most 1 MB of a body)
-    # without killing SPARK during a login burst. Too low and Docker kills
-    # the container (exit 137) and `restart: unless-stopped` loops it.
-    # mem_limit: 512m
+    # Memory. Measured 2026-10-01: about 100 MB is Python and its libraries
+    # before SPARK does anything; a real network sat at 141 MB resident and
+    # a test with thirty SNMP devices polling every thirty seconds at 160 MB,
+    # flat for twelve minutes. Peaks are a different number: each login hashes
+    # with Argon2 at 64 MB, two at a time are allowed, so a login burst sits
+    # 128 MB above steady for a moment. 512m is three times steady plus that
+    # peak. Below about 384m, two people signing in during a device discovery
+    # would be killed. Too low shows as exit 137 in `docker compose ps` and
+    # `restart: unless-stopped` looping it; raise this, then look for a leak.
+    mem_limit: 512m
 
     volumes:
       # spark.db and secret.key. Must be owned by uid 9700 on the host

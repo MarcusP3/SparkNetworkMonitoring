@@ -22,7 +22,7 @@ import uvicorn
 
 from spark import tls
 from spark.config import Config
-from spark.main import create_app, tls_arguments
+from spark.main import GRACEFUL_SHUTDOWN_SECONDS, create_app, server_arguments, tls_arguments
 
 PASSWORD = "correct horse battery"
 
@@ -145,12 +145,14 @@ class Https:
         self.port = _free_port()
         self.base = f"https://127.0.0.1:{self.port}"
         self.app = create_app(config)
+        # Exactly what main.run() passes, TLS and the shutdown timeout included.
         self.server = uvicorn.Server(uvicorn.Config(
             self.app, host="127.0.0.1", port=self.port, log_level="warning",
-            proxy_headers=False, log_config=None, **tls_arguments(config),
+            **server_arguments(config),
         ))
         self.thread = threading.Thread(target=self.server.run, daemon=True)
         self.client = httpx.Client(verify=False, follow_redirects=False)
+        self.stopped_in: float | None = None
 
     def __enter__(self) -> "Https":
         self.thread.start()
@@ -165,8 +167,33 @@ class Https:
 
     def __exit__(self, *exc) -> None:  # type: ignore[no-untyped-def]
         self.client.close()
+        self.stop()
+
+    def stop(self) -> None:
+        started = time.monotonic()
         self.server.should_exit = True
-        self.thread.join(timeout=10)
+        self.thread.join(timeout=60)
+        self.stopped_in = time.monotonic() - started
+
+
+class TestShutdown:
+    def test_an_idle_browser_connection_does_not_hold_the_server_for_30_seconds(self):
+        # Closing a TLS connection waits for the peer's close_notify, up to
+        # 30 s, and a browser with a tab open is not reading. Docker gives a
+        # container 10 s before SIGKILL, so until GRACEFUL_SHUTDOWN_SECONDS
+        # every `docker compose restart` with a tab open ended in a kill
+        # (performance review 2026-10-01, P2). The client here is left open
+        # on purpose: it is the idle tab.
+        tmp = Path(tempfile.mkdtemp(prefix="spark-tls-"))
+        live = Https(_config(tmp))
+        live.__enter__()
+        try:
+            assert live.client.get(live.base + "/healthz").status_code == 200
+            live.stop()                      # client still connected
+            assert live.stopped_in is not None
+            assert live.stopped_in < GRACEFUL_SHUTDOWN_SECONDS + 5, live.stopped_in
+        finally:
+            live.client.close()
 
 
 class TestServedOverTls:

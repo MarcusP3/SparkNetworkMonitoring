@@ -21,6 +21,7 @@ import asyncio
 import ipaddress
 import logging
 import time
+import weakref
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -358,6 +359,114 @@ def _index_of(oid: str, base: str) -> str:
 
 
 # --------------------------------------------------------------------------
+# Engines: one per credential, kept for the life of the event loop
+# --------------------------------------------------------------------------
+#
+# Every collector used to build its own `SnmpEngine()` and close it when the
+# poll was done. Building one is not cheap: pysnmp reads thirteen MIB modules
+# from site-packages and compiles them with `compile()` every time -- 70-80 ms
+# of CPU and about 5 MB of objects per engine, thrown away a second later. At
+# thirty devices on a thirty-second interval that was a third of each poll's
+# CPU, and the polls that overlap (the first minute after a start, Find,
+# Test on several rows) left the heap 20-50 MB larger for good, because
+# pymalloc keeps an arena alive while any object in it lives
+# (performance review, 2026-10-01, P1).
+#
+# pysnmp is built for the opposite shape: one engine, many targets. It keeps
+# the UDP socket open, caches the target parameters, and for SNMPv3 remembers
+# each agent's engine ID instead of discovering it again on every request.
+#
+# One engine *per credential* rather than one for the process, because the
+# engine's user table is keyed by (user name, engine ID): two v3 profiles
+# with the same user name and different keys on one engine would delete and
+# re-add each other's entry between concurrent requests and fail to
+# authenticate. Profiles are few, so engines are few.
+#
+# Engines belong to the event loop they were made on (the dispatcher holds
+# the loop's sockets), so the cache is keyed by loop first. The app closes
+# its loop's engines at shutdown (main.py); the tests, which run many loops,
+# do the same through the lifespan.
+
+_EngineKey = tuple[str, str, str, str, str, str, str]
+_engines: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[_EngineKey, SnmpEngine]]
+_engines = weakref.WeakKeyDictionary()
+
+
+def _engine_key(credential: SnmpCredential) -> _EngineKey:
+    """Everything the engine's own configuration depends on. Not the host,
+    port, timeout or retries: those belong to the transport target, which is
+    still made per collector."""
+    return (
+        credential.version, credential.community, credential.username,
+        credential.auth_protocol, credential.auth_key,
+        credential.priv_protocol, credential.priv_key,
+    )
+
+
+def _close_quietly(engine: SnmpEngine) -> None:
+    try:
+        engine.close_dispatcher()
+    except Exception:  # noqa: BLE001 - best effort; the loop may already be gone
+        pass
+
+
+def _prune_dead_loops() -> None:
+    """Engines on loops that have since closed hold sockets the loop will
+    never service again. Closing them here is what keeps the cache from
+    pinning a dead loop through the dispatcher's own reference to it."""
+    for loop in list(_engines):
+        if loop.is_closed():
+            for engine in _engines.pop(loop, {}).values():
+                _close_quietly(engine)
+
+
+def engine_for(credential: SnmpCredential) -> SnmpEngine:
+    """The engine for this credential on the running loop, made on first use."""
+    _prune_dead_loops()
+    loop = asyncio.get_running_loop()
+    engines = _engines.get(loop)
+    if engines is None:
+        engines = _engines[loop] = {}
+    key = _engine_key(credential)
+    engine = engines.get(key)
+    if engine is None:
+        engine = engines[key] = SnmpEngine()
+    return engine
+
+
+def _evict(engine: SnmpEngine) -> None:
+    """Drop an engine whose dispatcher failed; the next poll builds a new one."""
+    try:
+        engines = _engines.get(asyncio.get_running_loop())
+    except RuntimeError:
+        engines = None
+    if engines:
+        for key, candidate in list(engines.items()):
+            if candidate is engine:
+                del engines[key]
+    _close_quietly(engine)
+
+
+def engine_count() -> int:
+    """How many engines the running loop holds. For tests and diagnostics."""
+    try:
+        return len(_engines.get(asyncio.get_running_loop()) or {})
+    except RuntimeError:
+        return 0
+
+
+def close_engines() -> None:
+    """Close every engine on the running loop. Called at app shutdown."""
+    try:
+        engines = _engines.pop(asyncio.get_running_loop(), None)
+    except RuntimeError:
+        engines = None
+    for engine in (engines or {}).values():
+        _close_quietly(engine)
+    _prune_dead_loops()
+
+
+# --------------------------------------------------------------------------
 # Collector
 # --------------------------------------------------------------------------
 
@@ -374,7 +483,7 @@ class SnmpCollector:
 
     async def _ensure(self) -> tuple[Any, Any, Any]:
         if self._engine is None:
-            self._engine = SnmpEngine()
+            self._engine = engine_for(self.credential)
             self._auth = self.credential.build_auth()
             self._transport = await UdpTransportTarget.create(
                 (self.host, self.credential.port),
@@ -384,28 +493,44 @@ class SnmpCollector:
         return self._engine, self._auth, self._transport
 
     async def close(self) -> None:
-        engine = self._engine
+        """Let go of the target. The engine stays, for the next poll."""
         self._engine = None
         self._transport = None
         self._auth = None
+
+    def _failed(self, exc: BaseException) -> None:
+        """A request ended in something other than an SNMP answer.
+
+        Timeouts, refused credentials and error-status PDUs are the agent
+        talking, and the engine is fine. Anything else -- a socket error, a
+        dispatcher exception -- may mean the shared engine is wedged, and the
+        price of being wrong is one rebuild, so it is evicted.
+        """
+        if isinstance(exc, (CollectorError, RuntimeError, errind.ErrorIndication)):
+            return
+        engine = self._engine
+        self._engine = None
         if engine is not None:
-            try:
-                engine.close_dispatcher()
-            except Exception:  # noqa: BLE001 - best effort
-                pass
+            log.warning("SNMP engine for %s failed (%s: %s); replacing it",
+                        self.host, type(exc).__name__, exc)
+            _evict(engine)
 
     # ---------------- low-level operations ----------------
 
     async def get(self, *oid_list: str) -> dict[str, Any]:
         """GET one or more scalars. Missing values come back absent, not raised."""
         engine, auth, transport = await self._ensure()
-        error_indication, error_status, _idx, var_binds = await get_cmd(
-            engine,
-            auth,
-            transport,
-            ContextData(),
-            *[ObjectType(ObjectIdentity(oid)) for oid in oid_list],
-        )
+        try:
+            error_indication, error_status, _idx, var_binds = await get_cmd(
+                engine,
+                auth,
+                transport,
+                ContextData(),
+                *[ObjectType(ObjectIdentity(oid)) for oid in oid_list],
+            )
+        except Exception as exc:
+            self._failed(exc)
+            raise
         if error_indication:
             raise _classify(error_indication)
         if error_status:
@@ -428,34 +553,38 @@ class SnmpCollector:
         results: dict[str, Any] = {}
         count = 0
 
-        async for error_indication, error_status, _idx, var_binds in bulk_walk_cmd(
-            engine,
-            auth,
-            transport,
-            ContextData(),
-            0,
-            25,
-            ObjectType(ObjectIdentity(base_oid)),
-            lexicographicMode=False,
-        ):
-            if error_indication:
-                raise _classify(error_indication)
-            if error_status:
-                raise RuntimeError(error_status.prettyPrint())
-            for name, value in var_binds:
-                oid = str(name)
-                if not oid.lstrip(".").startswith(base_oid.lstrip(".")):
-                    return results
-                converted = _to_python(value)
-                if converted is not None:
-                    results[_index_of(oid, base_oid)] = converted
-                count += 1
-                if count >= max_rows:
-                    log.warning(
-                        "Walk of %s on %s hit the %d row cap; results truncated",
-                        base_oid, self.host, max_rows,
-                    )
-                    return results
+        try:
+            async for error_indication, error_status, _idx, var_binds in bulk_walk_cmd(
+                engine,
+                auth,
+                transport,
+                ContextData(),
+                0,
+                25,
+                ObjectType(ObjectIdentity(base_oid)),
+                lexicographicMode=False,
+            ):
+                if error_indication:
+                    raise _classify(error_indication)
+                if error_status:
+                    raise RuntimeError(error_status.prettyPrint())
+                for name, value in var_binds:
+                    oid = str(name)
+                    if not oid.lstrip(".").startswith(base_oid.lstrip(".")):
+                        return results
+                    converted = _to_python(value)
+                    if converted is not None:
+                        results[_index_of(oid, base_oid)] = converted
+                    count += 1
+                    if count >= max_rows:
+                        log.warning(
+                            "Walk of %s on %s hit the %d row cap; results truncated",
+                            base_oid, self.host, max_rows,
+                        )
+                        return results
+        except Exception as exc:
+            self._failed(exc)
+            raise
         return results
 
     async def walk_raw(self, base_oid: str, max_rows: int = 4096) -> dict[str, Any]:
@@ -463,22 +592,26 @@ class SnmpCollector:
         engine, auth, transport = await self._ensure()
         results: dict[str, Any] = {}
         count = 0
-        async for error_indication, error_status, _idx, var_binds in bulk_walk_cmd(
-            engine, auth, transport, ContextData(), 0, 25,
-            ObjectType(ObjectIdentity(base_oid)), lexicographicMode=False,
-        ):
-            if error_indication:
-                raise _classify(error_indication)
-            if error_status:
-                raise RuntimeError(error_status.prettyPrint())
-            for name, value in var_binds:
-                oid = str(name)
-                if not oid.lstrip(".").startswith(base_oid.lstrip(".")):
-                    return results
-                results[_index_of(oid, base_oid)] = value
-                count += 1
-                if count >= max_rows:
-                    return results
+        try:
+            async for error_indication, error_status, _idx, var_binds in bulk_walk_cmd(
+                engine, auth, transport, ContextData(), 0, 25,
+                ObjectType(ObjectIdentity(base_oid)), lexicographicMode=False,
+            ):
+                if error_indication:
+                    raise _classify(error_indication)
+                if error_status:
+                    raise RuntimeError(error_status.prettyPrint())
+                for name, value in var_binds:
+                    oid = str(name)
+                    if not oid.lstrip(".").startswith(base_oid.lstrip(".")):
+                        return results
+                    results[_index_of(oid, base_oid)] = value
+                    count += 1
+                    if count >= max_rows:
+                        return results
+        except Exception as exc:
+            self._failed(exc)
+            raise
         return results
 
     # ---------------- identity ----------------

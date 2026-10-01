@@ -34,6 +34,17 @@ from .web.routes_targets import router as targets_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# How long uvicorn waits for open connections before it stops waiting and
+# runs the shutdown anyway. Needed since HTTPS: closing a TLS connection
+# sends close_notify and waits up to 30 s for the peer's, and a browser with
+# a tab open (or anything holding an idle keep-alive connection) is not
+# reading, so the wait runs out. Docker sends SIGTERM, allows 10 s, then
+# SIGKILLs -- so without this, every `docker compose restart` with a tab open
+# ended in a kill, no scheduler shutdown, no engine dispose. Measured:
+# 30.1 s to exit over HTTPS, 0.2 s over HTTP, 3.2 s with this
+# (performance review, 2026-10-01, P2). Compose sets stop_grace_period above it.
+GRACEFUL_SHUTDOWN_SECONDS = 3
+
 log = logging.getLogger("spark")
 
 
@@ -88,6 +99,18 @@ def _back_to(request: Request) -> str:
     return "/"
 
 
+class _ExpectedShutdownNote(logging.Filter):
+    """uvicorn reports the graceful-shutdown timeout at ERROR. With HTTPS it
+    fires on most restarts (see GRACEFUL_SHUTDOWN_SECONDS) and means nothing
+    went wrong, so it is kept, at INFO, where it does not read as an alarm."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno == logging.ERROR and "timeout graceful shutdown exceeded" in record.getMessage():
+            record.levelno = logging.INFO
+            record.levelname = "INFO"
+        return True
+
+
 def configure_logging(level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
@@ -96,6 +119,14 @@ def configure_logging(level: str) -> None:
     )
     # uvicorn's access log duplicates what we care about and drowns the rest.
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").addFilter(_ExpectedShutdownNote())
+    # APScheduler logs two INFO lines for every job it runs -- 84% of the log
+    # on a box with a dozen SNMP devices, 10-15 MB a day into Docker's log.
+    # Its warnings (a run missed, a job skipped because the last one is still
+    # going) and a job's own traceback at ERROR still come through; SPARK logs
+    # the scheduler starting and stopping itself.
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
+    logging.getLogger("apscheduler.scheduler").setLevel(logging.WARNING)
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -185,6 +216,11 @@ def create_app(config: Config | None = None) -> FastAPI:
             )
         yield
         await scheduler_module.shutdown()
+        # The SNMP engines are shared across polls and hold this loop's UDP
+        # socket (collectors/snmp.py); they go after the jobs that use them.
+        from .collectors.snmp import close_engines
+
+        close_engines()
         await close_engine()
 
     app = FastAPI(
@@ -289,6 +325,22 @@ def tls_arguments(config: Config) -> dict:
     return {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
 
 
+def server_arguments(config: Config) -> dict:
+    """Everything SPARK tells uvicorn besides the app, host and port.
+
+    In one place so the live-server tests start uvicorn the way `run` does.
+    """
+    return {
+        "log_config": None,
+        # SPARK applies X-Forwarded-* itself, only from auth.proxy.trusted_proxies
+        # (web/hardening.py). uvicorn's own handling trusts loopback by
+        # default, which with host networking is every container on the VM.
+        "proxy_headers": False,
+        "timeout_graceful_shutdown": GRACEFUL_SHUTDOWN_SECONDS,
+        **tls_arguments(config),
+    }
+
+
 def run() -> None:
     import uvicorn
 
@@ -298,12 +350,7 @@ def run() -> None:
         create_app(config),
         host=config.app.host,
         port=config.app.port,
-        log_config=None,
-        # SPARK applies X-Forwarded-* itself, only from auth.proxy.trusted_proxies
-        # (web/hardening.py). uvicorn's own handling trusts loopback by
-        # default, which with host networking is every container on the VM.
-        proxy_headers=False,
-        **tls_arguments(config),
+        **server_arguments(config),
     )
 
 

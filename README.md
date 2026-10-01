@@ -231,6 +231,28 @@ take. The compose file also carries a commented `read_only: true` block:
 SPARK writes only under `/data`, so it should simply work, and a
 "Read-only file system" error afterwards is a bug worth reporting.
 
+### What it costs to run
+
+Measured on 2026-10-01, a real `spark` process sampled from `/proc` with
+thirty SNMP devices on a thirty-second poll against a local agent: about
+**100 MB of resident memory is Python and its libraries**
+before SPARK does anything; a real home network sat at **141 MB**, and a
+test with thirty SNMP devices polling every thirty seconds at **160 MB**,
+flat for as long as it ran. Logins peak **128 MB above that** for a moment
+(Argon2 hashes with 64 MB each, two allowed at once), which is why the
+compose file's `mem_limit` is `512m` and not something tighter; below about
+`384m` two people signing in during a discovery get the container killed
+(`docker compose ps` shows exit 137). CPU is a few percent of one core for a
+dozen devices. Disk is the one number worth watching: every check and every
+poll is one SQLite commit of about 40 KB, so a busy box writes a few GB a day
+— nothing to an SSD's lifetime, but visible under `docker stats` and
+amplified on ZFS.
+
+The SNMP engine is shared across polls, one per credential (`collectors/
+snmp.py` says why): building one compiles pysnmp's MIB modules, and doing
+that per poll was a third of each poll's CPU and the reason memory crept
+up after every burst of overlapping polls.
+
 ### Networks and device identity
 
 Subnets live in the database and are managed at `/settings` — add, rename,
@@ -1089,6 +1111,13 @@ docker compose logs --tail=40 spark
 
 Every commit on `main` is meant to be deployable, and the CHANGELOG says
 when one needs more than this (a migration, a config change, a new URL).
+
+`docker compose stop` and `restart` finish in about three seconds. SPARK
+stops waiting for idle browser connections after that long and runs its
+shutdown (the scheduler, then the database); a TLS close to a tab that is
+not reading would otherwise wait 30 s, past Docker's 10 s and into a
+SIGKILL. The compose file's `stop_grace_period` is set above SPARK's own
+limit, so a clean exit is what you get.
 
 ### Project layout
 
