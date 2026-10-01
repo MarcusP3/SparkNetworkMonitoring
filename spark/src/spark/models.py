@@ -1271,6 +1271,10 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "notify_on_recovery": True,
         "notify_on_new_device": True,
         "notify_on_snmp": True,
+        # Sign-in events (alerts.on_security_event): the login lockout
+        # tripping, a sign-in from an address never seen before, a password
+        # change or reset, first-run setup completing.
+        "notify_on_security": True,
     },
     # Threshold alerts from SNMP polling (snmp_alerts.py). Ports only alert
     # when starred on their device's page; the rest apply to every polled

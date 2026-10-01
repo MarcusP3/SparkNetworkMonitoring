@@ -423,3 +423,63 @@ class TestCheckNow:
         assert target.last_checked_at is not None
         assert target.status in (HealthStatus.UNKNOWN, HealthStatus.DOWN, HealthStatus.UP)
         assert target.check_type is CheckType.TCP
+
+
+# --------------------------------------------------------------------------
+# Host allowlist (finding #29) and the extra headers
+# --------------------------------------------------------------------------
+
+
+class TestAllowedHosts:
+    def test_off_by_default_any_host_is_answered(self):
+        client = signed_in_client()
+        assert client.get("/", headers={"Host": "attacker.example:9700"}).status_code == 200
+
+    def test_when_set_only_listed_names_are_answered(self):
+        client = fresh_client()
+        client.app.user_middleware.clear()      # rebuild with a list, as create_app would
+        from spark.web.hardening import host_allowed
+
+        allowed = frozenset({"spark.lan", "192.168.1.10"})
+        def ok(host):  # type: ignore[no-untyped-def]
+            return host_allowed([(b"host", host.encode())], allowed)
+        assert ok("spark.lan") and ok("SPARK.LAN:9700") and ok("192.168.1.10:9700")
+        assert ok("localhost:9700") and ok("127.0.0.1:9700") and ok("[::1]:9700")
+        assert not ok("attacker.example:9700") and not ok("spark.lan.attacker.example")
+        assert not ok("") and not ok("192.168.1.11:9700")
+        assert not host_allowed([], allowed)
+
+    def test_a_rebound_name_gets_421_before_anything_runs(self):
+        tmp = Path(tempfile.mkdtemp(prefix="spark-hardening-"))
+        config = make_config(tmp)
+        config.app.allowed_hosts = ["testserver", "spark.lan"]
+        with TestClient(create_app(config), follow_redirects=False) as client:
+            assert client.get("/setup").status_code == 200
+            response = client.get("/setup", headers={"Host": "attacker.example"})
+            assert response.status_code == 421
+            assert "allowed_hosts" in response.text
+            # The healthcheck's address always works.
+            assert client.get("/healthz", headers={"Host": "127.0.0.1:9700"}).status_code == 200
+
+
+class TestMoreHeaders:
+    def test_opener_and_resource_policies_are_set(self):
+        client = fresh_client()
+        response = client.get("/setup")
+        assert response.headers["cross-origin-opener-policy"] == "same-origin"
+        assert response.headers["cross-origin-resource-policy"] == "same-origin"
+
+    def test_hsts_is_off_unless_asked_for_and_only_over_https(self):
+        tmp = Path(tempfile.mkdtemp(prefix="spark-hardening-"))
+        app = create_app(make_config(tmp))
+        with TestClient(app, base_url="https://testserver", follow_redirects=False) as tls:
+            assert "strict-transport-security" not in tls.get("/setup").headers
+        from spark.web.hardening import Hardening
+
+        app = create_app(make_config(tmp))
+        app.user_middleware.clear()
+        app.add_middleware(Hardening, hsts=True)
+        with TestClient(app, base_url="https://testserver", follow_redirects=False) as tls:
+            assert tls.get("/setup").headers["strict-transport-security"] == "max-age=31536000"
+        with TestClient(app, follow_redirects=False) as plain:
+            assert "strict-transport-security" not in plain.get("/setup").headers

@@ -14,6 +14,11 @@ secrets/
 *.db-shm
 secret.key
 
+# The real config. `config/spark.example.yaml` is the shipped template;
+# the copy you edit stays out of git, so `git pull` never fights it and a
+# fork never pushes a real network's subnets or proxy addresses.
+config/spark.yaml
+
 .DS_Store
 .idea/
 .vscode/

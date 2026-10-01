@@ -1052,6 +1052,7 @@ async def save_alerts(
     notify_on_recovery: str = Form("", max_length=limits.SHORT),
     notify_on_new_device: str = Form("", max_length=limits.SHORT),
     notify_on_snmp: str = Form("", max_length=limits.SHORT),
+    notify_on_security: str = Form("", max_length=limits.SHORT),
     quiet_start: str = Form("", max_length=limits.SHORT),
     quiet_end: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
@@ -1079,6 +1080,7 @@ async def save_alerts(
         notify_on_recovery=_checked(notify_on_recovery),
         notify_on_new_device=_checked(notify_on_new_device),
         notify_on_snmp=_checked(notify_on_snmp),
+        notify_on_security=_checked(notify_on_security),
         quiet_hours_start=start,
         quiet_hours_end=end,
     )

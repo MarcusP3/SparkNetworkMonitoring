@@ -22,8 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
 from .. import prefs, topology
-from ..auth import (MIN_PASSWORD_LENGTH, SESSION_COOKIE, AuthError, change_password, client_ip,
-                    create_session, end_idle_sessions, list_sessions, revoke_other_sessions)
+from ..auth import (MIN_PASSWORD_LENGTH, AuthError, change_password, client_ip, create_session,
+                    end_idle_sessions, list_sessions, note_password_changed,
+                    revoke_other_sessions, session_token)
 from ..config import Config
 from ..models import User, utcnow
 from .deps import get_config, get_session, redirect, require_user, templates
@@ -40,7 +41,7 @@ async def _render(request: Request, session: AsyncSession, config: Config, user:
     placed = request.query_params.get("placed", "")
     proxy_mode = config.auth.mode == "proxy"
     sessions = [] if proxy_mode else await list_sessions(
-        session, user.id, request.cookies.get(SESSION_COOKIE))
+        session, user.id, session_token(request))
     return templates.TemplateResponse(
         request,
         "preferences.html",
@@ -105,6 +106,7 @@ async def save_password(
     except AuthError as exc:
         return await _render(request, session, config, user, status_code=400,
                              account_error=str(exc))
+    await note_password_changed(session, "changed under Preferences", client_ip(request, config.auth))
     token = await create_session(session, user, config.auth,
                                  user_agent=request.headers.get("user-agent"),
                                  ip=client_ip(request, config.auth))
@@ -124,7 +126,7 @@ async def end_other_sessions(
     """Sign out everywhere else: every session but the one that pressed the button."""
     if config.auth.mode == "proxy":
         return redirect("/preferences")
-    token = request.cookies.get(SESSION_COOKIE) or ""
+    token = session_token(request) or ""
     ended = await revoke_other_sessions(session, user.id, token)
     await session.commit()
     return redirect(f"/preferences?saved=sessions&ended={ended}#account")

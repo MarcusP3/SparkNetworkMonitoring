@@ -189,7 +189,7 @@ class TestResetCommand:
         _second_browser(c)
         assert _live_sessions(config) == 2
 
-        monkeypatch.setenv("SPARK_CONFIG", str(config.app.data_dir / "no-such-file.yaml"))
+        monkeypatch.delenv("SPARK_CONFIG", raising=False)
         monkeypatch.setenv("SPARK__APP__DATA_DIR", str(config.app.data_dir))
         answers = iter([NEW, NEW])
         monkeypatch.setattr(getpass, "getpass", lambda _prompt="": next(answers))
@@ -208,7 +208,7 @@ class TestResetCommand:
 
         config = _config()
         c = _signed_in(config)
-        monkeypatch.setenv("SPARK_CONFIG", str(config.app.data_dir / "no-such-file.yaml"))
+        monkeypatch.delenv("SPARK_CONFIG", raising=False)
         monkeypatch.setenv("SPARK__APP__DATA_DIR", str(config.app.data_dir))
 
         answers = iter([NEW, NEW + "x"])
@@ -229,7 +229,7 @@ class TestResetCommand:
         config = _config()
         with TestClient(create_app(config)):
             pass
-        monkeypatch.setenv("SPARK_CONFIG", str(config.app.data_dir / "no-such-file.yaml"))
+        monkeypatch.delenv("SPARK_CONFIG", raising=False)
         monkeypatch.setenv("SPARK__APP__DATA_DIR", str(config.app.data_dir))
         monkeypatch.setattr("sys.stdin", io.StringIO(NEW + "\n"))
         assert reset_password_main(["--password-stdin"]) == 1

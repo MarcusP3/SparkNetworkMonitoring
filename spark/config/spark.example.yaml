@@ -1,4 +1,9 @@
-# SPARK configuration.
+# SPARK configuration -- the template. Copy it, then edit the copy:
+#
+#   cp config/spark.example.yaml config/spark.yaml
+#
+# The copy is ignored by git, so pulling updates never conflicts with it and
+# nothing about your network ends up in a repository.
 #
 # Only things needed before the database exists live here. Everything you'd
 # change routinely — alert webhook, schedules, scan settings — is edited in the

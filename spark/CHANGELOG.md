@@ -1,5 +1,94 @@
 # Changelog
 
+## Unreleased — security review, round three: the visible batch (2026-09-30)
+
+Findings #25, #26, #29 and #32 of the 2026-09-30 review, and its
+defence-in-depth list. **This one changes how SPARK is reached** — read
+*Upgrading* below before `git pull`.
+
+### Security
+
+- **HTTPS by default** (#25). `app.tls: auto` makes a self-signed
+  certificate on first start (`data/tls/`, EC P-256, ten years, 0600) and
+  prints its SHA-256 fingerprint to the log for the person to compare in the
+  browser, the way TrueNAS's and Proxmox's are checked. `off` is plain HTTP
+  for a reverse proxy in front; `{cert, key}` is an operator's own
+  certificate, and the only mode that sends `Strict-Transport-Security` —
+  HSTS with a certificate the browser does not trust is a lockout. Over
+  HTTPS the session cookie is `__Host-spark_session`; both names are read,
+  so a session survives the switch. The healthcheck tries HTTPS, then HTTP.
+  `SPARK__APP__TLS=off` from the environment.
+- **`app.allowed_hosts`** (#29): when set, any other `Host` gets a 421 —
+  the DNS-rebinding defence. Empty (the default) means any, as before;
+  loopback is always allowed for the healthcheck.
+- **`config/spark.yaml` is no longer tracked** (#32). The shipped file is
+  `config/spark.example.yaml`; the copy you edit is git-ignored, so `git
+  pull` never fights it and a fork never pushes a real network's subnets or
+  proxy addresses. A container whose `SPARK_CONFIG` names a missing file
+  now stops with the `cp` command instead of running on defaults.
+- **Sign-in events go to Discord**: the lockout tripping (once per window,
+  with the address), a sign-in from an address no session has come from
+  before, the password changed or reset, first-run setup completing. A
+  toggle on the Alerts card (on by default).
+- `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy:
+  same-origin` on every response.
+- **Running without `NET_RAW`** is now a documented option: the Dockerfile
+  takes `SETCAP_NET_RAW=0`, and the compose file carries the
+  `ping_group_range` sysctl, the `no-new-privileges` line and a
+  `read_only: true` block, commented, with what to check. Not switched on
+  by default: neither could be exercised end to end here, and a sweep that
+  silently finds nothing is worse than a capability.
+- **CI, Dependabot and a security policy** (#26). `.github/workflows/ci.yml`
+  runs the test suites from the hash-pinned locks, `pip-audit` and `bandit`,
+  and builds the image, scans it with Trivy and polls its healthcheck over
+  TLS — on every push, and every Monday so a vulnerability published later
+  still fails a run. `.github/dependabot.yml` proposes base-image digests
+  and action versions (not pip; the lock is uv's). `SECURITY.md` says how
+  to report privately and what is in scope. Two things only the owner can
+  do, and should: hardware-key 2FA on the GitHub account and branch
+  protection on `main`.
+
+### Upgrading
+
+1. `git pull` will refuse if your `config/spark.yaml` has local edits,
+   because this commit renames the tracked file. Keep a copy and put it
+   back:
+   ```bash
+   cd ~/NetworkMonitoringApp/spark
+   cp config/spark.yaml /tmp/spark.yaml
+   docker compose stop && sudo cp -a data data.bak-$(date +%F)
+   git pull
+   cp /tmp/spark.yaml config/spark.yaml
+   docker compose up -d --build
+   ```
+2. The URL is now `https://<host>:9700`. `http://` bookmarks stop working
+   (one listener cannot serve both); the browser warns once about the
+   certificate — compare the fingerprint in `docker compose logs spark`
+   and accept. Anything else polling `/healthz` over http needs `https`
+   and `-k`. Behind a reverse proxy that terminates TLS, add `tls: off`
+   under `app:` in `spark.yaml` first.
+3. Nothing else changes: same port, same sign-in, same data.
+
+### Docs
+
+README: Quick start, Configuration (TLS, allowed hosts), Docker settings
+(without NET_RAW), Alerts table, Authentication (transport, sign-in events),
+Continuous integration, Upgrading, project layout. CLAUDE.md: TLS, config
+file and sign-in event conventions; deployment reality. SECURITY.md new.
+
+### Tests
+
+29 new: `test_tls.py` (the certificate, every `app.tls` spelling, and HTTPS
+under a real uvicorn — `__Host-` cookie, no HSTS, the healthcheck script over
+both schemes), `test_security_events.py`, Host allowlist and header tests
+in `test_hardening.py`, config-file tests in `test_setup_code.py`.
+
+### Known, unfixed
+
+`read_only: true` and the `NET_RAW`-free layout are documented, not
+default. Action versions in `ci.yml` are tags, not SHAs; Dependabot keeps
+them current, and pinning by SHA is the next step once it has run once.
+
 ## Unreleased — security review, round three (2026-09-30)
 
 Findings #22–#24, #28, #30, #31, #33 and #34 of the 2026-09-30 review. Nothing

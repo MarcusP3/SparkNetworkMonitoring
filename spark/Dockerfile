@@ -82,7 +82,17 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation .
 # ignore file capabilities at exec. Do not add it to the compose file: SPARK
 # would start, fail to open a raw socket, and silently fall back to a ping
 # that measures nothing.
-RUN setcap cap_net_raw+ep "$(readlink -f "$(command -v python3)")"
+#
+# Build with `--build-arg SETCAP_NET_RAW=0` (compose: build.args) to leave the
+# capability off entirely, for a host whose net.ipv4.ping_group_range lets
+# uid 9700 open unprivileged ICMP sockets. Then compose can drop NET_RAW and
+# add no-new-privileges. Do not just drop NET_RAW with the file capability
+# still on the binary: a file capability the kernel cannot grant makes
+# execve fail, and the container will not start.
+ARG SETCAP_NET_RAW=1
+RUN if [ "$SETCAP_NET_RAW" = "1" ]; then \
+        setcap cap_net_raw+ep "$(readlink -f "$(command -v python3)")"; \
+    fi
 
 RUN mkdir -p /data /config && chown spark:spark /data /config
 

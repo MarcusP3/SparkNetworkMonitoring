@@ -1,6 +1,12 @@
 services:
   spark:
-    build: .
+    build:
+      context: .
+      args:
+        # 1 (default): real ICMP via a file capability on python, with
+        # `cap_add: [NET_RAW]` below. 0: no capability at all -- see the
+        # "Without NET_RAW" block below for what the host needs instead.
+        SETCAP_NET_RAW: "1"
     image: spark-monitor:latest
     container_name: spark
     restart: unless-stopped
@@ -8,6 +14,13 @@ services:
     # Host networking is required, not a preference. ARP and ICMP sweeps only
     # see the LAN from the host's network namespace; on a bridge network SPARK
     # sits behind NAT and discovery finds nothing at all.
+    #
+    # It also means port 9700 is on every interface the VM has, and there is
+    # no Docker port mapping to narrow it. SPARK serves HTTPS on it by
+    # default (self-signed; the fingerprint is in the log). On a VM with more
+    # than one interface, firewall the port (`ufw allow from <lan>/24 to any
+    # port 9700`) rather than binding to one address: the healthcheck reaches
+    # SPARK over loopback, and a single-address bind takes that away.
     network_mode: host
 
     # Real ICMP needs raw sockets. Without this, ping degrades to TCP probes
@@ -23,6 +36,28 @@ services:
       - ALL
     cap_add:
       - NET_RAW
+
+    # --- Without NET_RAW (optional, stronger) -----------------------------
+    # The kernel can let ordinary users send ICMP echo through datagram
+    # sockets, and SPARK's ping already falls back to that. On the VM, once:
+    #
+    #   echo 'net.ipv4.ping_group_range = 0 2147483647' | sudo tee /etc/sysctl.d/90-spark-ping.conf
+    #   sudo sysctl --system
+    #
+    # Then set SETCAP_NET_RAW above to "0", delete the two cap_add lines,
+    # uncomment the two below, and `docker compose up -d --build`. Confirm a
+    # sweep still finds devices (Devices page, "Scan now") before you keep
+    # it; if it says "ICMP unavailable", the sysctl did not take.
+    # security_opt:
+    #   - no-new-privileges:true
+
+    # --- Read-only root filesystem (optional) -----------------------------
+    # SPARK writes only under /data. If it fails to start with a "Read-only
+    # file system" error after this, something new writes elsewhere: that is
+    # a bug to report, not a reason to leave this off.
+    # read_only: true
+    # tmpfs:
+    #   - /tmp
 
     # Containment. SPARK is one process with a small thread pool (Argon2
     # runs in threads, at most two at once), so a process count anywhere near
@@ -41,7 +76,11 @@ services:
       # (`sudo chown -R 9700:9700 data`); SPARK refuses to start, and says
       # exactly this, if it is not.
       - ./data:/data
-      - ./config:/config:ro   # spark.yaml; SPARK never writes it
+      - ./config:/config:ro   # spark.yaml (copied from spark.example.yaml); SPARK never writes it
+      # For your own certificate instead of the self-signed one: put it in
+      # config/tls/ and set app.tls in spark.yaml to
+      #   {cert: /config/tls/cert.pem, key: /config/tls/key.pem}
+      # Behind a reverse proxy that terminates TLS: app.tls: off.
       # Uncomment once Docker-host inventory arrives (increment 4). Read-only,
       # and only the key SPARK uses to reach the remote daemons.
       # - ./secrets:/secrets:ro
@@ -51,3 +90,4 @@ services:
       # Overrides for anything in spark.yaml, nested with double underscores:
       # - SPARK__APP__PORT=9700
       # - SPARK__APP__LOG_LEVEL=DEBUG
+      # - SPARK__APP__TLS=off

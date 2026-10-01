@@ -222,3 +222,40 @@ class TestOneAdministrator:
                 return None
         assert asyncio.run(race()) == "An administrator account already exists"
         assert _users(config) == 1
+
+
+class TestConfigFile:
+    """`config/spark.yaml` is the operator's copy and stays out of git (#32);
+    a container whose SPARK_CONFIG points at nothing must say so, not run on
+    defaults."""
+
+    def test_the_shipped_file_is_the_example_and_the_real_one_is_ignored(self):
+        spark = Path(__file__).resolve().parents[1]
+        assert (spark / "config" / "spark.example.yaml").exists()
+        assert "config/spark.yaml" in (spark / ".gitignore").read_text()
+
+    def test_a_dangling_spark_config_stops_with_the_copy_command(self, monkeypatch, tmp_path):
+        from spark.config import load_config
+
+        monkeypatch.setenv("SPARK_CONFIG", str(tmp_path / "missing.yaml"))
+        with pytest.raises(SystemExit) as stopped:
+            load_config()
+        assert "cp config/spark.example.yaml config/spark.yaml" in str(stopped.value)
+
+    def test_without_spark_config_the_defaults_still_serve_development(self, monkeypatch, tmp_path):
+        from spark.config import load_config
+
+        monkeypatch.delenv("SPARK_CONFIG", raising=False)
+        monkeypatch.setenv("SPARK__APP__DATA_DIR", str(tmp_path / "data"))
+        config = load_config()
+        assert config.app.data_dir == tmp_path / "data"
+        assert config.app.port == 9700
+
+    def test_the_example_loads_as_shipped(self, monkeypatch, tmp_path):
+        from spark.config import load_config
+
+        example = Path(__file__).resolve().parents[1] / "config" / "spark.example.yaml"
+        monkeypatch.setenv("SPARK__APP__DATA_DIR", str(tmp_path / "data"))
+        config = load_config(example)
+        assert config.auth.mode == "password"
+        assert [s.cidr for s in config.network.subnets] == ["192.168.1.0/24"]

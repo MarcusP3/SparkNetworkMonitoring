@@ -15,7 +15,7 @@ from jinja2 import pass_context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits, prefs
-from ..auth import SESSION_COOKIE, resolve_proxy_user, resolve_session, setup_required
+from ..auth import resolve_proxy_user, resolve_session, session_token, setup_required
 from ..config import Config
 from ..db import get_sessionmaker
 from ..models import User
@@ -124,7 +124,7 @@ async def current_user(
     if config.auth.mode == "proxy":
         # The proxy owns sign-in, and so when it ends.
         return await resolve_proxy_user(session, request, config.auth)
-    token = request.cookies.get(SESSION_COOKIE)
+    token = session_token(request)
     if not token:
         return None
     minutes = await prefs.get_idle_minutes(session)
@@ -165,7 +165,7 @@ async def require_user(
         params.append(f"next={nxt}")
     # A cookie that no longer works is, in practice, a session that timed
     # out: signing out and changing the password both replace the cookie.
-    if request.cookies.get(SESSION_COOKIE):
+    if session_token(request):
         params.append("expired=1")
     raise RedirectException("/login" + ("?" + "&".join(params) if params else ""))
 

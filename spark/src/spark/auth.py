@@ -42,6 +42,10 @@ from .proxies import is_trusted_proxy, parse_proxies
 log = logging.getLogger(__name__)
 
 SESSION_COOKIE = "spark_session"
+# Over HTTPS the cookie carries the __Host- prefix, which makes the browser
+# itself insist on Secure, Path=/ and no Domain -- so a cookie set over TLS
+# can never be sent, or overwritten, over anything else.
+SECURE_SESSION_COOKIE = "__Host-spark_session"
 _hasher = PasswordHasher()
 
 # Verified against when the username doesn't exist, so a miss costs the same
@@ -203,23 +207,95 @@ def setup_code_matches(expected: str | None, submitted: str) -> bool:
     return secrets.compare_digest(normalise(expected), normalise(submitted or ""))
 
 
-def announce_setup_code(code: str, host: str, port: int) -> None:
+def announce_setup_code(code: str, host: str, port: int, scheme: str = "http") -> None:
     where = "localhost" if host in ("0.0.0.0", "::", "") else host
     banner = "=" * 72
     log.warning(
         "\n%s\n"
         "  SPARK has no administrator yet.\n"
-        "  Open http://%s:%s/setup and enter this setup code:\n\n"
+        "  Open %s://%s:%s/setup and enter this setup code:\n\n"
         "      %s\n\n"
         "  It is shown only here, and changes when SPARK restarts.\n"
         "%s",
-        banner, where, port, code, banner,
+        banner, scheme, where, port, code, banner,
     )
+
+
+def cookie_name(request: Request) -> str:
+    """The session cookie's name for this request: prefixed over HTTPS."""
+    return SECURE_SESSION_COOKIE if request.url.scheme == "https" else SESSION_COOKIE
+
+
+def session_token(request: Request) -> str | None:
+    """The session token the browser sent, under either name.
+
+    Both are read so a session started over one scheme survives a switch
+    to the other -- an instance turning TLS on, or a proxy going in front --
+    for as long as the browser keeps sending the old cookie.
+    """
+    return request.cookies.get(SECURE_SESSION_COOKIE) or request.cookies.get(SESSION_COOKIE)
 
 
 async def record_attempt(session: AsyncSession, ip: str, ok: bool) -> None:
     """A guess at the setup code counts toward the same lockout as a login."""
     session.add(LoginAttempt(ip=ip, ok=ok))
+
+
+async def note_lockout(session: AsyncSession, ip: str, config: AuthConfig, what: str) -> None:
+    """Tell the owner the lockout tripped for `ip` -- once per lockout window,
+    however many refused attempts follow."""
+    from . import alerts
+
+    window = int(utcnow().timestamp() // (config.lockout_minutes * 60))
+    await alerts.on_security_event(
+        session, kind="security_lockout",
+        subject=f"{what}: {config.max_attempts} failed attempts from {ip}",
+        body=(f"`{ip}` is locked out for {config.lockout_minutes} minutes. If that was not "
+              "you mistyping, something on the network is guessing."),
+        dedupe_key=f"security:lockout:{ip}:{window}",
+    )
+
+
+async def note_sign_in(session: AsyncSession, user: User, ip: str | None,
+                       user_agent: str | None) -> None:
+    """Tell the owner about a sign-in from an address no session has come from
+    before. The very first session of the account is not news; the second
+    one from somewhere new is.
+
+    Called before the new session row is added, so "before" means before.
+    """
+    from . import alerts
+
+    if not ip:
+        return
+    any_before = await session.scalar(
+        select(UserSession.id).where(UserSession.user_id == user.id).limit(1))
+    if any_before is None:
+        return
+    seen = await session.scalar(
+        select(UserSession.id).where(UserSession.user_id == user.id,
+                                     UserSession.ip == ip).limit(1))
+    if seen is not None:
+        return
+    await alerts.on_security_event(
+        session, kind="security_new_address", tone="info",
+        subject=f"Signed in from a new address: {ip}",
+        body=f"`{ip}` — {(user_agent or 'unknown browser')[:120]}. If that was not you, "
+             "change the password under Preferences → Account: it signs out every session.",
+    )
+
+
+async def note_password_changed(session: AsyncSession, how: str, ip: str | None = None) -> None:
+    from . import alerts
+
+    where = f" from {ip}" if ip else ""
+    await alerts.on_security_event(
+        session, kind="security_password", tone="info",
+        subject=f"The password was {how}{where}",
+        body="Every session has been signed out. If this was not you, the old password no "
+             "longer works and the person who did it is signed in: on the machine SPARK runs "
+             "on, `docker compose exec spark spark-reset-password` takes it back.",
+    )
 
 
 async def check_rate_limit(session: AsyncSession, ip: str, config: AuthConfig) -> None:

@@ -141,7 +141,8 @@ class TestUsing:
 
         async def status():
             async with D.session_scope() as s:
-                return [str(n.status) for n in await alerts.recent(s)]
+                # Only the outage: setup queued a sign-in event of its own.
+                return [str(n.status) for n in await alerts.recent(s) if n.kind == "down"]
         assert asyncio.run(status()) == ["held"]
 
     def test_the_alerts_card_names_the_zone_and_links_to_change_it(self, site):

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
 from ..auth import (
+    SECURE_SESSION_COOKIE,
     SESSION_COOKIE,
     AuthError,
     RateLimited,
@@ -22,12 +23,17 @@ from ..auth import (
     create_admin,
     create_session,
     new_setup_code,
+    note_lockout,
+    note_password_changed,
+    note_sign_in,
     record_attempt,
     resolve_session,
     revoke_session,
     seconds_left,
+    session_token,
     setup_code_matches,
     setup_required,
+    cookie_name,
 )
 from ..config import Config
 from .. import prefs, topology
@@ -42,7 +48,9 @@ router = APIRouter()
 
 def _set_session_cookie(request: Request, response, token: str, config: Config) -> None:  # type: ignore[no-untyped-def]
     response.set_cookie(
-        SESSION_COOKIE,
+        # __Host-spark_session over HTTPS: the browser then refuses to send
+        # it over http or to let an http page overwrite it (auth.cookie_name).
+        cookie_name(request),
         token,
         max_age=config.auth.session_days * 86400,
         httponly=True,
@@ -146,6 +154,8 @@ async def setup_submit(
     try:
         await check_rate_limit(session, ip, config.auth)
     except RateLimited as exc:
+        await note_lockout(session, ip, config.auth, "Setup code")
+        await session.commit()
         minutes = max(1, exc.retry_after_seconds // 60)
         return _setup_page(request, config, status_code=429,
                            error=f"Too many wrong setup codes. Try again in {minutes} minutes.",
@@ -189,6 +199,13 @@ async def setup_submit(
     if tz:
         await prefs.set_timezone(session, tz)
     await topology.set_mode(session, map_mode)
+    from ..alerts import on_security_event
+
+    await on_security_event(
+        session, kind="security_setup", tone="info",
+        subject=f"SPARK set up: administrator {user.username!r} created from {ip}",
+        body="This is the first-run setup completing. If it was not you, the setup code "
+             "was read from the log by someone else.")
 
     token = await create_session(
         session,
@@ -269,6 +286,8 @@ async def login_submit(
     try:
         user = await authenticate(session, username, password, ip, config.auth)
     except RateLimited as exc:
+        await note_lockout(session, ip, config.auth, "Sign-in")
+        await session.commit()
         minutes = max(1, exc.retry_after_seconds // 60)
         return templates.TemplateResponse(
             request,
@@ -292,6 +311,7 @@ async def login_submit(
             status_code=401,
         )
 
+    await note_sign_in(session, user, ip, request.headers.get("user-agent"))
     token = await create_session(
         session,
         user,
@@ -316,12 +336,14 @@ async def logout(
     session: AsyncSession = Depends(get_session),
     _user=Depends(current_user),
 ):
-    token = request.cookies.get(SESSION_COOKIE)
+    token = session_token(request)
     if token:
         await revoke_session(session, token)
         await session.commit()      # before the redirect; see login_submit
     response = redirect("/login")
     response.delete_cookie(SESSION_COOKIE, path="/")
+    # A __Host- cookie can only be cleared by a Secure cookie of the same name.
+    response.delete_cookie(SECURE_SESSION_COOKIE, path="/", secure=True)
     return response
 
 
@@ -335,7 +357,7 @@ async def _session_answer(session: AsyncSession, request: Request, *, touch: boo
     if config.auth.mode == "proxy":
         # No timeout of ours to report: the proxy decides.
         return JSONResponse({"remaining": None}, status_code=404)
-    token = request.cookies.get(SESSION_COOKIE)
+    token = session_token(request)
     idle = timedelta(minutes=await prefs.get_idle_minutes(session))
     if token and touch:
         await resolve_session(session, token, idle=idle, touch=True)

@@ -74,6 +74,22 @@ _STATIC_HEADERS: tuple[tuple[bytes, bytes], ...] = (
     (b"x-frame-options", b"DENY"),
     (b"referrer-policy", b"same-origin"),
     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+    # No other origin may open SPARK in a window it keeps a handle to, or
+    # load one of its responses as a resource. Nothing SPARK does needs either.
+    (b"cross-origin-opener-policy", b"same-origin"),
+    (b"cross-origin-resource-policy", b"same-origin"),
+)
+
+# Sent only over TLS SPARK trusts the operator to keep working: an operator-
+# supplied certificate (app.tls.cert/key). Never with the self-signed
+# certificate SPARK makes for itself -- Chrome refuses an HSTS host whose
+# certificate it does not trust, with no way past the warning, so HSTS plus
+# self-signed is a lockout, not a hardening. One year, no preload.
+_HSTS = b"max-age=31536000"
+
+_WRONG_HOST = (
+    b"This request named a host SPARK is not configured to answer as, and was refused.\n"
+    b"Add the name or address you use to app.allowed_hosts in spark.yaml.\n"
 )
 
 _FORBIDDEN = (
@@ -129,13 +145,38 @@ def same_origin(headers: list[tuple[bytes, bytes]]) -> bool:
     return bool(host) and origin == host
 
 
+def host_allowed(headers: list[tuple[bytes, bytes]], allowed: frozenset[str]) -> bool:
+    """Whether the request's Host is one SPARK answers as.
+
+    Off (an empty list) means any Host is fine, which is how SPARK has
+    always behaved. On, the name or address before any port has to be
+    listed -- except loopback, which the container's own healthcheck uses
+    and which no outside request can carry. This is the DNS-rebinding
+    defence (review finding #29): a page on another site that re-points its
+    own name at SPARK's address arrives with that other name in Host, and
+    the same-origin check on writes cannot tell, because Origin matches it.
+    """
+    if not allowed:
+        return True
+    raw = (_header(headers, b"host") or "").strip().lower()
+    if not raw:
+        return False
+    if raw.startswith("["):                     # [v6]:port
+        name = raw[1:].partition("]")[0]
+    else:
+        name = raw.rpartition(":")[0] if raw.count(":") == 1 else raw
+    return name in allowed or name in ("localhost", "127.0.0.1", "::1")
+
+
 class Hardening:
     """ASGI middleware: refuse cross-site writes, stamp every response, and
     apply proxy headers only from the proxies SPARK was told to trust."""
 
-    def __init__(self, app, trusted_proxies=()) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, app, trusted_proxies=(), allowed_hosts=(), hsts: bool = False) -> None:  # type: ignore[no-untyped-def]
         self.app = app
         self.proxies = parse_proxies(trusted_proxies)
+        self.allowed_hosts = frozenset(h.strip().lower() for h in allowed_hosts or () if h.strip())
+        self.hsts = hsts
 
     def _apply_proxy_headers(self, scope) -> None:  # type: ignore[no-untyped-def]
         """Record the TCP peer; rewrite client and scheme only behind a trusted proxy."""
@@ -162,6 +203,9 @@ class Hardening:
 
         self._apply_proxy_headers(scope)
         headers = scope.get("headers", [])
+        if not host_allowed(headers, self.allowed_hosts):
+            await _refuse(send, 421, _WRONG_HOST)
+            return
         if scope["method"] in UNSAFE_METHODS and not same_origin(headers):
             await _refuse(send, 403, _FORBIDDEN)
             return
@@ -208,6 +252,8 @@ class Hardening:
                 # content hash and are exactly what a browser should keep.
                 if content_type.startswith("text/html"):
                     extra.append((b"cache-control", b"no-store"))
+                if self.hsts and scope.get("scheme") == "https":
+                    extra.append((b"strict-transport-security", _HSTS))
                 out.extend((key, value) for key, value in extra if key not in present)
                 message = {**message, "headers": out}
             await send(message)

@@ -21,20 +21,75 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 
 DEFAULT_CONFIG_PATH = Path(os.environ.get("SPARK_CONFIG", "/config/spark.yaml"))
 ENV_PREFIX = "SPARK__"
+
+
+class TlsConfig(BaseModel):
+    """How SPARK serves HTTPS.
+
+      auto    - (default) a self-signed certificate SPARK makes on first start
+                and keeps in data/tls/; its fingerprint is in the log, the
+                way SPARK asks people to check TrueNAS's and Proxmox's.
+      off     - plain HTTP, for a reverse proxy that terminates TLS in front.
+      cert +  - an operator's own certificate and key (a real CA, or one
+      key       their devices already trust). HSTS is sent only in this mode.
+
+    In YAML either the word or a mapping: `tls: off`, `tls: auto`, or
+    `tls: {cert: /config/tls/cert.pem, key: /config/tls/key.pem}`. From the
+    environment: `SPARK__APP__TLS=off`.
+    """
+
+    mode: Literal["auto", "off", "custom"] = "auto"
+    cert: Path | None = None
+    key: Path | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_word(cls, value: Any) -> Any:
+        if value is None:
+            return {}
+        if isinstance(value, bool):          # YAML reads a bare `off` as False
+            return {"mode": "auto" if value else "off"}
+        if isinstance(value, str):
+            word = value.strip().lower()
+            if word in ("auto", "off"):
+                return {"mode": word}
+            raise ValueError("app.tls must be 'auto', 'off', or a mapping with cert and key")
+        return value
+
+    @model_validator(mode="after")
+    def _cert_and_key_together(self) -> "TlsConfig":
+        if bool(self.cert) != bool(self.key):
+            raise ValueError("app.tls needs both cert and key, or neither")
+        if self.cert and self.key:
+            self.mode = "custom"
+        elif self.mode == "custom":
+            raise ValueError("app.tls mode 'custom' needs cert and key")
+        return self
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "off"
 
 
 class AppConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9700
     data_dir: Path = Path("/data")
+    tls: TlsConfig = Field(default_factory=TlsConfig)
     # Cosmetic only; used in page titles and Discord messages so friends running
     # their own copy can tell instances apart.
     instance_name: str = "SPARK"
     log_level: str = "INFO"
+    # Names and addresses SPARK answers as. Empty means any (the default);
+    # set it -- every name and address you type into a browser to reach
+    # SPARK, and a reverse proxy's public name -- and any other Host header
+    # gets a 421. Loopback is always allowed for the healthcheck. The defence
+    # against DNS rebinding; see web/hardening.py.
+    allowed_hosts: list[str] = Field(default_factory=list)
 
     @property
     def db_path(self) -> Path:
@@ -43,6 +98,14 @@ class AppConfig(BaseModel):
     @property
     def secret_key_path(self) -> Path:
         return self.data_dir / "secret.key"
+
+    @property
+    def tls_dir(self) -> Path:
+        return self.data_dir / "tls"
+
+    @property
+    def scheme(self) -> str:
+        return "https" if self.tls.enabled else "http"
 
 
 class ProxyAuthConfig(BaseModel):
@@ -196,13 +259,30 @@ def _env_overlay() -> dict[str, Any]:
 
 
 def load_config(path: Path | None = None) -> Config:
-    path = path or DEFAULT_CONFIG_PATH
+    """The effective configuration: defaults, then the YAML file, then the environment.
+
+    A file named by `SPARK_CONFIG` (the image sets it) has to exist. It used to
+    be skipped quietly, so a container started without its config mount ran on
+    defaults -- listening everywhere, in password mode, with no subnets --
+    and nothing said so. Only the built-in default path may be absent, which is
+    the development case (`spark` from a checkout with env overrides).
+    """
+    named = os.environ.get("SPARK_CONFIG")
+    if path is None:
+        path = Path(named) if named else DEFAULT_CONFIG_PATH
     data: dict[str, Any] = {}
     if path.exists():
         loaded = yaml.safe_load(path.read_text()) or {}
         if not isinstance(loaded, dict):
             raise ValueError(f"{path} must contain a YAML mapping at the top level")
         data = loaded
+    elif named and Path(named) == path:
+        raise SystemExit(
+            f"SPARK_CONFIG points at {path}, which does not exist.\n"
+            "The shipped template is config/spark.example.yaml -- copy it and edit the copy:\n"
+            "    cp config/spark.example.yaml config/spark.yaml\n"
+            "(from the spark/ directory, the one docker-compose.yml is in), then start again."
+        )
     data = _deep_merge(data, _env_overlay())
     config = Config.model_validate(data)
     config.auth.validate_for_use()

@@ -357,6 +357,24 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
         )
 
 
+async def on_security_event(session: AsyncSession, *, kind: str, subject: str, body: str,
+                            tone: str = "bad", dedupe_key: str | None = None) -> None:
+    """Something happened to the sign-in that the owner would want to know.
+
+    Detective control for the account: the lockout tripping (someone is
+    guessing), a sign-in from an address that has never held a session
+    before (was that you?), a password change or reset (if not you, it is
+    too late for the old one), and first-run setup completing (on a fresh
+    install, that it was you). Called in the transaction that recorded the
+    event; the dispatcher sends. Off under Settings -> Alerts.
+    """
+    settings = await load(session)
+    if not settings.get("enabled", True) or not settings.get("notify_on_security", True):
+        return
+    await enqueue(session, kind=kind, tone=tone, subject=subject[:512], body=body,
+                  dedupe_key=dedupe_key)
+
+
 async def on_new_devices(session: AsyncSession, devices: list, *, first_sweep: bool) -> None:  # type: ignore[type-arg]
     """New devices from a sweep, in one message. The first sweep is a baseline."""
     if first_sweep or not devices:

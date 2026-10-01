@@ -241,6 +241,9 @@ async def _reset_password(username: str | None, password: str) -> str:
                 await set_password(session, user, password)
             except AuthError as exc:
                 raise SystemExit(str(exc)) from None
+            from .auth import note_password_changed
+
+            await note_password_changed(session, "reset with spark-reset-password")
             await session.commit()
             return user.username
     finally:

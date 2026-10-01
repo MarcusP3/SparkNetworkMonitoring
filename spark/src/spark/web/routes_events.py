@@ -22,7 +22,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from .. import events, prefs
-from ..auth import SESSION_COOKIE, resolve_proxy_user, resolve_session
+from ..auth import resolve_proxy_user, resolve_session, session_token
 from ..db import session_scope
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def _authenticate(request: Request) -> bool:
     async with session_scope() as session:
         if config.auth.mode == "proxy":
             return await resolve_proxy_user(session, request, config.auth) is not None
-        token = request.cookies.get(SESSION_COOKIE)
+        token = session_token(request)
         if not token:
             return False
         # Subject to the idle timeout, but never extends it: the stream is

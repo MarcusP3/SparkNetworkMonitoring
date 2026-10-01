@@ -835,6 +835,8 @@
           <span>When an SNMP device stops answering</span></label>
         <label class="checkbox"><input type="checkbox" name="notify_on_new_device" value="1" {% if a.notify_on_new_device %}checked{% endif %}>
           <span>When a new device joins the network</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_security" value="1" {% if a.notify_on_security %}checked{% endif %}>
+          <span>Sign-in events: a lockout, a sign-in from a new address, a password change, first-run setup</span></label>
       </fieldset>
 
       <div class="row-form quiet-hours">

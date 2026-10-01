@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from . import scheduler as scheduler_module
+from . import tls
 from .config import Config, load_config
 from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException, templates
@@ -128,7 +129,8 @@ def create_app(config: Config | None = None) -> FastAPI:
             app.state.setup_code = None
             if await setup_required(session):
                 app.state.setup_code = new_setup_code()
-                announce_setup_code(app.state.setup_code, config.app.host, config.app.port)
+                announce_setup_code(app.state.setup_code, config.app.host, config.app.port,
+                                    config.app.scheme)
             # One-shot: copies spark.yaml's subnets in on the first start after
             # upgrading, then never again. See subnets.seed_from_config.
             await seed_from_config(session, config)
@@ -157,9 +159,10 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_credentials(config)
 
         log.info(
-            "SPARK %s ready on http://%s:%s  (auth: %s, subnets: %d, "
+            "SPARK %s ready on %s://%s:%s  (auth: %s, subnets: %d, "
             "polling %d target(s), SNMP %d device(s), discovery %s)",
             __version__,
+            config.app.scheme,
             config.app.host,
             config.app.port,
             config.auth.mode,
@@ -201,7 +204,10 @@ def create_app(config: Config | None = None) -> FastAPI:
     # errors, a cross-site POST is refused before any dependency runs, and the
     # client address is settled -- from X-Forwarded-For only behind a proxy
     # SPARK was told to trust -- before anything reads it.
-    app.add_middleware(Hardening, trusted_proxies=config.auth.proxy.trusted_proxies)
+    app.add_middleware(Hardening, trusted_proxies=config.auth.proxy.trusted_proxies,
+                       allowed_hosts=config.app.allowed_hosts,
+                       # HSTS only behind a certificate the operator chose; see tls.py.
+                       hsts=config.app.tls.mode == "custom")
 
     @app.exception_handler(RedirectException)
     async def _handle_redirect(_request: Request, exc: RedirectException):
@@ -261,6 +267,28 @@ def create_app(config: Config | None = None) -> FastAPI:
     return app
 
 
+def tls_arguments(config: Config) -> dict:
+    """What uvicorn needs to serve HTTPS, per app.tls; empty for plain HTTP.
+
+    The self-signed pair is made here, before uvicorn binds, because uvicorn
+    reads the files at start -- so the data directory is checked and made
+    private first, the same two steps the lifespan repeats harmlessly.
+    """
+    mode = config.app.tls.mode
+    if mode == "off":
+        return {}
+    if mode == "custom":
+        for path in (config.app.tls.cert, config.app.tls.key):
+            if path is None or not Path(path).exists():
+                raise SystemExit(f"app.tls names {path}, which does not exist.")
+        return {"ssl_certfile": str(config.app.tls.cert), "ssl_keyfile": str(config.app.tls.key)}
+    require_writable(config.app.data_dir)
+    keep_data_private(config.app.data_dir)
+    cert, key, made_now = tls.ensure_self_signed(config.app.tls_dir, config.app.instance_name)
+    tls.announce(cert, config.app.host, config.app.port, made_now)
+    return {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+
+
 def run() -> None:
     import uvicorn
 
@@ -275,6 +303,7 @@ def run() -> None:
         # (web/hardening.py). uvicorn's own handling trusts loopback by
         # default, which with host networking is every container on the VM.
         proxy_headers=False,
+        **tls_arguments(config),
     )
 
 

@@ -1,0 +1,124 @@
+# Every push and pull request: the suites SPARK requires before a commit
+# (CLAUDE.md), plus the audits a person forgets to run. Weekly, on a
+# schedule: the audits again on the current locks and image, so a
+# vulnerability published after the last commit still opens an issue.
+#
+# The install is the same one the Dockerfile does -- hash-checked, from the
+# two locks, never re-resolved -- so what CI tests is what the image ships.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: spark
+
+jobs:
+  test:
+    name: pytest + smoke test (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install from the hash-pinned locks, then SPARK itself
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements-build.lock
+          pip install --require-hashes -r requirements.lock
+          pip install --no-deps --no-build-isolation .
+          pip install pytest
+
+      - name: Local SNMP agent, so the live collector tests run rather than skip
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq snmpd snmp
+          ./tests/local_agent.sh start || echo "::warning::no local SNMP agent; the live SNMP tests will skip"
+
+      - name: pytest
+        run: python -m pytest -q -p no:cacheprovider
+
+      - name: Smoke test over real HTTP
+        run: python smoke_test.py
+
+      - name: Stop the agent
+        if: always()
+        run: ./tests/local_agent.sh stop || true
+
+  audit:
+    name: pip-audit + bandit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit against the runtime and build locks
+        run: |
+          pip install pip-audit
+          pip-audit --require-hashes -r requirements.lock
+          pip-audit --require-hashes -r requirements-build.lock
+
+      - name: bandit over the application
+        run: |
+          pip install bandit
+          # Medium severity and up, minus three reviewed patterns:
+          #   B104  binding 0.0.0.0 -- host networking; the compose file says why
+          #   B608  SQL from strings -- retention/history interpolate constants
+          #         and int()-cast ids only (2026-09-24 review, covered by tests)
+          #   B704  markupsafe.Markup -- charts.py escapes every value it embeds
+          #         (2026-09-30 review, "Checked and clean")
+          bandit -q -r src -ll -s B104,B608,B704
+
+  image:
+    name: Build the image and scan it
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build exactly as `docker compose up --build` would
+        run: docker build -t spark-monitor:ci .
+
+      - name: Trivy — OS packages and Python packages in the image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: spark-monitor:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          scanners: vuln
+
+      - name: Healthcheck answers over TLS
+        run: |
+          mkdir -p data && sudo chown 9700:9700 data
+          cp config/spark.example.yaml config/spark.yaml
+          docker run -d --name spark-ci --network host \
+            -v "$PWD/data:/data" -v "$PWD/config:/config:ro" spark-monitor:ci
+          for i in $(seq 1 30); do
+            if docker exec spark-ci python /usr/local/bin/spark-healthcheck; then echo healthy; exit 0; fi
+            sleep 1
+          done
+          docker logs spark-ci; exit 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs spark-ci 2>&1 | tail -40 || true

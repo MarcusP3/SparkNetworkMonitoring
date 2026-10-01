@@ -72,9 +72,9 @@ Every `docker compose` and `pytest` command runs from there.
 ```bash
 git clone https://github.com/MarcusP3/SparkNetworkMonitoring.git
 cd SparkNetworkMonitoring/spark
-cp config/spark.yaml config/spark.yaml.orig   # keep a pristine copy
-$EDITOR config/spark.yaml                     # set your first subnet (seed only)
-mkdir -p data && sudo chown 9700:9700 data    # the container runs as uid 9700, not root
+cp config/spark.example.yaml config/spark.yaml   # the copy is yours; git ignores it
+$EDITOR config/spark.yaml                        # set your first subnet (seed only)
+mkdir -p data && sudo chown 9700:9700 data       # the container runs as uid 9700, not root
 docker compose up -d --build
 ```
 
@@ -82,9 +82,17 @@ Create `data/` yourself, before the first `up`: if Docker creates it for the
 bind mount it belongs to root, and SPARK refuses to start (with this same
 command in the message) rather than run as root.
 
-Open `http://<host>:9700` and create the admin account when prompted. The
-form asks for a **setup code**, which SPARK printed when it started with no
-account:
+Open `https://<host>:9700`. The browser warns once: SPARK made itself a
+certificate on first start, and nobody has vouched for it. Before accepting,
+compare the fingerprint the browser shows with the one SPARK logged — the
+same way SPARK asks you to check TrueNAS's and Proxmox's:
+
+```bash
+docker compose logs spark | grep -B2 -A8 "fingerprint"
+```
+
+Then create the admin account when prompted. The form asks for a **setup
+code**, which SPARK printed when it started with no account:
 
 ```bash
 docker compose logs spark | grep -A3 "setup code"
@@ -97,7 +105,7 @@ and is spent once the account exists. The password minimum is 12 characters.
 Verify it came up:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9700/healthz   # 200
+curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1:9700/healthz   # 200 (-k: self-signed)
 docker compose logs --tail=20                                            # "ready ... polling N target(s)"
 ```
 
@@ -105,7 +113,7 @@ Without Docker, for development:
 
 ```bash
 pip install -e .
-SPARK_CONFIG=./config/spark.yaml SPARK__APP__DATA_DIR=./data spark
+SPARK_CONFIG=./config/spark.yaml SPARK__APP__DATA_DIR=./data SPARK__APP__TLS=off spark
 ```
 
 > **Docker Desktop for Mac and Windows will not work** for the discovery
@@ -121,11 +129,41 @@ Two layers, deliberately:
 
 | Where | What lives there |
 |---|---|
-| `config/spark.yaml` | Things needed *before the database exists*: bind address, data directory, auth mode. Its `network.subnets` block seeds the database once and is then ignored |
+| `config/spark.yaml` (your copy of `config/spark.example.yaml`; git ignores it) | Things needed *before the database exists*: bind address, data directory, TLS, auth mode, the names SPARK answers as. Its `network.subnets` block seeds the database once and is then ignored |
 | Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, the Discord webhook and alert settings, and later retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
-underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`.
+underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`,
+`SPARK__APP__TLS=off`. A container whose `SPARK_CONFIG` names a file that
+does not exist stops and says so, rather than running on defaults.
+
+### TLS
+
+SPARK serves HTTPS by itself. `app.tls` is one of:
+
+| Value | What it means |
+|---|---|
+| `auto` (default) | A self-signed certificate SPARK makes on first start, kept in `data/tls/`, its SHA-256 fingerprint in the log. Browsers warn once; you compare the fingerprint and accept. It is the same fingerprint every start until you delete the files. |
+| `off` | Plain HTTP. For a reverse proxy that terminates TLS in front — list that proxy in `auth.proxy.trusted_proxies` so the cookie is still `Secure`. |
+| `{cert: …, key: …}` | Your own certificate and key (a real CA, or one your devices trust), e.g. mounted under `/config/tls/`. The only mode that sends `Strict-Transport-Security`: HSTS plus a certificate a browser does not trust is a lockout, so the self-signed one never sends it. |
+
+The self-signed certificate names `localhost`, the loopback addresses, the
+instance name if it is a valid host name, and the addresses the machine had
+when it was made. A changed address does not change the fingerprint; the
+browser will note the name mismatch, which for a fingerprint-pinned
+certificate is not the thing you are checking. Over HTTPS the session cookie
+is `__Host-spark_session`: the browser itself then refuses to send it over
+http or let an http page overwrite it.
+
+### Names SPARK answers as
+
+`app.allowed_hosts` is empty by default, meaning any `Host` header is
+answered. Set it to every name and address you type to reach SPARK (and a
+reverse proxy's public name) and any other `Host` gets a 421 — the defence
+against DNS rebinding, where a page on another site re-points its own name
+at SPARK's address so your browser talks to SPARK under that name. Loopback is
+always allowed, for the healthcheck. Leave it empty until you are sure of
+the list: a name you forgot is a page you cannot open.
 
 ### Dependencies and the supply chain
 
@@ -171,8 +209,27 @@ owned by that uid — `sudo chown -R 9700:9700 data` from `spark/` — and SPARK
 refuses to start, printing that command, if it is not. ICMP still works for
 the unprivileged user because `CAP_NET_RAW` is attached to the Python binary
 as a file capability; that is also why the compose file must **not** set
-`no-new-privileges`, which makes the kernel ignore file capabilities and
-would silently degrade ping.
+`no-new-privileges` while that capability is in use — it makes the kernel
+ignore file capabilities, and an ignored *effective* file capability makes
+`execve` fail, so the container would not start at all.
+
+**Without `NET_RAW` (optional, stronger).** The kernel can let ordinary users
+send ICMP echo through datagram sockets, and SPARK's ping already falls back
+to that. On the VM, once:
+
+```bash
+echo 'net.ipv4.ping_group_range = 0 2147483647' | sudo tee /etc/sysctl.d/90-spark-ping.conf
+sudo sysctl --system
+```
+
+Then in `docker-compose.yml`: `SETCAP_NET_RAW: "0"` under `build.args`
+(the image is built without the file capability), delete the `cap_add`
+lines, uncomment `security_opt: [no-new-privileges:true]`, and
+`docker compose up -d --build`. Press **Scan now** on the Devices page and
+confirm it still finds devices; "ICMP unavailable" means the sysctl did not
+take. The compose file also carries a commented `read_only: true` block:
+SPARK writes only under `/data`, so it should simply work, and a
+"Read-only file system" error afterwards is a bug worth reporting.
 
 ### Networks and device identity
 
@@ -496,6 +553,7 @@ What is sent — changes only, never a reminder that something is still down:
 | A **starred** port is busy / back to normal | Over 80% of its speed for 10 minutes |
 | CPU / memory high, back to normal | Over 90% for 10 minutes |
 | Temperature high, back to normal | Over 80 °C for 5 minutes |
+| **Sign-in events** | The lockout tripping (once per window, with the address); a sign-in from an address no session has come from before; the password changed or reset; first-run setup completing. Off with "Sign-in events" on the Alerts card. |
 
 The last four are **SNMP alerts**, from what polling already collects. The
 numbers are defaults, each rule can be switched off, and all of them are set
@@ -969,10 +1027,16 @@ worse than no auth, because it looks like security.
 older version is made private at the next start. Reading it from the host
 therefore takes `sudo`.
 
-> **Known gap.** There is no TLS of SPARK's own; on plain HTTP the session
-> cookie cannot be `Secure` without silently never being sent, so put it
-> behind a reverse proxy — and list that proxy — before exposing it beyond
-> the LAN.
+**Transport.** HTTPS by default, with SPARK's own self-signed certificate
+pinned by fingerprint (see [TLS](#tls)); the cookie is `Secure` and
+`__Host-`-prefixed over it. Every response also carries
+`Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin`.
+`app.allowed_hosts` closes the DNS-rebinding angle once set (see
+[Names SPARK answers as](#names-spark-answers-as)).
+
+**Sign-in events** — a lockout, a sign-in from a new address, a password
+change or reset, first-run setup — go to Discord like any other alert, so the
+account has a detective control as well as the preventive ones.
 
 ---
 
@@ -995,27 +1059,63 @@ pytest -q                      #   the live collector tests then run instead of 
 work" script that needs no test framework and exercises setup, login, rate
 limiting, target CRUD and the check engine over real HTTP.
 
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request, and every
+Monday on its own: the two test suites, installed from the hash-pinned locks
+the way the image is; `pip-audit` over both locks and `bandit` over `src`; and
+a build of the image scanned by Trivy, then started with the healthcheck
+polled over TLS. The Monday run is the point — a vulnerability published
+after the last commit still fails a run and sends the mail. Dependabot
+proposes base-image digests and action versions; Python packages it leaves
+alone, because the lock is generated (`uv pip compile … --generate-hashes`)
+and a hand-edited one fails `test_supply_chain.py`.
+
+Two things only the repository owner can switch on, and should: two-factor
+authentication on the GitHub account (a hardware key), and branch
+protection on `main` (no force-push, no deletion). Everyone who runs SPARK
+does `git pull` and rebuilds; the account is the supply chain.
+
+### Upgrading an install
+
+```bash
+cd ~/NetworkMonitoringApp/spark        # wherever the clone is
+docker compose stop
+sudo cp -a data data.bak-$(date +%F)   # spark.db, secret.key, tls/
+git pull
+docker compose up -d --build
+docker compose logs --tail=40 spark
+```
+
+Every commit on `main` is meant to be deployable, and the CHANGELOG says
+when one needs more than this (a migration, a config change, a new URL).
+
 ### Project layout
 
 Everything below is relative to the repository root. The application is in
-`spark/`; only `README.md`, `CLAUDE.md` and `DESIGN.md` live at the top.
+`spark/`; the top holds only the documents, the security policy and CI.
 
 ```
 DESIGN.md         the design document
 CLAUDE.md         working agreements for this repo
+SECURITY.md       how to report a vulnerability privately, and what is in scope
+.github/
+  workflows/ci.yml   pytest + smoke test, pip-audit + bandit, image build + Trivy; weekly on a schedule
+  dependabot.yml     proposes base-image digests and action versions (not pip: the lock is uv's)
 spark/
   docker-compose.yml, Dockerfile
   requirements.lock     every package pinned to a version and SHA-256 hashes
   requirements-build.lock  the build toolchain, pinned the same way
-  config/spark.yaml     the pre-database config (subnets here are a one-time seed)
+  config/spark.example.yaml  the pre-database config template; copy to spark.yaml (git-ignored)
   CHANGELOG.md
   smoke_test.py         end-to-end walk through the running application
   src/spark/
     config.py           YAML + env config loading
     models.py           full Phase 1 schema, UTC datetime and enum column types
     db.py               engine, sessions, migration runner
-    auth.py             Argon2 passwords (hashed off the event loop), sessions, setup code, proxy mode
+    auth.py             Argon2 passwords (hashed off the event loop), sessions, setup code, proxy mode, sign-in events
     proxies.py          which peers are trusted proxies and what their X-Forwarded-* headers say
+    tls.py              the self-signed certificate: made once, fingerprint in the log
     cli.py              spark-probe, spark-reset-password
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
@@ -1064,7 +1164,7 @@ spark/
     web/                routes and dependencies
       routes_device_page.py  the per-device page
       routes_credentials.py  Settings → Credentials
-      hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only
+      hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
     templates/          Jinja templates
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
@@ -1111,6 +1211,8 @@ spark/
     test_account.py     change password, sessions listed, sign out everywhere else, spark-reset-password
     test_http_check.py  the HTTP check against a local server: 1 MB body cap, endless bodies cut
     test_data_privacy.py  data/ files are 0600, an older database is made private at start
+    test_tls.py         the self-signed certificate, app.tls spellings, and HTTPS under a real uvicorn: __Host- cookie, no HSTS, healthcheck
+    test_security_events.py  what sign-in events queue an alert, and the toggle that silences them
     test_no_homelab_details.py  no real host names or address scheme in anything shipped
     test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
     test_watch_selected.py  tick devices and watch them all; skips, duplicates, junk, first checks queued

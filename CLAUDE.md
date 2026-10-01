@@ -102,6 +102,15 @@ Two things that look like details and are not:
 - **Argon2 runs in a thread** (`auth._hash_in_thread`), never on the event
   loop: a login attempt is 120 ms and 64 MiB, and the loop is also every
   check and poll.
+- **HTTPS is the default** (`app.tls: auto`, `tls.py`). Anything that reads
+  the session cookie goes through `auth.session_token` (two names: plain and
+  `__Host-`); anything that sets it goes through `routes_auth._set_session_cookie`.
+  HSTS only with an operator's certificate, never the self-signed one.
+- **`config/spark.yaml` is not tracked.** The shipped file is
+  `config/spark.example.yaml`; `test_no_homelab_details.py` scans it. Tests
+  build `Config` objects directly and never depend on either file.
+- **Sign-in events** (`alerts.on_security_event`) are queued in the
+  transaction that recorded the event, like every other alert.
 - **No new dependency without a reason that survives the question "what does
   this do that the standard library does not".** Every package in the closure
   is code that runs in a container holding `NET_RAW` on someone's
@@ -124,12 +133,22 @@ real outage.
 Python 3.12+ is required. Some environments only have 3.10; build and test
 somewhere with 3.12 rather than lowering `requires-python`.
 
+## Docs and process files
+
+`SECURITY.md` and `.github/` are part of the repository's surface: a change
+to how a vulnerability should be reported, or to what CI runs, updates them
+and the README's *Continuous integration* section together.
+
 ## Deployment reality
 
 Runs on a dedicated Ubuntu VM with Docker, host networking and `NET_RAW` — not
 Docker Desktop, whose host networking is layer 4 only and cannot do the ARP and
 ICMP discovery depends on. The container runs as uid 9700 with `CAP_NET_RAW`
 as a file capability on the Python binary; `./data` must be owned by 9700 and
-the compose file must never gain `no-new-privileges` (it disables file
-capabilities). `docker compose up -d --build` is needed after any
-dependency change; a plain `up -d` reuses the existing image.
+the compose file must not gain `no-new-privileges` while that capability is
+on the binary (an effective file capability the kernel cannot grant makes
+`execve` fail). The documented alternative — `SETCAP_NET_RAW=0`, no
+`cap_add`, `ping_group_range` on the host — is the only way to have both.
+`docker compose up -d --build` is needed after any dependency change; a plain
+`up -d` reuses the existing image. It serves HTTPS on 9700 with a self-signed
+certificate unless `app.tls` says otherwise.
