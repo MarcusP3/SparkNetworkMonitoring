@@ -1082,7 +1082,7 @@ class SnmpStorage(Base):
 class ApiCredential(Base, TimestampMixin):
     """A key for a device's own API (Settings -> Credentials).
 
-    TrueNAS and Proxmox; the UniFi controller will be another `kind`. The key is
+    TrueNAS, Proxmox and UniFi Network (`kind`). The key is
     sealed with the install's secret and never shown again once saved. The
     TLS certificate is pinned by its SHA-256 on the first Test a person
     accepts (truenas.py says why), and the key is only ever sent to that
@@ -1092,7 +1092,7 @@ class ApiCredential(Base, TimestampMixin):
     __tablename__ = "api_credential"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16))              # "truenas", "proxmox"
+    kind: Mapped[str] = mapped_column(String(16))              # "truenas", "proxmox", "unifi"
     name: Mapped[str] = mapped_column(String(64), unique=True)
     device_id: Mapped[int | None] = mapped_column(
         ForeignKey("device.id", ondelete="SET NULL"), index=True
@@ -1109,7 +1109,8 @@ class ApiCredential(Base, TimestampMixin):
     last_info: Mapped[dict | None] = mapped_column(JSON)       # version, hostname
     # What the last good check read: pools, drives, TrueNAS's alerts, and
     # read_at (truenas.parse; migration 16). Proxmox: nodes, guests,
-    # storages, ZFS pools and disks (proxmox.parse).
+    # storages, ZFS pools and disks (proxmox.parse). UniFi: sites, devices
+    # and client counts (unifi.parse).
     readings: Mapped[dict | None] = mapped_column(JSON)
     # Choices made about what it reads. Proxmox: {"watched": [vmid, ...]},
     # the guests that alert when they stop (migration 19).

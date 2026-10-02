@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — UniFi over its official API (2026-10-02)
+
+### Added
+
+- **UniFi credentials.** Settings → Credentials takes a UniFi Network API
+  key (made on UniFi Network's Integrations page) and the console's
+  address. Same rules as TrueNAS and Proxmox: sealed on arrival, never shown
+  again, sent only over HTTPS and only after you trust the console's
+  certificate fingerprint; GET only.
+- **A UniFi card on the console's device page**: every adopted device with
+  its state, address, firmware (and whether an update is waiting), CPU,
+  memory, client count, uptime and the device it uplinks through, linked to
+  its SPARK device page when the MAC matches; client totals (wired,
+  wireless, VPN, guests). Clients are counted, not stored.
+- Written to Ubiquiti's published API reference (developer.ui.com) and read
+  tolerantly, so it works the same on UniFi Network 9.1 through 10.6 and
+  should keep working as fields are added: every field is optional, numbers
+  are read whether written as numbers or text, every page of a list is
+  read, and an unknown device state is shown as written.
+
+### Changed
+
+- Settings → Credentials shows each kind's own instructions only for that
+  kind.
+
 ## Unreleased — base image refreshed (2026-10-02)
 
 ### Security

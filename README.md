@@ -20,8 +20,9 @@ Linux VM · **Storage** one SQLite file
   incidents, and dependency suppression — one alert for the switch, not thirty.
 - **Reads your gear over SNMP.** CPU, memory, temperature, interface traffic,
   storage and history charts per device, v2c and v3.
-- **Talks to TrueNAS and Proxmox** over their own APIs: drive health, pools,
-  TrueNAS alerts, VMs and containers, SMART — read-only, certificate-pinned.
+- **Talks to TrueNAS, Proxmox and UniFi** over their own APIs: drive health,
+  pools, TrueNAS alerts, VMs and containers, SMART, UniFi devices and
+  clients — read-only, certificate-pinned.
 - **Draws the map.** A searchable network map built from switch MAC tables,
   with services on their own tab; alerts stay quiet below a device that is down.
 - **Tells you in Discord** when something goes down and when it comes back,
@@ -117,7 +118,7 @@ the network: being at the machine is the credential.
 ## Documentation
 
 - [Using SPARK](docs/guide.md) — monitoring, the map, alerts, SNMP,
-  TrueNAS/Proxmox credentials, backups, page by page.
+  TrueNAS/Proxmox/UniFi credentials, backups, page by page.
 - [Configuration and security](docs/configuration.md) — `spark.yaml`, TLS,
   Docker settings, resource use, sign-in and how the web UI is protected.
 - [Development](docs/development.md) — what is built, tests, CI, code layout,

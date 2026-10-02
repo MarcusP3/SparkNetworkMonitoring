@@ -689,7 +689,7 @@ class TestPages:
         page = flat(site.get("/settings/credentials").text)
         assert ('<label class="stack-field for-proxmox"><span class="muted small">Token ID</span>'
                 in page)
-        assert '<span class="for-truenas">API key</span><span class="for-proxmox">Secret</span>' in page
+        assert '<span class="for-key">API key</span><span class="for-proxmox">Secret</span>' in page
         response = site.post("/settings/credentials", data={
             "kind": "proxmox", "name": "pve", "device_id": "1", "host": fake.host,
             "token_id": TOKEN_ID, "api_key": SECRET})

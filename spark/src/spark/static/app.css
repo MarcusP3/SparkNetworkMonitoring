@@ -1807,6 +1807,7 @@ code.fingerprint.small { display: inline; }
 .pve-table tr.is-quiet td:not(.actions) { color: var(--text-muted); }
 .pve-table td.actions { text-align: right; width: 1%; }
 .pve-table td.actions form { margin: 0; }
+.unifi-table td:first-child { white-space: normal; min-width: 12rem; }
 /* A watched guest's "Watched" is a button here: pressing it stops watching. */
 .btn-quiet.is-watched.is-toggle { cursor: pointer; }
 .btn-quiet.is-watched.is-toggle:hover { background: color-mix(in srgb, var(--ok) 22%, transparent); }
@@ -1821,13 +1822,15 @@ code.fingerprint.small { display: inline; }
 .suppress-link { color: var(--accent); text-decoration: none; }
 .suppress-link:hover { text-decoration: underline; }
 .js-supp .supp-form:not(.is-truenas) .supp-detail { display: none; }
-/* Add a credential: Proxmox's Token ID and words only for Proxmox. With JS
-   off both show, and the key's label reads "API key Secret" -- so the pair
-   gets a slash between them there. */
-.add-cred-form .for-truenas + .for-proxmox::before { content: " / "; }
+/* Add a credential: Proxmox's Token ID and words only for Proxmox, each
+   kind's words only for it. With JS off all show, and the key's label reads
+   "API key Secret" -- so the pair gets a slash between them there. */
+.add-cred-form .for-key + .for-proxmox::before { content: " / "; }
 .js-cred .add-cred-form:not(.is-proxmox) .for-proxmox { display: none; }
-.js-cred .add-cred-form.is-proxmox .for-truenas { display: none; }
-.js-cred .add-cred-form .for-truenas + .for-proxmox::before { content: none; }
+.js-cred .add-cred-form:not(.is-truenas) .for-truenas { display: none; }
+.js-cred .add-cred-form:not(.is-unifi) .for-unifi { display: none; }
+.js-cred .add-cred-form.is-proxmox .for-key { display: none; }
+.js-cred .add-cred-form .for-key + .for-proxmox::before { content: none; }
 
 /* ---- Network map: compact (map.html) ------------------------------------ */
 /* Find, Problems only, Infrastructure / Everything. */

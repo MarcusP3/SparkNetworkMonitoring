@@ -225,17 +225,19 @@ class Client:
             raise ProxmoxError(f"{path}: the answer was not JSON.") from None
 
 
-async def _response(reader: asyncio.StreamReader) -> tuple[int, str, bytes]:
+async def _response(reader: asyncio.StreamReader,
+                    error: type[Exception] = ProxmoxError) -> tuple[int, str, bytes]:
     """Status, reason and body of one HTTP/1.1 response on a `Connection:
-    close` socket: Content-Length, chunked, or to the end."""
+    close` socket: Content-Length, chunked, or to the end. A malformed or
+    oversized answer raises `error` (unifi.py shares this)."""
     try:
         head = await reader.readuntil(b"\r\n\r\n")
     except asyncio.LimitOverrunError:
-        raise ProxmoxError("The answer's headers were too long.") from None
+        raise error("The answer's headers were too long.") from None
     lines = head.decode("latin-1").split("\r\n")
     parts = lines[0].split(" ", 2)
     if len(parts) < 2 or not parts[0].startswith("HTTP/") or not parts[1].isdigit():
-        raise ProxmoxError("The answer was not HTTP.")
+        raise error("The answer was not HTTP.")
     status, reason = int(parts[1]), parts[2] if len(parts) > 2 else ""
     headers = {}
     for line in lines[1:]:
@@ -250,20 +252,20 @@ async def _response(reader: asyncio.StreamReader) -> tuple[int, str, bytes]:
             if size == 0:
                 break
             if len(body) + size > MAX_BODY:
-                raise ProxmoxError("The answer was too large.")
+                raise error("The answer was too large.")
             body += await reader.readexactly(size)
             await reader.readexactly(2)
         return status, reason, bytes(body)
     if "content-length" in headers:
         length = int(headers["content-length"])
         if length > MAX_BODY:
-            raise ProxmoxError("The answer was too large.")
+            raise error("The answer was too large.")
         return status, reason, await reader.readexactly(length)
     body = bytearray()
     while chunk := await reader.read(65536):
         body += chunk
         if len(body) > MAX_BODY:
-            raise ProxmoxError("The answer was too large.")
+            raise error("The answer was too large.")
     return status, reason, bytes(body)
 
 

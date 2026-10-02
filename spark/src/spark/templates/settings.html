@@ -1206,7 +1206,7 @@
       <div>
         <h2>Credentials</h2>
         <p class="card-sub">
-          Keys for devices' own APIs, for what SNMP cannot tell — TrueNAS and Proxmox.
+          Keys for devices' own APIs, for what SNMP cannot tell — TrueNAS, Proxmox and UniFi.
           Stored encrypted and never shown again once saved. SNMP credentials
           stay under <a href="/settings/snmp">SNMP</a>.
         </p>
@@ -1252,6 +1252,8 @@
         <code class="fingerprint">{{ r.pending_sha256 }}</code>
         <p class="muted small">{% if r.kind == 'proxmox' %}Compare it with Proxmox: the node → System → Certificates
           (pveproxy-ssl.pem if there is one, otherwise pve-ssl.pem), or run <code>pvenode cert info</code> on the host.
+          {% elif r.kind == 'unifi' %}Compare it with the certificate your browser shows for the console's own page,
+          <code>https://{{ r.host }}</code>: the padlock → the certificate → its SHA-256 fingerprint.
           {% else %}Compare it with TrueNAS: System → Certificates, the certificate in use by the web interface.
           {% endif %}Trust it only if they match. Until then SPARK sends nothing, the key included.</p>
         <form method="post" action="/settings/credentials/{{ r.id }}/trust">
@@ -1288,7 +1290,7 @@
 
     <details class="add-cred" {% if not creds.rows or cred_form %}open{% endif %}>
       <summary class="sub-title">Add a credential</summary>
-      <form method="post" action="/settings/credentials" class="cred-form add-cred-form{% if cred_form.kind == 'proxmox' %} is-proxmox{% endif %}">
+      <form method="post" action="/settings/credentials" class="cred-form add-cred-form is-{{ cred_form.kind if cred_form.kind in ('proxmox', 'unifi') else 'truenas' }}">
         <label class="stack-field"><span class="muted small">Kind</span>
           <select name="kind" class="cred-kind">
             {% for value, label in creds.kinds %}<option value="{{ value }}" {% if cred_form.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -1300,7 +1302,7 @@
           <input type="text" name="host" maxlength="255" value="{{ cred_form.host or '' }}" placeholder="192.168.1.20 or truenas.lan" autocomplete="off"></label>
         <label class="stack-field for-proxmox"><span class="muted small">Token ID</span>
           <input type="text" name="token_id" maxlength="128" value="{{ cred_form.token_id or '' }}" placeholder="spark@pve!monitor" autocomplete="off" spellcheck="false"></label>
-        <label class="stack-field"><span class="muted small"><span class="for-truenas">API key</span><span class="for-proxmox">Secret</span></span>
+        <label class="stack-field"><span class="muted small"><span class="for-key">API key</span><span class="for-proxmox">Secret</span></span>
           <input type="password" name="api_key" maxlength="1024" required autocomplete="new-password"></label>
         <p class="muted small for-truenas">
           For TrueNAS: a key for a user with the Read-Only Administrator role is all SPARK
@@ -1311,6 +1313,11 @@
           showed them when the token was made (Datacenter → Permissions → API Tokens lists the
           ID; the secret is shown only once). The token needs the PVEAuditor role on <code>/</code>,
           which can read but change nothing. Port 8006 unless the address says otherwise.
+        </p>
+        <p class="muted small for-unifi">
+          For UniFi: the address of the console UniFi Network runs on, and an API key from
+          UniFi Network's <strong>Integrations</strong> page (shown only once, when it is made).
+          SPARK only ever reads with it. Port 443 unless the address says otherwise.
         </p>
         <p class="muted small">
           The key or secret is only ever sent over HTTPS, and only after you have trusted the certificate.
@@ -1416,15 +1423,19 @@ docker compose up -d</code></pre>
     sync();
   })();
 
-  // Credentials: the Token ID and Proxmox's words only for Proxmox, the
-  // TrueNAS words only for TrueNAS. With JS off everything shows and the
-  // server ignores a token ID for TrueNAS.
+  // Credentials: the Token ID and Proxmox's words only for Proxmox, each
+  // kind's own words only for it. With JS off everything shows and the
+  // server ignores a token ID for anything but Proxmox.
   (function () {
     var form = document.querySelector('.add-cred-form');
     if (!form) return;
     document.documentElement.classList.add('js-cred');
     var kind = form.querySelector('.cred-kind');
-    function sync() { form.classList.toggle('is-proxmox', kind.value === 'proxmox'); }
+    function sync() {
+      ['truenas', 'proxmox', 'unifi'].forEach(function (k) {
+        form.classList.toggle('is-' + k, kind.value === k);
+      });
+    }
     kind.addEventListener('change', sync);
     sync();
   })();

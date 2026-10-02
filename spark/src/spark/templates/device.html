@@ -267,6 +267,48 @@
     {% endif %}
   </section>
 {% endmacro %}
+{% macro unifi_card(a, uf) %}
+  {% set r = a.row %}
+  <section class="card pve-card unifi-card" id="unifi-{{ r.id }}">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0"/><path d="M12 19.5h.01"/></svg></span>
+      <div>
+        <h2>UniFi</h2>
+        <p class="card-sub">
+          {% if uf.devices %}{{ uf.online }} of {{ uf.devices | length }} device{{ 's' if uf.devices | length != 1 }} online ·{% endif %}
+          {% if uf.clients %}{{ uf.clients.total }} client{{ 's' if uf.clients.total != 1 }} ({{ uf.clients.wired }} wired, {{ uf.clients.wireless }} wireless{% if uf.clients.vpn %}, {{ uf.clients.vpn }} VPN{% endif %}{% if uf.clients.guest %}, {{ uf.clients.guest }} guest{{ 's' if uf.clients.guest != 1 }}{% endif %}) ·{% endif %}
+          {% if uf.version %}UniFi Network {{ uf.version }} ·{% endif %}
+          read every 5 minutes{% if uf.read_at %}, last at {{ uf.read_at | local('%H:%M %Z') }}{% endif %}.
+        </p>
+      </div>
+    </div>
+    {% if uf.devices %}
+    <div class="table-scroll">
+    <table class="table compact storage-table pve-table unifi-table">
+      <thead><tr><th>Device</th>{% if uf.many_sites %}<th>Site</th>{% endif %}<th>State</th><th>Address</th><th>Firmware</th><th class="num">CPU</th><th class="num">Memory</th><th class="num">Clients</th><th class="num">Up</th></tr></thead>
+      <tbody>
+        {% for d in uf.devices %}
+        <tr class="{% if d.pill == 'neutral' %}is-quiet{% endif %}">
+          <td>{% if d.spark_id %}<a href="/devices/{{ d.spark_id }}">{{ d.name }}</a>{% else %}{{ d.name }}{% endif %}
+            <div class="muted small">{{ d.model or '' }}{% if d.role_words %}{{ ' · ' if d.model }}{{ d.role_words }}{% endif %}{% if d.via %} · via {{ d.via }}{% endif %}</div></td>
+          {% if uf.many_sites %}<td class="small">{{ d.site_name or '—' }}</td>{% endif %}
+          <td><span class="pill {{ d.pill }}">{{ d.state_words }}</span></td>
+          <td class="small">{% if d.ip %}<code>{{ d.ip }}</code>{% else %}<span class="muted">—</span>{% endif %}{% if d.mac %}<div class="muted small"><code>{{ d.mac }}</code></div>{% endif %}</td>
+          <td class="small">{{ d.firmware or '—' }}{% if d.updatable %} <span class="pill warn" title="UniFi has a newer firmware for it">update</span>{% endif %}</td>
+          <td class="num">{% if d.cpu is not none %}{{ d.cpu | round | int }}%{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num">{% if d.mem is not none %}{{ d.mem | round | int }}%{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num">{% if d.clients is not none %}{{ d.clients }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num">{{ d.up }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% elif uf.devices is not none %}
+    <p class="muted small">UniFi lists no adopted devices.</p>
+    {% endif %}
+  </section>
+{% endmacro %}
 <div class="page device-page">
   <div class="page-head">
     <div class="page-title">
@@ -370,6 +412,7 @@
     {% endif %}
   </section>
   {% if a.pve %}{{ pve_card(a, a.pve) }}{% endif %}
+  {% if a.unifi %}{{ unifi_card(a, a.unifi) }}{% endif %}
   {% endfor %}
 
   {% if snmp %}

@@ -34,7 +34,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
-| Device APIs — TrueNAS (drives, alerts) and Proxmox (guests, storage, SMART) | ✅ working |
+| Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
@@ -149,6 +149,7 @@ spark/
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
+    unifi.py            the UniFi Network Integration API: an API key over pinned HTTPS, GET only; the UniFi card
     servicemap.py       the network map: the tree, each device's status, the services list
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
@@ -211,6 +212,7 @@ spark/
     test_credentials.py  the TrueNAS client against a TLS fake: nothing sent before Trust, pins, renewals; the page
     test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts
     test_proxmox.py     the Proxmox client against a TLS fake: nothing sent before Trust; parsing; guest, storage and SMART alerts; the card
+    test_unifi.py       the UniFi client against a TLS fake: nothing sent before Trust; paging; 9.x and 10.x answers read alike; the card
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in

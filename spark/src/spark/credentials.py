@@ -1,7 +1,7 @@
 """API credentials: Settings -> Credentials.
 
-Keys for devices' own APIs -- TrueNAS (truenas.py) and Proxmox (proxmox.py)
-now, the UniFi controller later. SNMP communities and v3 users stay with
+Keys for devices' own APIs -- TrueNAS (truenas.py), Proxmox (proxmox.py) and
+UniFi Network (unifi.py). SNMP communities and v3 users stay with
 SNMP (snmp_config.py).
 
 A key is sealed as soon as it arrives and is never shown again; a blank key
@@ -29,7 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import (alerts, proxmox, proxmox_health, snmp_alerts, suppressions, truenas,
-               truenas_health)
+               truenas_health, unifi)
 from .db import session_scope
 from .engine.state import human_duration
 from .models import AlertState, ApiCredential, Device, utcnow
@@ -52,13 +52,14 @@ STATES = {
     "untested": ("neutral", "not tested"),
 }
 
-KINDS = {"truenas": "TrueNAS", "proxmox": "Proxmox"}
+KINDS = {"truenas": "TrueNAS", "proxmox": "Proxmox", "unifi": "UniFi"}
 
 # The client for each kind: test(host, key, pinned) -> Info, and the
-# errors it raises. Both pin the certificate the same way.
-CLIENTS = {"truenas": truenas, "proxmox": proxmox}
-NOT_TRUSTED = (truenas.CertificateNotTrusted, proxmox.CertificateNotTrusted)
-FAILED = (truenas.TrueNASError, proxmox.ProxmoxError)
+# errors it raises. All pin the certificate the same way.
+CLIENTS = {"truenas": truenas, "proxmox": proxmox, "unifi": unifi}
+NOT_TRUSTED = (truenas.CertificateNotTrusted, proxmox.CertificateNotTrusted,
+               unifi.CertificateNotTrusted)
+FAILED = (truenas.TrueNASError, proxmox.ProxmoxError, unifi.UniFiError)
 
 _HOSTNAME = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
                        r"(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
@@ -132,8 +133,14 @@ def _key(kind: str, raw: str, token_id: str = "", saved: str | None = None) -> s
 
     Proxmox asks for two fields, the Token ID and the Secret, as Proxmox
     shows them when the token is made; they are joined here. On an edit, the
-    one left empty is taken from the saved token."""
+    one left empty is taken from the saved token. A UniFi key is checked for
+    what cannot be a key (a space, a half-copied key)."""
     key = (raw or "").strip()
+    if kind == "unifi" and key:
+        try:
+            return unifi.check_key(key)
+        except ValueError as exc:
+            raise CredentialError(str(exc)) from None
     if kind != "proxmox":
         return key
     token_id = (token_id or "").strip()

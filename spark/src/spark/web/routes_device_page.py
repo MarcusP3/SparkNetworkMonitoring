@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
-from .. import proxmox_health, suppressions, truenas_health
+from .. import proxmox_health, suppressions, truenas_health, unifi
 from .. import charts
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
@@ -293,6 +293,13 @@ async def device_page(
         "pool_space", float(rules.get("pool_space_percent") or 85))
     for a in apis:
         a["pve"] = proxmox_health.view(a["row"], line=line)
+    # UniFi: the devices it manages, each linked to its SPARK page by MAC.
+    if any(a["row"].kind == "unifi" for a in apis):
+        macs = {mac: ident for ident, mac in (await session.execute(
+            select(Device.id, Device.mac).where(Device.mac.is_not(None),
+                                                Device.ignored.is_(False)))).all()}
+        for a in apis:
+            a["unifi"] = unifi.view(a["row"], macs=macs)
 
     return templates.TemplateResponse(
         request,

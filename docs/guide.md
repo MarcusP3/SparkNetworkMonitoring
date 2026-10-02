@@ -540,9 +540,8 @@ not measuring quite the same thing.
 
 ## Credentials
 
-Settings → Credentials holds keys for devices' own APIs — TrueNAS and
-Proxmox now, the UniFi controller later. SNMP communities and v3 users stay
-under Settings → SNMP.
+Settings → Credentials holds keys for devices' own APIs — TrueNAS, Proxmox
+and UniFi Network. SNMP communities and v3 users stay under Settings → SNMP.
 
 ### TrueNAS
 
@@ -666,6 +665,42 @@ page does, which wakes a drive that has spun down.
 
 A call Proxmox will not answer leaves that part as it was last read, and a
 node that did not answer is not taken to have lost its drives.
+
+### UniFi
+
+SPARK reads UniFi Network over Ubiquiti's official Integration API, on the
+console itself: `https://<console>/proxy/network/integration`, with an API
+key in the `X-API-KEY` header, and only ever with GET. It is written to
+Ubiquiti's published API reference ([developer.ui.com](https://developer.ui.com)),
+checked against UniFi Network 9.1 and 10.6: every field is treated as
+optional, a number is read whether it is written as a number or as text,
+and a device state SPARK has not seen before is shown as UniFi writes it —
+so a newer UniFi Network that adds to the API does not break it.
+
+1. In UniFi Network, open the **Integrations** page and make an API key.
+   It is shown once. SPARK never changes anything with it.
+2. In SPARK, Settings → Credentials → **Add a credential**: UniFi, a name,
+   the device (the console), and the key. Port 443 is assumed; give
+   `address:port` for another.
+3. Compare the fingerprint SPARK shows with the one your browser shows for
+   the console's own page (the padlock → the certificate → SHA-256), and
+   press **Trust this certificate**. **The key has not been sent before
+   this.** The certificate is pinned exactly as for TrueNAS and Proxmox.
+
+**What it reads, every 5 minutes:** `/v1/info` (the UniFi Network version);
+`/v1/sites`; for each site `/devices` (every adopted device and its state)
+and `/clients`; and for each device its own page (firmware, whether an
+update is waiting, its uplink, ports and radios) and, while it is online,
+`/statistics/latest` (CPU, memory, uptime, uplink rate). Every page of a
+list is read. The console's device gets a **UniFi** card: each device with
+its state, address, firmware, CPU, memory, clients and uptime, the device
+it uplinks through, and a link to its own SPARK page where the MAC
+matches. Clients are only counted — wired, wireless, VPN, guests, and per
+device; their names and addresses are not stored.
+
+A call UniFi will not answer leaves that part as it was last read. If the
+key stops working, *SPARK cannot use the API* alerts as for the others;
+UniFi's own device alerts are not added yet.
 
 ---
 
