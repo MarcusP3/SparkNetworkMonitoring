@@ -81,7 +81,15 @@ polled over TLS. The Monday run is the point — a vulnerability published
 after the last commit still fails a run and sends the mail. Dependabot
 proposes base-image digests and action versions; Python packages it leaves
 alone, because the lock is generated (`uv pip compile … --generate-hashes`)
-and a hand-edited one fails `test_supply_chain.py`.
+and a hand-edited one fails `test_supply_chain.py`. For the base image it
+proposes only new `3.12-slim` digests, not a new Python: moving to 3.13 or
+3.14 is a deliberate change to the locks, the tests and CI together.
+
+Every action in the workflow is pinned to a full commit SHA, with the
+version in a comment (Dependabot updates both). Tags can be moved: in March
+2026 attackers rewrote nearly all of `aquasecurity/trivy-action`'s version
+tags to steal CI secrets, and the old tags were later deleted. Pin any new
+action the same way.
 
 Two things only the repository owner can switch on, and should: two-factor
 authentication on the GitHub account (a hardware key), and branch

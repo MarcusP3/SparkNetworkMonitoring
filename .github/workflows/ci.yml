@@ -5,6 +5,13 @@
 #
 # The install is the same one the Dockerfile does -- hash-checked, from the
 # two locks, never re-resolved -- so what CI tests is what the image ships.
+#
+# Every action is pinned to a full commit SHA, with its version in a comment
+# for Dependabot. A tag can be moved to other code; a SHA cannot. That is
+# not theoretical: in March 2026 attackers force-pushed 76 of trivy-action's
+# 77 version tags to code that stole CI secrets (GHSA-69fq-xp46-6x23), and
+# the old tags were then deleted -- which is why `trivy-action@0.28.0`
+# stopped resolving here.
 
 name: CI
 
@@ -29,9 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -64,9 +71,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -92,13 +99,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build exactly as `docker compose up --build` would
         run: docker build -t spark-monitor:ci .
 
       - name: Trivy — OS packages and Python packages in the image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: spark-monitor:ci
           format: table

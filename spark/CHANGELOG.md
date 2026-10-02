@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — CI actions pinned by commit, Trivy working again (2026-10-02)
+
+### Fixed
+
+- **The image scan job ran nothing since it was added**: it asked for
+  `aquasecurity/trivy-action@0.28.0`, a tag that no longer exists. After the
+  March 2026 trivy-action compromise (attackers force-pushed nearly every
+  version tag to secret-stealing code; GHSA-69fq-xp46-6x23) the old tags
+  were deleted. Now `v0.36.0`, an immutable release. SPARK's CI never ran
+  the compromised code: the tag was already gone when CI was added, and the
+  job failed before running anything.
+
+### Changed
+
+- **Every GitHub Action is pinned to a full commit SHA** with its version in
+  a comment: checkout v7.0.1, setup-python v7.0.0 (off the deprecated
+  Node 20), trivy-action v0.36.0.
+- **Dependabot proposes only new `python:3.12-slim` digests**, not a jump to
+  a newer Python (3.12 → 3.14 needs the locks, tests and CI moved
+  together). Supersedes Dependabot PRs #3, #5 and #6; #4 (Python 3.14) is
+  declined.
+
 ## Unreleased — a short README; the detail in docs/ (2026-10-02)
 
 ### Changed

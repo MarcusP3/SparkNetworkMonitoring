@@ -13,6 +13,13 @@ updates:
       interval: weekly
       day: monday
     labels: [dependencies, docker]
+    # New digests of python:3.12-slim (OS security fixes) only. A new Python
+    # (3.12 -> 3.14) is a deliberate change: the hash-pinned locks, the tests
+    # and CI are all 3.12. Docker tags parse 3.14 as a *minor* bump, so both
+    # minor and major are ignored here.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /
