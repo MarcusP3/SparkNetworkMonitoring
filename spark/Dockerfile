@@ -28,7 +28,15 @@ ENV PYTHONUNBUFFERED=1 \
 # tzdata so quiet hours can be kept in a named time zone (zoneinfo reads the
 # system database; the slim image does not promise one).
 # Later increments add the Ookla speedtest CLI and openssh-client here.
+#
+# `apt-get upgrade`: the official python image is rebuilt on its own schedule,
+# and Debian's security fixes land in between. Even a fresh digest carried
+# packages with fixed HIGH/CRITICAL CVEs (Trivy in CI, 2026-10-02). Debian
+# stable only takes security and serious bug fixes, so upgrading at build
+# time is safe; the cost is that two builds a week apart can differ, which
+# the weekly CI scan is there to watch.
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends iputils-ping ca-certificates libcap2-bin tzdata \
     && rm -rf /var/lib/apt/lists/*
 

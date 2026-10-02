@@ -9,6 +9,10 @@
   HIGH/CRITICAL fixed vulnerabilities in the Debian 13.7 packages of the
   September image; the Python packages were all clean. Still Python 3.12.
   Rebuild: `docker compose up -d --build`.
+- **Debian security updates are applied at build** (`apt-get upgrade` in
+  the Dockerfile). The fresh digest still carried packages with fixed
+  HIGH/CRITICAL CVEs: the official image is rebuilt on its own schedule and
+  Debian's fixes land in between.
 
 ## Unreleased — CI actions pinned by commit, Trivy working again (2026-10-02)
 
