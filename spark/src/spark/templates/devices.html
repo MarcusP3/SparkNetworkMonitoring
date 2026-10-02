@@ -278,7 +278,7 @@
       {% if subnets %}
       <label class="inline-field">
         <span class="muted small">Subnet</span>
-        <select name="subnet" id="subnet-filter">
+        <select name="subnet" id="subnet-filter" class="auto-submit">
           <option value="">All subnets</option>
           {% for subnet in subnets %}
             <option value="{{ subnet.id }}"
@@ -296,7 +296,7 @@
       {% if snmp_filter.listed or snmp_filter.value %}
       <label class="inline-field">
         <span class="muted small">SNMP</span>
-        <select name="snmp" id="snmp-filter">
+        <select name="snmp" id="snmp-filter" class="auto-submit">
           <option value="">All devices</option>
           {% for key, label in snmp_filter.choices.items() %}
             <option value="{{ key }}" {% if key == snmp_filter.value %}selected{% endif %}>{{ label }}</option>
@@ -308,7 +308,7 @@
       {% if api_filter.offer %}
       <label class="inline-field">
         <span class="muted small">API</span>
-        <select name="api" id="api-filter">
+        <select name="api" id="api-filter" class="auto-submit">
           <option value="">All devices</option>
           {% for key, label in api_filter.choices.items() %}
             <option value="{{ key }}" {% if key == api_filter.value %}selected{% endif %}>{{ label }}</option>
@@ -320,7 +320,7 @@
       {% if paging.offer %}
       <label class="inline-field">
         <span class="muted small">Per page</span>
-        <select name="per_page" id="page-size">
+        <select name="per_page" id="page-size" class="auto-submit">
           {% for size in paging.choices %}
             <option value="{{ size }}" {% if size == paging.per_page %}selected{% endif %}>{{ size }}</option>
           {% endfor %}
@@ -643,13 +643,13 @@
     update();
   })();
 
-  // The subnet and per-page dropdowns submit themselves. Delegated from
-  // document because the filter bar lives inside #live and is replaced
-  // whenever a sweep finishes.
+  // Every filter-bar dropdown (select.auto-submit) submits itself: by
+  // class, not by id, so a new filter cannot be left out -- the API filter
+  // once was, and did nothing. Delegated from document because the filter
+  // bar lives inside #live and is replaced whenever a sweep finishes.
   document.addEventListener('change', function (event) {
     var el = event.target;
-    if (el && (el.id === 'subnet-filter' || el.id === 'page-size' ||
-               el.id === 'snmp-filter') && el.form) {
+    if (el && el.matches && el.matches('select.auto-submit') && el.form) {
       el.form.submit();
     }
   });

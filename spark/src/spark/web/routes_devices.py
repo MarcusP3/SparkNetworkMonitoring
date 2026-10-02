@@ -94,9 +94,9 @@ def _page_size(value: str) -> int:
 
 # The SNMP filter's values. Anything else shows everything.
 SNMP_FILTERS = {
-    "on": "Polled over SNMP",
+    "on": "Polled",
     "off": "Not polled",
-    "found": "Answered Find, not polled",
+    "found": "Ready to add",
 }
 
 # The API filter's values: any device with a credential (Settings ->

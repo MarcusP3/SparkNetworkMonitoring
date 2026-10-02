@@ -368,7 +368,7 @@ them on the list; nothing is added until you do. About 250 devices take around
 ten seconds, and the results appear without reloading. On the Devices page,
 each device that answered gets an **Add** button in its SNMP column (with the
 profile it answered), one that refused the credentials says `refused`, and the
-filter's **Answered Find, not polled** shows just those. Without a profile the
+SNMP filter's **Ready to add** shows just those. Without a profile the
 button reads **Set up SNMP** and goes to the SNMP settings.
 
 It runs only when pressed, on purpose: with a v2c profile it sends the

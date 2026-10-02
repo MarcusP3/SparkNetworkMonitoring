@@ -583,7 +583,7 @@ class TestDevicesList:
         site.post("/settings/credentials", data={
             "kind": "unifi", "name": "unifi", "device_id": "1", "host": fake.host, "api_key": KEY})
         page = flat(site.get("/devices").text)
-        assert '<select name="api" id="api-filter">' in page
+        assert '<select name="api" id="api-filter" class="auto-submit">' in page
         assert '<option value="unifi" >UniFi</option>' in page
         assert ('<a class="pill neutral api-pill" href="/devices/1#api-1" '
                 'title="UniFi API — open its card">UniFi</a>') in page
@@ -599,6 +599,21 @@ class TestDevicesList:
         assert "No devices match" in page and "has a Proxmox credential" in page
         assert flat(site.get("/devices?api=nonsense").text).count("api-pill") == 1, \
             "an unknown value shows everything"
+
+    def test_every_filter_submits_itself(self, site, fake):
+        """The API filter once did nothing in a browser: the script that
+        submits a filter on change listed the others by id. Now every
+        dropdown in the filter bar carries the class the script looks for."""
+        import re
+        site.post("/settings/credentials", data={
+            "kind": "unifi", "name": "unifi", "device_id": "1", "host": fake.host, "api_key": KEY})
+        page = site.get("/devices?per_page=25").text
+        bar = page[page.index('<section class="card filter-bar">'):]
+        bar = bar[:bar.index("</section>")]
+        selects = re.findall(r"<select[^>]*>", bar)
+        assert len(selects) >= 2 and any('name="api"' in t for t in selects)
+        assert all('class="auto-submit"' in t for t in selects), selects
+        assert "el.matches('select.auto-submit')" in page
 
 
 def test_paging_keeps_the_api_filter():

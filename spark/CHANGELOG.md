@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Devices filters fixed (2026-10-02)
+
+### Fixed
+
+- **The API filter did nothing in a browser.** Choosing an option did not
+  reload the page: the script that submits a filter on change named the
+  others one by one and missed it. Every filter-bar dropdown now carries a
+  class the script looks for, so a new one cannot be missed again (a test
+  checks it).
+
+### Changed
+
+- **The SNMP filter's choices read plainly**: Polled, Not polled, Ready to
+  add (was "Polled over SNMP", "Answered Find, not polled").
+
 ## Unreleased — find API devices on the Devices list (2026-10-02)
 
 ### Added
