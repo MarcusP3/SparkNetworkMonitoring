@@ -293,13 +293,24 @@ async def device_page(
         "pool_space", float(rules.get("pool_space_percent") or 85))
     for a in apis:
         a["pve"] = proxmox_health.view(a["row"], line=line)
-    # UniFi: the devices it manages, each linked to its SPARK page by MAC.
+    # UniFi: the devices it manages, each linked to its SPARK page by MAC,
+    # or by address for one SPARK knows by IP alone (a routed VLAN).
     if any(a["row"].kind == "unifi" for a in apis):
-        macs = {mac: ident for ident, mac in (await session.execute(
-            select(Device.id, Device.mac).where(Device.mac.is_not(None),
-                                                Device.ignored.is_(False)))).all()}
+        known = (await session.execute(
+            select(Device.id, Device.mac, Device.primary_ip).where(Device.ignored.is_(False))
+            .order_by(Device.id))).all()
+        macs = {mac: ident for ident, mac, _ in known if mac}
+        ips: dict[str, int] = {}
+        for ident, mac, ip in known:
+            if ip and not mac:
+                ips.setdefault(ip, ident)
+        live = {ident for ident, _, _ in known}
+        for ident, ip in (await session.execute(
+                select(DeviceAddress.device_id, DeviceAddress.ip))).all():
+            if ident in live:
+                ips.setdefault(ip, ident)
         for a in apis:
-            a["unifi"] = unifi.view(a["row"], macs=macs)
+            a["unifi"] = unifi.view(a["row"], macs=macs, ips=ips)
 
     return templates.TemplateResponse(
         request,

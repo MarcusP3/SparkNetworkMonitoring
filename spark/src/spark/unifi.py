@@ -40,6 +40,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import ssl
 from dataclasses import dataclass, field
 from typing import Any
@@ -424,6 +425,61 @@ def _device(sid: str, site_name: str | None, d: dict, full: dict, st: dict) -> d
 
 
 # --------------------------------------------------------------------------
+# Identity: the MACs UniFi knows
+# --------------------------------------------------------------------------
+
+_MAC = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+
+
+async def fill_in_macs(session, readings: dict) -> list:  # type: ignore[no-untyped-def]
+    """Give MAC-less devices the MAC UniFi reports at their address.
+
+    Across a router SPARK sees no MACs, so a UniFi device on a routed VLAN
+    is known to SPARK by IP alone. UniFi knows its MAC. The rule is the one
+    identity.fill_in_macs uses for a router's ARP table: only when exactly
+    one MAC-less device is at that address, no device has that MAC yet, and
+    the address is not one an SNMP-polled device says is its own (that one
+    is a duplicate awaiting a merge, which a MAC would block). Not a merge:
+    the device gains the identity a sweep on its own subnet would have
+    given it."""
+    from sqlalchemy import select
+
+    from . import identity
+    from .discovery import oui
+    from .models import Device
+
+    by_ip: dict[str, str | None] = {}
+    for d in readings.get("devices") or []:
+        ip, mac = d.get("ip"), d.get("mac")
+        if not ip or not mac or not _MAC.match(mac):
+            continue
+        # Two UniFi devices at one address: not sure which, so neither.
+        by_ip[ip] = None if ip in by_ip and by_ip[ip] != mac else mac
+    if not by_ip:
+        return []
+    own = (await identity.reports(session)).own
+    devices = list((await session.execute(select(Device).order_by(Device.id))).scalars())
+    in_use = {d.mac for d in devices if d.mac}
+    wanting: dict[str, list] = {}
+    for device in devices:
+        if device.mac or not device.primary_ip or device.primary_ip in own:
+            continue
+        mac = by_ip.get(device.primary_ip)
+        if mac:
+            wanting.setdefault(mac, []).append(device)
+    filled = []
+    for mac, candidates in wanting.items():
+        if len(candidates) == 1 and mac not in in_use:
+            device = candidates[0]
+            device.mac = mac
+            device.vendor = device.vendor or oui.lookup(mac)
+            filled.append(device)
+            log.info("%s: MAC %s from UniFi", device.primary_ip, mac)
+    await session.flush()
+    return filled
+
+
+# --------------------------------------------------------------------------
 # The device page
 # --------------------------------------------------------------------------
 
@@ -442,9 +498,11 @@ def state_pill(state: str) -> str:
     return "bad"
 
 
-def view(row, *, macs: dict[str, int] | None = None) -> dict | None:  # type: ignore[no-untyped-def]
-    """What the UniFi card shows from this credential, or None. `macs` maps
-    a MAC to the SPARK device it is, to link each UniFi device to its page."""
+def view(row, *, macs: dict[str, int] | None = None,  # type: ignore[no-untyped-def]
+         ips: dict[str, int] | None = None) -> dict | None:
+    """What the UniFi card shows from this credential, or None. Each UniFi
+    device links to its SPARK page: by MAC, or else by address (`ips`) for
+    a device SPARK knows by IP alone."""
     if row.kind != "unifi":
         return None
     readings = row.readings or {}
@@ -455,7 +513,7 @@ def view(row, *, macs: dict[str, int] | None = None) -> dict | None:  # type: ig
     from .charts import fmt_bps
     from .engine.state import human_duration
 
-    macs = macs or {}
+    macs, ips = macs or {}, ips or {}
     devices = readings.get("devices") or []
     named = {d["id"]: d["name"] for d in devices}
     clients = readings.get("clients") or {}
@@ -469,7 +527,7 @@ def view(row, *, macs: dict[str, int] | None = None) -> dict | None:  # type: ig
             "state_words": (d.get("state") or "unknown").replace("_", " ").lower(),
             "role_words": ", ".join(ROLE_WORDS.get(r, r) for r in d.get("roles") or []),
             "via": named.get(d.get("uplink")) if d.get("uplink") else None,
-            "spark_id": macs.get(d.get("mac") or ""),
+            "spark_id": macs.get(d.get("mac") or "") or ips.get(d.get("ip") or ""),
             "clients": per.get(d["id"]),
             "up": human_duration(d["uptime"]) if online and d.get("uptime") else "—",
             "rate": (f"↓ {fmt_bps(d['rx_bps'])} · ↑ {fmt_bps(d['tx_bps'])}"

@@ -354,6 +354,8 @@ async def check_one(config, cred_id: int) -> bool:  # type: ignore[no-untyped-de
             await truenas_health.evaluate(session, row, before, now)
         elif worked and row.kind == "proxmox":
             await proxmox_health.evaluate(session, row, before, now)
+        elif worked and row.kind == "unifi":
+            await unifi.fill_in_macs(session, row.readings or {})
     return worked
 
 

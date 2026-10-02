@@ -475,3 +475,95 @@ class TestPages:
         page = flat(response.text)
         assert response.status_code == 400 and "That is not an API key" in page
         assert 'class="cred-form add-cred-form is-unifi"' in page
+
+
+# --------------------------------------------------------------------------
+# Identity: a device SPARK knows by IP alone gains the MAC UniFi reports
+# --------------------------------------------------------------------------
+
+
+def _add_devices(*rows):  # type: ignore[no-untyped-def]
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            for mac, ip in rows:
+                s.add(Device(mac=mac, primary_ip=ip))
+    run(go())
+
+
+def _macs():  # type: ignore[no-untyped-def]
+    from sqlalchemy import select
+
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return {d.primary_ip: d.mac for d in (await s.execute(select(Device))).scalars()}
+    return run(go())
+
+
+def _fill(readings):  # type: ignore[no-untyped-def]
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return [d.primary_ip for d in await unifi.fill_in_macs(s, readings)]
+    return run(go())
+
+
+def _readings(*rows):  # type: ignore[no-untyped-def]
+    return {"devices": [{"ip": ip, "mac": mac} for mac, ip in rows]}
+
+
+class TestFillInMacs:
+    def test_a_routed_device_gains_its_mac(self, db):
+        _add_devices((None, "192.168.1.2"))
+        assert _fill(_readings(("aa:00:00:00:00:02", "192.168.1.2"))) == ["192.168.1.2"]
+        assert _macs()["192.168.1.2"] == "aa:00:00:00:00:02"
+
+    def test_not_a_mac_another_device_has(self, db):
+        _add_devices((None, "192.168.1.9"))
+        assert _fill(_readings(("aa:00:00:00:00:03", "192.168.1.9"))) == [], \
+            "the AP already has it: that is a merge for a person to make"
+        assert _macs()["192.168.1.9"] is None
+
+    def test_not_when_two_devices_share_the_address(self, db):
+        _add_devices((None, "192.168.1.5"), (None, "192.168.1.5"))
+        assert _fill(_readings(("aa:00:00:00:00:05", "192.168.1.5"))) == []
+
+    def test_not_when_unifi_has_two_macs_at_the_address(self, db):
+        _add_devices((None, "192.168.1.6"))
+        assert _fill(_readings(("aa:00:00:00:00:06", "192.168.1.6"),
+                               ("aa:00:00:00:00:07", "192.168.1.6"))) == []
+
+    def test_not_an_address_a_polled_device_says_is_its_own(self, db):
+        from spark.models import SnmpAddress, SnmpDevice
+        from spark.snmp_config import ProfileInput, save_profile
+
+        _add_devices((None, "192.168.1.7"))
+
+        async def own():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                profile = await save_profile(s, vault_for(db), ProfileInput(
+                    name="p", version="v2c", community="x"))
+                snmp = SnmpDevice(device_id=1, profile_id=profile.id)
+                s.add(snmp)
+                await s.flush()
+                s.add(SnmpAddress(snmp_device_id=snmp.id, kind="own", ip="192.168.1.7"))
+        run(own())
+        assert _fill(_readings(("aa:00:00:00:00:08", "192.168.1.7"))) == []
+
+    def test_nothing_odd_is_written(self, db):
+        _add_devices((None, "192.168.1.8"))
+        assert _fill(_readings(("not-a-mac", "192.168.1.8"), (None, "192.168.1.8"))) == []
+
+    def test_the_check_fills_it_in_and_the_card_links_by_address(self, db, site, fake):
+        _add_devices((None, "192.168.1.2"), (None, "192.168.1.4"))   # switch; garage AP
+        _add_devices(("aa:00:00:00:00:99", "192.168.1.250"))
+        site.post("/settings/credentials", data={
+            "kind": "unifi", "name": "unifi", "device_id": "1", "host": fake.host, "api_key": KEY})
+        site.post("/settings/credentials/1/trust", data={"fingerprint": fake.fingerprint})
+        page = flat(site.get("/devices/1").text)
+        assert '<a href="/devices/3">office-switch</a>' in page, "by address, before any check"
+        assert run(credentials.check_one(db, 1))
+        macs = _macs()
+        assert macs["192.168.1.2"] == "aa:00:00:00:00:02"
+        assert macs["192.168.1.4"] == "aa:00:00:00:00:04"
+        page = flat(site.get("/devices/1").text)
+        assert '<a href="/devices/3">office-switch</a>' in page and \
+            '<a href="/devices/4">garage-ap</a>' in page

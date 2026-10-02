@@ -694,8 +694,16 @@ update is waiting, its uplink, ports and radios) and, while it is online,
 `/statistics/latest` (CPU, memory, uptime, uplink rate). Every page of a
 list is read. The console's device gets a **UniFi** card: each device with
 its state, address, firmware, CPU, memory, clients and uptime, the device
-it uplinks through, and a link to its own SPARK page where the MAC
-matches. Clients are only counted — wired, wireless, VPN, guests, and per
+it uplinks through, and a link to its own SPARK page — by MAC, or by
+address for a device SPARK knows by IP alone.
+
+**A routed device gains its MAC.** Across a router SPARK sees no MACs, so a
+UniFi device on another VLAN is known by IP alone. UniFi knows its MAC, and
+each check gives it to that device — on the same terms as a router's ARP
+table over SNMP: only when exactly one MAC-less device is at that address,
+no device has that MAC yet, and the address is not one a polled device says
+is its own. Where another device already has the MAC, that is a merge for
+you to make, not SPARK. Clients are only counted — wired, wireless, VPN, guests, and per
 device; their names and addresses are not stored.
 
 A call UniFi will not answer leaves that part as it was last read. If the

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — UniFi gives routed devices their MAC (2026-10-02)
+
+### Added
+
+- **A device SPARK knows by IP alone gains the MAC UniFi reports for it**,
+  on each 5-minute check: SPARK sees no MACs across a router, UniFi does.
+  The same rule as the MAC from a router's ARP table (identity.py): exactly
+  one MAC-less device at the address, nobody else with that MAC, and not an
+  address a polled device says is its own. Never a merge.
+
+### Fixed
+
+- **UniFi devices on routed VLANs were not linked to their SPARK pages** on
+  the UniFi card: they were matched by MAC only, and SPARK had none for
+  them. They now link by address too, straight away.
+
 ## Unreleased — UniFi over its official API (2026-10-02)
 
 ### Added
