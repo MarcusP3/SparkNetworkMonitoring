@@ -166,91 +166,6 @@
   </section>
   {% endif %}
 
-  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value or api_filter.offer %}
-  <section class="card filter-bar">
-    {# A GET form, so the filter lands in the URL and survives a reload, a
-       bookmark and the live refresh -- which refetches location.search for
-       exactly this reason.
-
-       There is deliberately no `page` field in here. Narrowing to a subnet or
-       changing the page size makes the old page number meaningless, and
-       leaving it out is how "back to page 1" happens without any JavaScript. #}
-    <form method="get" action="/devices" class="row-form">
-      {% if subnets %}
-      <label class="inline-field">
-        <span class="muted small">Subnet</span>
-        <select name="subnet" id="subnet-filter">
-          <option value="">All subnets</option>
-          {% for subnet in subnets %}
-            <option value="{{ subnet.id }}"
-              {% if subnet_filter.selected is not string and subnet_filter.selected and subnet_filter.selected.id == subnet.id %}selected{% endif %}>
-              {{ subnet.label }}{% if subnet.vlan is not none %} · VLAN {{ subnet.vlan }}{% endif %}
-            </option>
-          {% endfor %}
-          <option value="none" {% if subnet_filter.selected == 'none' %}selected{% endif %}>
-            Not on a configured subnet
-          </option>
-        </select>
-      </label>
-      {% endif %}
-
-      {% if snmp_filter.listed or snmp_filter.value %}
-      <label class="inline-field">
-        <span class="muted small">SNMP</span>
-        <select name="snmp" id="snmp-filter">
-          <option value="">All devices</option>
-          {% for key, label in snmp_filter.choices.items() %}
-            <option value="{{ key }}" {% if key == snmp_filter.value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      {% endif %}
-
-      {% if api_filter.offer %}
-      <label class="inline-field">
-        <span class="muted small">API</span>
-        <select name="api" id="api-filter">
-          <option value="">All devices</option>
-          {% for key, label in api_filter.choices.items() %}
-            <option value="{{ key }}" {% if key == api_filter.value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      {% endif %}
-
-      {% if paging.offer %}
-      <label class="inline-field">
-        <span class="muted small">Per page</span>
-        <select name="per_page" id="page-size">
-          {% for size in paging.choices %}
-            <option value="{{ size }}" {% if size == paging.per_page %}selected{% endif %}>{{ size }}</option>
-          {% endfor %}
-          <option value="{{ paging.all_value }}" {% if paging.per_page == paging.all_value %}selected{% endif %}>All</option>
-        </select>
-      </label>
-      {% endif %}
-
-      <noscript><button type="submit" class="btn-quiet">Apply</button></noscript>
-      {# Four spellings rather than one assembled from parts: the two counts
-         mean different things -- how many the filter matched, and how many of
-         those fit on this page -- and a sentence that tries to carry both in
-         every case ends up saying neither clearly. #}
-      <span class="muted small filter-count">
-        {%- if paging.limited and filtered %}
-          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} matching
-          ({{ subnet_filter.total }} device(s) in all).
-        {%- elif paging.limited %}
-          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} device(s).
-        {%- elif filtered %}
-          Showing {{ paging.total }} of {{ subnet_filter.total }} device(s).
-        {%- else %}
-          {{ paging.total }} device(s).
-        {%- endif %}
-      </span>
-    </form>
-  </section>
-  {% endif %}
-
   {% if port_scan and port_scan.intercepted %}
   <section class="card">
     <div class="alert warn">
@@ -347,6 +262,91 @@
     </table>
     </div>
     {% endif %}
+  </section>
+  {% endif %}
+
+  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value or api_filter.offer %}
+  <section class="card filter-bar">
+    {# A GET form, so the filter lands in the URL and survives a reload, a
+       bookmark and the live refresh -- which refetches location.search for
+       exactly this reason.
+
+       There is deliberately no `page` field in here. Narrowing to a subnet or
+       changing the page size makes the old page number meaningless, and
+       leaving it out is how "back to page 1" happens without any JavaScript. #}
+    <form method="get" action="/devices" class="row-form">
+      {% if subnets %}
+      <label class="inline-field">
+        <span class="muted small">Subnet</span>
+        <select name="subnet" id="subnet-filter">
+          <option value="">All subnets</option>
+          {% for subnet in subnets %}
+            <option value="{{ subnet.id }}"
+              {% if subnet_filter.selected is not string and subnet_filter.selected and subnet_filter.selected.id == subnet.id %}selected{% endif %}>
+              {{ subnet.label }}{% if subnet.vlan is not none %} · VLAN {{ subnet.vlan }}{% endif %}
+            </option>
+          {% endfor %}
+          <option value="none" {% if subnet_filter.selected == 'none' %}selected{% endif %}>
+            Not on a configured subnet
+          </option>
+        </select>
+      </label>
+      {% endif %}
+
+      {% if snmp_filter.listed or snmp_filter.value %}
+      <label class="inline-field">
+        <span class="muted small">SNMP</span>
+        <select name="snmp" id="snmp-filter">
+          <option value="">All devices</option>
+          {% for key, label in snmp_filter.choices.items() %}
+            <option value="{{ key }}" {% if key == snmp_filter.value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+
+      {% if api_filter.offer %}
+      <label class="inline-field">
+        <span class="muted small">API</span>
+        <select name="api" id="api-filter">
+          <option value="">All devices</option>
+          {% for key, label in api_filter.choices.items() %}
+            <option value="{{ key }}" {% if key == api_filter.value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+
+      {% if paging.offer %}
+      <label class="inline-field">
+        <span class="muted small">Per page</span>
+        <select name="per_page" id="page-size">
+          {% for size in paging.choices %}
+            <option value="{{ size }}" {% if size == paging.per_page %}selected{% endif %}>{{ size }}</option>
+          {% endfor %}
+          <option value="{{ paging.all_value }}" {% if paging.per_page == paging.all_value %}selected{% endif %}>All</option>
+        </select>
+      </label>
+      {% endif %}
+
+      <noscript><button type="submit" class="btn-quiet">Apply</button></noscript>
+      {# Four spellings rather than one assembled from parts: the two counts
+         mean different things -- how many the filter matched, and how many of
+         those fit on this page -- and a sentence that tries to carry both in
+         every case ends up saying neither clearly. #}
+      <span class="muted small filter-count">
+        {%- if paging.limited and filtered %}
+          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} matching
+          ({{ subnet_filter.total }} device(s) in all).
+        {%- elif paging.limited %}
+          Showing {{ paging.first }}–{{ paging.last }} of {{ paging.total }} device(s).
+        {%- elif filtered %}
+          Showing {{ paging.total }} of {{ subnet_filter.total }} device(s).
+        {%- else %}
+          {{ paging.total }} device(s).
+        {%- endif %}
+      </span>
+    </form>
   </section>
   {% endif %}
 

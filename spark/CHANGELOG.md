@@ -10,6 +10,11 @@
 - **A pill by the name of each device with a credential** (TrueNAS,
   Proxmox, UniFi), which opens its card on the device page.
 
+### Changed
+
+- **The Devices filter bar sits under the Last sweep card**, right above
+  the list it filters.
+
 ## Unreleased — UniFi gives routed devices their MAC (2026-10-02)
 
 ### Added
