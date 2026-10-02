@@ -3,8 +3,18 @@
 Homelab network monitoring. The application lives in `spark/`, not the repo
 root — every `docker compose` and `pytest` command runs from `spark/`.
 
-Design document: `DESIGN.md`. Current state and conventions: `README.md` (repo
-root — GitHub only renders a README from there). History: `spark/CHANGELOG.md`.
+Design document: `DESIGN.md`. History: `spark/CHANGELOG.md`. The docs are
+split, and kept that way:
+
+- `README.md` (repo root) — what SPARK is, and how to deploy, upgrade, back
+  up, restore and reset the password. **Keep it short**: a page, not a
+  manual. Detail goes in `docs/`.
+- `docs/guide.md` — using SPARK, page by page (monitoring, map, alerts, SNMP,
+  credentials, backups).
+- `docs/configuration.md` — `spark.yaml`, TLS, Docker settings, resource use,
+  sign-in and web hardening, upgrading in detail.
+- `docs/development.md` — Status, tests, CI, Project layout, Conventions,
+  Roadmap, Design decisions.
 
 ---
 
@@ -18,15 +28,16 @@ On every change, check each of these and update the ones the change touched:
 
 | Changed | Update |
 |---|---|
-| A feature became usable | README **Status** table, **Roadmap** table |
-| A check type, param, or default | README **Monitoring** section |
-| Config keys or env overrides | README **Configuration** section |
+| A feature became usable | `docs/development.md` **Status** and **Roadmap** tables; the README's *What it does* list if it is a headline feature |
+| A check type, param, or default | `docs/guide.md` **Monitoring** section |
+| Config keys or env overrides | `docs/configuration.md` **Configuration** section |
+| How to deploy, upgrade, back up or restore | README, and the detail in `docs/` |
 | A new dependency | `pyproject.toml` **and `requirements.lock`** (see below), and note in CHANGELOG that a rebuild is required |
-| New module or directory | README **Project layout** |
-| A convention future code must follow | README **Conventions** |
+| New module or directory | `docs/development.md` **Project layout** |
+| A convention future code must follow | `docs/development.md` **Conventions** |
 | Anything at all | `CHANGELOG.md` under the current increment |
 
-The README **Status** table is the honest account of what works. Never mark
+The **Status** table (`docs/development.md`) is the honest account of what works. Never mark
 something ✅ that has not been exercised end to end. "Not yet" is a perfectly
 good entry and has been for most of this project's life.
 
@@ -154,7 +165,7 @@ somewhere with 3.12 rather than lowering `requires-python`.
 
 `SECURITY.md` and `.github/` are part of the repository's surface: a change
 to how a vulnerability should be reported, or to what CI runs, updates them
-and the README's *Continuous integration* section together.
+and the *Continuous integration* section of `docs/development.md` together.
 
 ## Deployment reality
 
@@ -169,7 +180,7 @@ on the binary (an effective file capability the kernel cannot grant makes
 `docker compose up -d --build` is needed after any dependency change; a plain
 `up -d` reuses the existing image. It serves HTTPS on 9700 with a self-signed
 certificate unless `app.tls` says otherwise. The container has a 512 MB
-memory limit, set from measurement (README, *What it costs to run*): the
+memory limit, set from measurement (`docs/configuration.md`, *What it costs to run*): the
 floor is ~100 MB of Python and libraries, a real network sits at ~140 MB,
 and a login peaks 64 MB above steady per hash. A change that moves those
-numbers moves the limit and the README together.
+numbers moves the limit and that section together.

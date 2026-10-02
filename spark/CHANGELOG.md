@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — a short README; the detail in docs/ (2026-10-02)
+
+### Changed
+
+- **The README is one page**: what SPARK is and does, and how to deploy,
+  upgrade, back up, restore and reset the password. Everything else moved,
+  unchanged, into `docs/`: `guide.md` (using SPARK, page by page),
+  `configuration.md` (spark.yaml, TLS, Docker settings, cost, sign-in,
+  first start and upgrading in detail) and `development.md` (status, tests,
+  CI, layout, conventions, roadmap, design decisions). Links between them
+  were rewritten and checked. CLAUDE.md says where each kind of change is
+  documented now. No code change.
+
 ## Unreleased — backup and restore (2026-10-02)
 
 ### Added

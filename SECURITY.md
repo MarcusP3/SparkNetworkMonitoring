@@ -29,7 +29,7 @@ fix to point at.
   in your hands: `vault.py` says what encryption at rest does and does not
   protect against, and that is the answer.
 - The self-signed certificate not being trusted by browsers. It is pinned by
-  fingerprint, not trusted by a CA; see the README.
+  fingerprint, not trusted by a CA; see `docs/configuration.md`.
 - SNMPv2c sending its community in clear text, and anything else that is the
   protocol's own property. SPARK says so in the UI.
 - Denial of service against the monitoring of your own network from your own
@@ -37,6 +37,6 @@ fix to point at.
 
 ## What is already in place
 
-The README's Authentication section describes the current defences; the
+The Authentication section of `docs/configuration.md` describes the current defences; the
 project's review history — three rounds so far, each with its findings and
 fixes — is in the repository's CHANGELOG under the security headings.

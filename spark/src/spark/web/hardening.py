@@ -28,7 +28,7 @@ request from a modern browser always has one of them.
 
 Only `Host` is compared. Behind a reverse proxy that rewrites the `Host`
 header the check would refuse every POST; proxies preserve it by default and
-the README says to keep it that way.
+docs/configuration.md says to keep it that way.
 
 **Proxy headers.** SPARK, not uvicorn, decides which peers are proxies.
 uvicorn's own `ProxyHeadersMiddleware` trusts 127.0.0.1 and ::1 by default

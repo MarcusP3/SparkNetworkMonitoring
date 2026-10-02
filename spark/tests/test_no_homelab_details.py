@@ -58,7 +58,8 @@ _ADDR = re.compile(r"(?<![\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})?(?!\.?
 
 
 def _files():
-    roots = [SPARK, *(p for p in (REPO / "README.md", REPO / "DESIGN.md", REPO / "CLAUDE.md")
+    roots = [SPARK, REPO / "docs",
+             *(p for p in (REPO / "README.md", REPO / "DESIGN.md", REPO / "CLAUDE.md")
                       if p.is_file())]
     for root in roots:
         if root.is_file():
