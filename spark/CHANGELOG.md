@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — base image refreshed (2026-10-02)
+
+### Security
+
+- **`python:3.12-slim` re-pinned to a current digest**
+  (`sha256:dddfd7e0…4e0016`). Trivy, now running again in CI, found 7
+  HIGH/CRITICAL fixed vulnerabilities in the Debian 13.7 packages of the
+  September image; the Python packages were all clean. Still Python 3.12.
+  Rebuild: `docker compose up -d --build`.
+
 ## Unreleased — CI actions pinned by commit, Trivy working again (2026-10-02)
 
 ### Fixed
