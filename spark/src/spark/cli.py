@@ -283,5 +283,91 @@ def reset_password_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# spark-restore
+# --------------------------------------------------------------------------
+
+
+def restore_main(argv: list[str] | None = None) -> int:
+    """Put a backup (backup.py) back, with SPARK stopped.
+
+    Checks the whole file before touching anything -- the passphrase, every
+    chunk, what the archive holds, the database's integrity and version --
+    then moves the current data aside to data/pre-restore-<when>/ rather
+    than deleting it, and puts the backup's files in its place.
+    """
+    import getpass
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from . import backup
+    from .config import load_config
+    from .db import CURRENT_VERSION
+
+    parser = argparse.ArgumentParser(
+        prog="spark-restore",
+        description="Restore a SPARK backup. Stop SPARK first: docker compose stop spark; "
+                    "then docker compose run --rm spark spark-restore /data/<file>.",
+    )
+    parser.add_argument("file", help="The backup: a nightly .tar.gz from data/backups/, or a "
+                                     "downloaded .sparkbackup copied into data/")
+    parser.add_argument("--passphrase-stdin", action="store_true",
+                        help="Read the passphrase from standard input instead of prompting")
+    parser.add_argument("--yes", action="store_true",
+                        help="Do not ask before replacing the current data")
+    args = parser.parse_args(argv)
+
+    def fail(message: str) -> int:
+        print(message, file=sys.stderr)
+        return 1
+
+    config = load_config()
+    data_dir = config.app.data_dir
+    path = Path(args.file)
+    if not path.is_file():
+        return fail(f"There is no file at {path}. Inside the container the data directory is "
+                    f"{data_dir}: copy the backup there first.")
+    if not data_dir.is_dir():
+        return fail(f"There is no data directory at {data_dir}.")
+
+    lock = backup.InstanceLock(data_dir)
+    if not lock.acquire():
+        return fail("SPARK is running on this data directory. Stop it first "
+                    "(docker compose stop spark), then run this again.")
+    work = Path(tempfile.mkdtemp(prefix=".restore-", dir=data_dir))
+    try:
+        passphrase = None
+        if backup.is_encrypted(path):
+            if args.passphrase_stdin:
+                passphrase = sys.stdin.readline().rstrip("\r\n")
+            else:
+                passphrase = getpass.getpass("Passphrase: ")
+        try:
+            opened = backup.open_backup(path, work, passphrase=passphrase,
+                                        newest_schema=CURRENT_VERSION)
+        except backup.BackupError as exc:
+            return fail(f"{exc} Nothing was changed.")
+        m = opened.manifest
+        print(f"Backup of {m.get('instance') or 'SPARK'} made {m.get('created_at', '?')} by "
+              f"SPARK {m.get('spark_version', '?')} (database version {m.get('schema_version')}).")
+        if not args.yes:
+            answer = input(f"Replace the data in {data_dir} with it? The current data is kept "
+                           "in a pre-restore folder. [y/N] ")
+            if answer.strip().lower() not in ("y", "yes"):
+                return fail("Nothing was changed.")
+        aside = backup.install(opened, data_dir)
+    except KeyboardInterrupt:
+        print("Nothing was changed.", file=sys.stderr)
+        return 130
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        lock.release()
+    print(f"Restored. The data that was there is in {aside}.\n"
+          "Start SPARK again: docker compose up -d. Sessions in the backup are as they were; "
+          "sign in again if yours has gone.")
+    return 0
+
+
 if __name__ == "__main__":
     sys.exit(probe_main())

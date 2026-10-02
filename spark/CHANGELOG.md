@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — backup and restore (2026-10-02)
+
+### Added
+
+- **Settings → Backup.** A backup is the database (copied with SQLite's
+  online backup, consistent while SPARK runs), `secret.key` and the HTTPS
+  certificate, with a manifest saying what made it.
+- **Nightly backups** at 04:00 into `data/backups/`, the last seven kept
+  (0600, like the files they copy). The page shows how last night went.
+- **Encrypted download**, of one made now or a nightly one: a passphrase
+  typed twice (12+ characters, never stored), scrypt and AES-256-GCM in
+  1 MiB chunks, numbered and the last one marked, so an altered or
+  truncated file fails instead of restoring. A download is a sign-in
+  security event in Discord.
+- **`spark-restore`**, with SPARK stopped: `docker compose run --rm spark
+  spark-restore /data/<file>`. Checks everything first (passphrase, every
+  chunk, only SPARK's own files in the archive, database integrity and
+  version), refuses while SPARK runs or for a backup from a newer SPARK,
+  and moves the old data to `data/pre-restore-<when>/` instead of deleting
+  it.
+- SPARK holds a lock file on its data directory (`data/.spark.lock`) while
+  it runs, which is how `spark-restore` knows.
+
+### Upgrade note
+
+New command: rebuild (`docker compose up -d --build`) as usual. No
+migration.
+
+### Tests
+
+48 new (`test_backup.py`).
+
 ## Unreleased — the sessions list shows only live sessions (2026-10-01)
 
 ### Fixed

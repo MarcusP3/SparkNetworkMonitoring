@@ -310,6 +310,7 @@ SECTIONS = (
     ("alerts", "Alerts", "/settings/alerts"),
     ("credentials", "Credentials", "/settings/credentials"),
     ("suppressions", "Suppressions", "/settings/suppressions"),
+    ("backup", "Backup", "/settings/backup"),
 )
 SECTION_URLS = {slug: url for slug, _, url in SECTIONS}
 PORTS_URL = SECTION_URLS["ports"]
@@ -337,9 +338,16 @@ async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
         "alerts": alert_hint,
         "credentials": f"{await session.scalar(select(func.count(ApiCredential.id))) or 0}",
         "suppressions": f"{await session.scalar(select(func.count(AlertSuppression.id))) or 0}",
+        "backup": _backup_hint(await get_setting(session, "backup_state")),
     }
     return [{"slug": slug, "label": label, "url": url, "hint": hints[slug]}
             for slug, label, url in SECTIONS]
+
+
+def _backup_hint(state: dict) -> str:
+    if not state:
+        return "none yet"
+    return "ok" if state.get("ok") else "failed"
 
 
 def _section_of(section, *, port_error, port_form, snmp_error, snmp_form,  # type: ignore[no-untyped-def]
@@ -377,6 +385,7 @@ async def _render(
     supp_error: str | None = None,
     supp_form: dict | None = None,
     supp_notice: str | None = None,
+    backup_error: str | None = None,
 ):
     section = _section_of(section, port_error=port_error, port_form=port_form,
                           snmp_error=snmp_error, snmp_form=snmp_form,
@@ -428,9 +437,29 @@ async def _render(
             "supp_error": supp_error,
             "supp_form": supp_form or {},
             "supp_notice": supp_notice,
+            "backup": await _backup(session, config) if section == "backup" else None,
+            "backup_error": backup_error,
         },
         status_code=status_code,
     )
+
+
+async def _backup(session: AsyncSession, config: Config) -> dict:
+    """The nightly backups on disk and how last night went (backup.py)."""
+    from .. import backup
+    from ..storage import fmt_bytes
+
+    state = await get_setting(session, backup.STATE_KEY)
+    try:
+        at = datetime.fromisoformat(state["at"]) if state.get("at") else None
+    except (TypeError, ValueError):
+        at = None
+    return {
+        "stored": [{"name": s.name, "made": s.made, "size": fmt_bytes(s.size)}
+                   for s in backup.listing(config.app.data_dir)],
+        "state": state, "at": at,
+        "keep": backup.KEEP, "min": backup.MIN_PASSPHRASE,
+    }
 
 
 async def _suppressions(session: AsyncSession) -> dict:

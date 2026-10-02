@@ -1321,6 +1321,76 @@
     </details>
   </section>
   {% endif %}
+
+  {% if section == 'backup' %}
+  <section class="card" id="backup">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span>
+      <div>
+        <h2>Backup</h2>
+        <p class="card-sub">
+          Everything SPARK cannot rebuild: the database, <code>secret.key</code> (without it no
+          stored credential can be read) and the HTTPS certificate. One is made every night
+          at 04:00 into <code>data/backups/</code>, and the last {{ backup.keep }} are kept.
+          Copy one off this machine now and then: a backup on the same disk does not survive the disk.
+        </p>
+      </div>
+    </div>
+
+    {% if backup_error %}<div class="alert error">{{ backup_error }}</div>{% endif %}
+
+    <p class="small">
+      {% set st = backup.state %}
+      {% if not st %}<span class="pill neutral">none yet</span> The first nightly backup runs at 04:00.
+      {% elif st.ok %}<span class="pill ok dot">ok</span> Last night{% if backup.at %}, {{ backup.at | local('%b %-d, %H:%M %Z') }}{% endif %}.
+      {% else %}<span class="pill bad">failed</span> {% if backup.at %}{{ backup.at | local('%b %-d, %H:%M %Z') }}: {% endif %}{{ st.error }}
+      {% endif %}
+    </p>
+
+    <h3 class="sub-title">Download</h3>
+    <form method="post" action="/settings/backup/download" class="cred-form backup-form">
+      <label class="stack-field"><span class="muted small">Which</span>
+        <select name="which">
+          <option value="now">Make one now</option>
+          {% for b in backup.stored %}<option value="{{ b.name }}">Nightly · {{ b.made | local('%b %-d, %H:%M') }} · {{ b.size }}</option>{% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">Passphrase</span>
+        <input type="password" name="passphrase" minlength="{{ backup.min }}" maxlength="256" required autocomplete="new-password"></label>
+      <label class="stack-field"><span class="muted small">Passphrase again</span>
+        <input type="password" name="passphrase_confirm" minlength="{{ backup.min }}" maxlength="256" required autocomplete="new-password"></label>
+      <p class="muted small">
+        The file is encrypted with this passphrase (at least {{ backup.min }} characters) and is
+        useless without it — so is a restore. Keep it somewhere other than the file. It is not
+        stored anywhere. A download is announced in Discord like a password change.
+      </p>
+      <button type="submit" class="btn-primary">Download backup</button>
+    </form>
+
+    {% if backup.stored %}
+    <h3 class="sub-title">Nightly backups</h3>
+    <div class="table-scroll">
+    <table class="table compact">
+      <thead><tr><th>Made</th><th>File</th><th class="num">Size</th></tr></thead>
+      <tbody>
+        {% for b in backup.stored %}
+        <tr><td>{{ b.made | local('%b %-d, %H:%M %Z') }}</td><td><code class="small">{{ b.name }}</code></td><td class="num">{{ b.size }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    <h3 class="sub-title">Restore</h3>
+    <p class="muted small">From the <code>spark/</code> folder on the machine SPARK runs on. Put a downloaded
+      file in <code>data/</code> first; a nightly one is already in <code>data/backups/</code>.</p>
+    <pre class="code-block"><code>docker compose stop spark
+docker compose run --rm spark spark-restore /data/backups/spark-backup-….tar.gz
+docker compose up -d</code></pre>
+    <p class="muted small">It asks for the passphrase if the file is encrypted, checks the file before
+      touching anything, and moves the current data to <code>data/pre-restore-…/</code> rather than
+      deleting it. It refuses while SPARK is running, and refuses a backup from a newer SPARK.</p>
+  </section>
+  {% endif %}
   </div>
   </div>
 </div>

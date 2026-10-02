@@ -40,6 +40,7 @@ dependencies = [
 spark = "spark.main:run"
 spark-probe = "spark.cli:probe_main"
 spark-reset-password = "spark.cli:reset_password_main"
+spark-restore = "spark.cli:restore_main"
 
 [build-system]
 requires = ["hatchling"]

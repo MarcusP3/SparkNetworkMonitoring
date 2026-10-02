@@ -1901,3 +1901,11 @@ code.fingerprint.small { display: inline; }
 }
 .chip-icon { display: inline-flex; color: var(--text-muted); flex: none; }
 .chip-icon .icon { width: .9rem; height: .9rem; }
+
+/* Settings -> Backup: the restore commands, copyable as they stand. */
+.code-block { margin: .5rem 0 .75rem; padding: .7rem .9rem; overflow-x: auto;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: .8125rem; line-height: 1.6; }
+.code-block code { background: none; padding: 0; font-size: inherit; white-space: pre; }
+#backup .sub-title { margin-top: 1.25rem; }
+#backup td { white-space: nowrap; }

@@ -38,6 +38,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts) and Proxmox (guests, storage, SMART) | ✅ working |
+| Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
 see [Alerts](#alerts).
@@ -54,6 +55,7 @@ see [Alerts](#alerts).
 - [Alerts](#alerts)
 - [SNMP](#snmp)
 - [Credentials](#credentials)
+- [Backup and restore](#backup-and-restore)
 - [Authentication](#authentication)
 - [Development](#development)
 - [Roadmap](#roadmap)
@@ -949,6 +951,44 @@ node that did not answer is not taken to have lost its drives.
 
 ---
 
+## Backup and restore
+
+Settings → Backup. A backup is one file holding everything SPARK cannot
+rebuild: the database, `secret.key` (without it no stored credential — SNMP,
+TrueNAS, Proxmox, the Discord webhook — can be read) and the HTTPS
+certificate in `data/tls/`. The database is copied with SQLite's own online
+backup, so it is consistent while SPARK keeps running.
+
+**Every night at 04:00** (after the 03:30 clean-up) SPARK makes one in
+`data/backups/` and keeps the last seven. They sit beside the files they
+copy, readable by SPARK alone, like the originals. A backup on the same disk
+does not survive the disk: copy one somewhere else now and then.
+
+**Download** makes one now, or takes a nightly one, and encrypts it with a
+passphrase you type twice (at least 12 characters; never stored): scrypt
+for the key, AES-256-GCM in 1 MiB chunks, every chunk numbered and the last
+one marked, so a file that is altered or cut short does not decrypt rather
+than restoring something else. Without the passphrase the file is useless,
+and so is a restore. A download is announced in Discord like a password
+change, when sign-in alerts are on.
+
+**Restore** is a command, run with SPARK stopped, from the `spark/` folder:
+
+```bash
+docker compose stop spark
+docker compose run --rm spark spark-restore /data/backups/spark-backup-20261002-040000.tar.gz
+docker compose up -d
+```
+
+A downloaded `.sparkbackup` goes in `data/` first (`/data/<file>` inside
+the container); it asks for the passphrase. It checks the whole file before
+touching anything — the passphrase, every chunk, that the archive holds only
+SPARK's own files, the database's integrity and version — and moves the data
+that was there to `data/pre-restore-<when>/` rather than deleting it. It
+refuses while SPARK is running (SPARK holds a lock on its data directory)
+and refuses a backup from a newer SPARK: update first. An older backup is
+brought up to date by the usual migrations when SPARK starts.
+
 ## Authentication
 
 A single admin account with a password: Argon2id hash, a random 256-bit session
@@ -1105,7 +1145,7 @@ does `git pull` and rebuilds; the account is the supply chain.
 ```bash
 cd ~/NetworkMonitoringApp/spark        # wherever the clone is
 docker compose stop
-sudo cp -a data data.bak-$(date +%F)   # spark.db, secret.key, tls/
+sudo cp -a data data.bak-$(date +%F)   # spark.db, secret.key, tls/, backups/
 git pull
 docker compose up -d --build
 docker compose logs --tail=40 spark
@@ -1147,7 +1187,8 @@ spark/
     auth.py             Argon2 passwords (hashed off the event loop), sessions, setup code, proxy mode, sign-in events
     proxies.py          which peers are trusted proxies and what their X-Forwarded-* headers say
     tls.py              the self-signed certificate: made once, fingerprint in the log
-    cli.py              spark-probe, spark-reset-password
+    cli.py              spark-probe, spark-reset-password, spark-restore
+    backup.py           backups: the snapshot, nightly job, encryption, restore checks
     main.py             app factory and entry point
     scheduler.py        APScheduler jobs, reconciled against the database
     events.py           in-process pub/sub for live page updates
@@ -1195,6 +1236,7 @@ spark/
     web/                routes and dependencies
       routes_device_page.py  the per-device page
       routes_credentials.py  Settings → Credentials
+      routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
     templates/          Jinja templates
     static/             hand-written CSS, no build step
@@ -1240,6 +1282,7 @@ spark/
     test_live_server.py  under a real uvicorn: loopback cannot pick its address, same-host proxies work, one admin however many race
     test_setup_code.py  the setup code: logged not shown, required, rate-limited, spent; one administrator enforced by the database
     test_account.py     change password, sessions listed, sign out everywhere else, spark-reset-password
+    test_backup.py      backup while running, encryption edges and tampering, restore end to end, refusals, the page
     test_http_check.py  the HTTP check against a local server: 1 MB body cap, endless bodies cut
     test_data_privacy.py  data/ files are 0600, an older database is made private at start
     test_tls.py         the self-signed certificate, app.tls spellings, and HTTPS under a real uvicorn: __Host- cookie, no HSTS, healthcheck

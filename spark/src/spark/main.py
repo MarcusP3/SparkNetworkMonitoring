@@ -28,6 +28,7 @@ from .web.routes_devices import router as devices_router
 from .web.routes_map import router as map_router
 from .web.routes_credentials import router as credentials_router
 from .web.routes_suppressions import router as suppressions_router
+from .web.routes_backup import router as backup_router
 from .web.routes_preferences import router as preferences_router
 from .web.routes_events import router as events_router
 from .web.routes_settings import router as settings_router
@@ -143,6 +144,14 @@ def create_app(config: Config | None = None) -> FastAPI:
         # the one thing most likely to be wrong on upgrade.
         require_writable(config.app.data_dir)
         keep_data_private(config.app.data_dir)
+        # Held while the server runs, so spark-restore can tell (backup.py).
+        from .backup import InstanceLock, sweep_temporary
+
+        app.state.instance_lock = InstanceLock(config.app.data_dir)
+        if not app.state.instance_lock.acquire():
+            log.warning("Another SPARK seems to be using %s already; two on one data "
+                        "directory will corrupt it.", config.app.data_dir)
+        sweep_temporary(config.app.data_dir)
         init_engine(config)
         await init_db(config)
 
@@ -192,6 +201,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_identity(config)
         scheduler_module.schedule_storage(config)
         scheduler_module.schedule_credentials(config)
+        scheduler_module.schedule_backup(config)
 
         log.info(
             "SPARK %s ready on %s://%s:%s  (auth: %s, subnets: %d, "
@@ -226,6 +236,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
         close_engines()
         await close_engine()
+        app.state.instance_lock.release()
 
     app = FastAPI(
         title="SPARK",
@@ -304,6 +315,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(map_router)
     app.include_router(credentials_router)
     app.include_router(suppressions_router)
+    app.include_router(backup_router)
     return app
 
 

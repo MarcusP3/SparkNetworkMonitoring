@@ -346,6 +346,30 @@ def schedule_retention() -> bool:
     return True
 
 
+def schedule_backup(config) -> bool:  # type: ignore[no-untyped-def]
+    """The nightly backup (backup.py), at 04:00: after retention has
+    downsampled and pruned at 03:30, so it copies the smaller database."""
+    from .backup import JOB_ID, run_nightly
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run_nightly,
+        "cron",
+        hour=4,
+        minute=0,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,   # SPARK restarted at 04:00: still back up
+        name="Nightly backup",
+    )
+    return True
+
+
 def snmp_job_id(row_id: int) -> str:
     return f"{SNMP_PREFIX}{row_id}"
 
