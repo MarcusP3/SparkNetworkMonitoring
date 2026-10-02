@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
-from .. import events, identity, snmp_config, snmp_discover
+from .. import credentials, events, identity, snmp_config, snmp_discover
 from .. import scheduler as scheduler_module
 from .. import subnets as subnet_service
 from ..config import Config
@@ -25,6 +25,7 @@ from ..discovery.ports import concern
 from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_port_scan, last_sweep
 from ..discovery.services import services_for
 from ..models import (
+    ApiCredential,
     CheckType,
     Device,
     DeviceAddress,
@@ -98,6 +99,10 @@ SNMP_FILTERS = {
     "found": "Answered Find, not polled",
 }
 
+# The API filter's values: any device with a credential (Settings ->
+# Credentials), or one kind. Anything else shows everything.
+API_FILTERS = {"any": "Any API", **credentials.KINDS}
+
 # How long a finished Find SNMP says so at the top of the page. Found devices
 # stay marked in the SNMP column until they are added; this is only the
 # "nothing new answered" kind of news, which is stale after a few minutes.
@@ -121,7 +126,7 @@ def snmp_state(row: SnmpDevice | None, poll: SnmpPoll | None) -> dict | None:
     return {"label": "polling", "kind": "ok"}
 
 
-def _query(subnet: str, per_page: int, page: int, snmp: str = "") -> str:
+def _query(subnet: str, per_page: int, page: int, snmp: str = "", api: str = "") -> str:
     """The Devices URL for one combination of filter, page size and page.
 
     Defaults are left out rather than spelled out, so the plain `/devices` link
@@ -132,6 +137,8 @@ def _query(subnet: str, per_page: int, page: int, snmp: str = "") -> str:
         parts.append(("subnet", subnet))
     if snmp in SNMP_FILTERS:
         parts.append(("snmp", snmp))
+    if api in API_FILTERS:
+        parts.append(("api", api))
     if per_page != DEFAULT_PAGE_SIZE:
         parts.append(("per_page", str(per_page)))
     if page > 1:
@@ -140,7 +147,7 @@ def _query(subnet: str, per_page: int, page: int, snmp: str = "") -> str:
 
 
 def _paginate(rows, subnet: str, per_page: int, page: int,  # type: ignore[no-untyped-def]
-              snmp: str = ""):
+              snmp: str = "", api: str = ""):
     """Cut the list down to one page. Returns (paging, rows).
 
     Sliced in Python rather than with LIMIT/OFFSET because the subnet a device
@@ -180,8 +187,8 @@ def _paginate(rows, subnet: str, per_page: int, page: int,  # type: ignore[no-un
         "first": start + 1 if window else 0,
         "last": start + len(window),
         "total": total,
-        "prev_url": _query(subnet, per_page, page - 1, snmp) if page > 1 else None,
-        "next_url": _query(subnet, per_page, page + 1, snmp) if page < pages else None,
+        "prev_url": _query(subnet, per_page, page - 1, snmp, api) if page > 1 else None,
+        "next_url": _query(subnet, per_page, page + 1, snmp, api) if page < pages else None,
     }, window
 
 
@@ -266,6 +273,7 @@ async def list_devices(
     per_page: str = "",
     page: str = "",
     snmp: str = "",
+    api: str = "",
     watched: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
@@ -312,6 +320,17 @@ async def list_devices(
         ).all()
     }
 
+    # API credentials on each device (Settings -> Credentials), for a pill
+    # by its name that opens the card, and for the API filter.
+    apis: dict[int, list[dict]] = {}
+    for cred_id, kind, device_id in (await session.execute(
+        select(ApiCredential.id, ApiCredential.kind, ApiCredential.device_id)
+        .where(ApiCredential.device_id.is_not(None)).order_by(ApiCredential.id)
+    )).all():
+        apis.setdefault(device_id, []).append(
+            {"id": cred_id, "kind": kind, "label": credentials.KINDS.get(kind, kind)})
+    any_api = bool(await session.scalar(select(ApiCredential.id).limit(1)))
+
     # Extra addresses merged into each device (merge.py), for the Address cell.
     extra_ips: dict[int, list[str]] = {}
     for device_id, ip in (await session.execute(
@@ -343,6 +362,7 @@ async def list_devices(
                 "subnet": subnet_service.subnet_for(known_subnets, device.primary_ip),
                 "snmp": snmp_state(*snmp_rows.get(device.id, (None, None))),
                 "extra_ips": extra_ips.get(device.id, []),
+                "apis": apis.get(device.id, []),
                 "snmp_found": found.get(device.id),
                 "snmp_refused": refused.get(device.id),
                 "services": [],
@@ -360,6 +380,11 @@ async def list_devices(
         rows = [r for r in rows if r["snmp"] is None]
     elif snmp == "found":
         rows = [r for r in rows if r["snmp_found"]]
+    api = api if api in API_FILTERS else ""
+    if api == "any":
+        rows = [r for r in rows if r["apis"]]
+    elif api:
+        rows = [r for r in rows if any(a["kind"] == api for a in r["apis"])]
 
     # Counted before paging, deliberately. "Mark all 12 reviewed" acts on every
     # unacknowledged device, so a number that shrank to what happens to be on
@@ -371,7 +396,7 @@ async def list_devices(
         wanted_page = int(page)
     except (TypeError, ValueError):
         wanted_page = 1
-    paging, rows = _paginate(rows, subnet, size, wanted_page, snmp)
+    paging, rows = _paginate(rows, subnet, size, wanted_page, snmp, api)
 
     # Services are fetched after paging rather than before: one query either
     # way, but for the devices actually being shown rather than for every
@@ -421,13 +446,19 @@ async def list_devices(
                 "choices": SNMP_FILTERS,
                 "listed": len(snmp_rows) + len(found),
             },
+            "api_filter": {
+                "value": api,
+                "label": API_FILTERS.get(api),
+                "choices": API_FILTERS,
+                "offer": any_api or bool(api),
+            },
             "snmp_find": await _find_summary(session, find_state, found, refused, now),
             # Merges SNMP points to, waiting for a yes or no (identity.py).
             "suggested": [(x, identity.why(x)) for x in await identity.suggestions(session)],
             # How many "Watch selected" just added; None when it was not used.
             "any_watchable": any(r["watchable"] for r in rows),
             "just_watched": int(watched) if watched.isdigit() and len(watched) < 6 else None,
-            "filtered": bool(selected) or bool(snmp),
+            "filtered": bool(selected) or bool(snmp) or bool(api),
             "sweep": sweep,
             "port_scan": port_scan,
             "scan": await _scan_schedule(

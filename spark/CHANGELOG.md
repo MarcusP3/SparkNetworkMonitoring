@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — find API devices on the Devices list (2026-10-02)
+
+### Added
+
+- **An API filter on the Devices list**: any device with a credential, or
+  only TrueNAS, Proxmox or UniFi. It shows once there is a credential, and
+  survives paging like the others.
+- **A pill by the name of each device with a credential** (TrueNAS,
+  Proxmox, UniFi), which opens its card on the device page.
+
 ## Unreleased — UniFi gives routed devices their MAC (2026-10-02)
 
 ### Added

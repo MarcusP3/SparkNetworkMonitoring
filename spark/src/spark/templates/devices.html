@@ -166,7 +166,7 @@
   </section>
   {% endif %}
 
-  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value %}
+  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value or api_filter.offer %}
   <section class="card filter-bar">
     {# A GET form, so the filter lands in the URL and survives a reload, a
        bookmark and the live refresh -- which refetches location.search for
@@ -201,6 +201,18 @@
           <option value="">All devices</option>
           {% for key, label in snmp_filter.choices.items() %}
             <option value="{{ key }}" {% if key == snmp_filter.value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+
+      {% if api_filter.offer %}
+      <label class="inline-field">
+        <span class="muted small">API</span>
+        <select name="api" id="api-filter">
+          <option value="">All devices</option>
+          {% for key, label in api_filter.choices.items() %}
+            <option value="{{ key }}" {% if key == api_filter.value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </label>
@@ -389,6 +401,10 @@
                        aria-label="Friendly name">
                 <button type="submit" class="btn-quiet save-name">Save</button>
               </form>
+              {% for a in row.apis %}
+                <a class="pill neutral api-pill" href="/devices/{{ device.id }}#api-{{ a.id }}"
+                   title="{{ a.label }} API — open its card">{{ a.label }}</a>
+              {% endfor %}
               {% if not device.acknowledged %}
                 <form method="post" action="/devices/{{ device.id }}/acknowledge">
                   <button type="submit" class="pill warn as-button"
@@ -508,6 +524,16 @@
     router, so those fall back to IP identity and will look like a new device if
     their lease changes.
   </p>
+  {% elif api_filter.value %}
+  <section class="card empty-state">
+    <h2>No devices match</h2>
+    <p class="muted">
+      No device{% if subnet_filter.selected or snmp_filter.value %} that matches the other filters{% endif %}
+      has {{ 'an API credential' if api_filter.value == 'any' else 'a ' ~ api_filter.label ~ ' credential' }}.
+      Add one in <a href="/settings/credentials">Settings → Credentials</a>, and choose its device.
+      <a href="/devices">Show all</a>.
+    </p>
+  </section>
   {% elif snmp_filter.value %}
   <section class="card empty-state">
     <h2>No devices match</h2>

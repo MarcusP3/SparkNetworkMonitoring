@@ -543,6 +543,12 @@ not measuring quite the same thing.
 Settings → Credentials holds keys for devices' own APIs — TrueNAS, Proxmox
 and UniFi Network. SNMP communities and v3 users stay under Settings → SNMP.
 
+On the Devices list, a device with a credential carries a pill with its kind
+(TrueNAS, Proxmox, UniFi) by its name, which opens its card, and the **API**
+filter narrows the list to devices with any credential or one kind — the
+quick way to find the UniFi console or a Proxmox host. A credential only
+shows there once it is given a device.
+
 ### TrueNAS
 
 SPARK talks to TrueNAS the way TrueNAS now asks to be talked to: JSON-RPC 2.0

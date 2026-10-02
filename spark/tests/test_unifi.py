@@ -567,3 +567,41 @@ class TestFillInMacs:
         page = flat(site.get("/devices/1").text)
         assert '<a href="/devices/3">office-switch</a>' in page and \
             '<a href="/devices/4">garage-ap</a>' in page
+
+
+# --------------------------------------------------------------------------
+# Devices: the API pill and filter
+# --------------------------------------------------------------------------
+
+
+class TestDevicesList:
+    def test_no_filter_until_there_is_a_credential(self, site):
+        page = flat(site.get("/devices").text)
+        assert 'id="api-filter"' not in page and "api-pill" not in page
+
+    def test_the_pill_and_the_filter(self, site, fake):
+        site.post("/settings/credentials", data={
+            "kind": "unifi", "name": "unifi", "device_id": "1", "host": fake.host, "api_key": KEY})
+        page = flat(site.get("/devices").text)
+        assert '<select name="api" id="api-filter">' in page
+        assert '<option value="unifi" >UniFi</option>' in page
+        assert ('<a class="pill neutral api-pill" href="/devices/1#api-1" '
+                'title="UniFi API — open its card">UniFi</a>') in page
+        assert page.count("api-pill") == 1, "only on the device the credential is for"
+
+        page = flat(site.get("/devices?api=unifi").text)
+        assert 'value="192.168.1.1"' in page or "<code>192.168.1.1</code>" in page
+        assert "<code>192.168.1.3</code>" not in page, "the AP has no credential"
+        assert "Showing 1 of 2 device(s)." in page
+        assert flat(site.get("/devices?api=any").text).count("api-pill") == 1
+
+        page = flat(site.get("/devices?api=proxmox").text)
+        assert "No devices match" in page and "has a Proxmox credential" in page
+        assert flat(site.get("/devices?api=nonsense").text).count("api-pill") == 1, \
+            "an unknown value shows everything"
+
+
+def test_paging_keeps_the_api_filter():
+    from spark.web.routes_devices import _query
+    assert _query("", 25, 2, "", "unifi") == "?api=unifi&per_page=25&page=2"
+    assert _query("", 25, 2, "on", "nonsense") == "?snmp=on&per_page=25&page=2"
