@@ -2,41 +2,94 @@
 {% macro state_pill(s) -%}
 <span class="pill {{ s.kind }}{% if s.kind != 'neutral' %} dot{% endif %}" title="From {{ s.source }}">{{ s.label }}</span>
 {%- endmacro %}
+{% set ICON = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' | safe %}
 {% block content %}
-<div class="page">
+<div class="page page-services">
   <div class="page-head">
-    <div class="page-title">
-      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span>
-      <div>
-        <h1>Services</h1>
-        <p class="page-sub">What each device runs, as the port scan found it, and whether it is watched. Where each device sits is on the <a href="/map">Network map</a>.</p>
-      </div>
+    <div>
+      <p class="page-tag">Inventory</p>
+      <h1>Services</h1>
+      <p class="page-sub">What each device runs, as the port scan found it, and whether it is watched. Where each device sits is on the <a href="/map">Network map</a>.</p>
     </div>
   </div>
 
   <div id="live">
+
+  {# Every service, whatever the table below is narrowed to. #}
+  <section class="stat-row">
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span><span class="stat-name">Services</span></span><span class="stat-value">{{ tiles.services }}</span></div>
+    <a class="stat s-dev" href="/devices"><span class="stat-head"><span class="stat-icon">{{ ICON }}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span class="stat-name">On devices</span></span><span class="stat-value">{{ tiles.devices }}</span></a>
+    <div class="stat s-mon"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span><span class="stat-name">Watched</span></span><span class="stat-value">{{ tiles.watched }}</span></div>
+    <div class="stat s-deg{% if tiles.look %} is-warn{% endif %}" title="Open ports with a known way to go wrong"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span><span class="stat-name">Worth a look</span></span><span class="stat-value">{{ tiles.look }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg></span><span class="stat-name">Distinct ports</span></span><span class="stat-value">{{ tiles.ports }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon">{{ ICON }}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="stat-name">Last port scan</span></span><span class="stat-value">{{ tiles.scan or '—' }}</span></div>
+  </section>
+
+  <div class="svc-grid">
   <section class="card">
     <div class="card-head">
-      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+      <span class="card-icon">{{ ICON }}<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></span>
       <div>
         <h2>Every service</h2>
         <p class="card-sub">Everything the port scan found, on every device. Search by name, port, device or address.</p>
       </div>
+      <div class="head-actions">
+        <form method="post" action="/devices/scan-ports">
+          <input type="hidden" name="back" value="{{ here }}">
+          <button type="submit" class="btn-quiet" title="Check discovered devices for listening services">Scan ports</button>
+        </form>
+      </div>
     </div>
+
+    {# A GET form like the Devices filters: the search, the subnet and the
+       chip all land in the URL, so a view can be bookmarked and the live
+       refresh keeps it. The chips are links that keep the other two. #}
     <form method="get" action="/services" class="row-form service-search">
-      <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="plex, 8080, nas, 192.168.1." aria-label="Search services">
+      <label class="search">
+        <span class="visually-hidden">Search services</span>
+        <input type="search" name="q" value="{{ q }}" maxlength="100" placeholder="ssh, 8080, nas, 192.168.1." autocomplete="off">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </label>
+      {% if show %}<input type="hidden" name="show" value="{{ show }}">{% endif %}
+      {% if subnets %}
+      <label class="inline-field">
+        <span class="visually-hidden">Subnet</span>
+        <select name="subnet" class="auto-submit">
+          <option value="">All subnets</option>
+          {% for s in subnets %}
+            <option value="{{ s.id }}" {% if subnet == s.id | string %}selected{% endif %}>{{ s.label }} · {{ s.cidr }}</option>
+          {% endfor %}
+          <option value="none" {% if subnet == 'none' %}selected{% endif %}>Not on a configured subnet</option>
+        </select>
+      </label>
+      {% endif %}
       <button type="submit" class="btn-quiet">Search</button>
       {% if q %}<a href="/services" class="btn-quiet">Clear</a>{% endif %}
-      <span class="muted small">{% if q %}{{ map.services | length }} of {{ total }} match{% else %}{{ total }} service{{ 's' if total != 1 }}{% endif %}</span>
+      <span class="muted small svc-count">{% if q %}{{ rows | length }} of {{ total }} match{% else %}{{ total }} service{{ 's' if total != 1 }}{% endif %}</span>
     </form>
-    {% if map.services %}
+    <nav class="tbar-chips" aria-label="Show">
+      {% for value, label, n in chips %}
+        <a class="chip{% if value == 'look' %} k-warn{% endif %}" href="{{ chip_url(value) }}"
+           {% if value == show %}aria-current="true"{% endif %}>{% if value == 'look' %}<i aria-hidden="true"></i>{% endif %}{{ label }} <b>{{ n }}</b></a>
+      {% endfor %}
+    </nav>
+
+    {% if rows %}
     <div class="table-scroll">
-    <table class="table compact">
-      <thead><tr><th>Service</th><th class="num">Port</th><th>Device</th><th>Address</th><th>Watched</th><th></th></tr></thead>
+    <table class="table compact svc-table">
+      <thead><tr>
+        <th data-sort="name" aria-sort="none"><button type="button">Service</button></th>
+        <th class="num" data-sort="port" aria-sort="ascending"><button type="button">Port</button></th>
+        <th data-sort="device" aria-sort="none"><button type="button">Device</button></th>
+        <th>Address</th><th>Watched</th><th class="actions-head"><span class="visually-hidden">Actions</span></th>
+      </tr></thead>
       <tbody>
-        {% for r in map.services %}
-        <tr>
-          <td>{{ r.service.name or '—' }}</td>
+        {% for r in rows %}
+        <tr data-name="{{ (r.service.name or '') | lower }}" data-port="{{ r.service.port }}" data-device="{{ r.device.display_name | lower }}">
+          <td class="svc-name">
+            {% if r.concern %}<span class="svc-flag" title="{{ r.concern }}" aria-label="Worth a look: {{ r.concern }}">{{ ICON }}<path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span>{% endif %}
+            {{ r.service.name or '—' }}
+          </td>
           <td class="num"><code>{{ r.service.port }}</code></td>
           <td><a href="/devices/{{ r.device.id }}" class="map-name">{{ r.device.display_name }}</a></td>
           <td><code class="small">{{ r.device.primary_ip or '—' }}</code></td>
@@ -55,10 +108,104 @@
     </div>
     {% elif q %}
       <p class="muted small">Nothing matches “{{ q }}”.</p>
+    {% elif show or subnet %}
+      <p class="muted small">Nothing here. <a href="/services">Show every service</a>.</p>
     {% else %}
       <p class="muted small">No services found yet. They appear after a port scan (Devices → Scan ports).</p>
     {% endif %}
   </section>
+
+  <div class="svc-side">
+    {% if look %}
+    <section class="card is-warn-edge">
+      <div class="card-head">
+        <span class="card-icon is-warn">{{ ICON }}<path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span>
+        <div>
+          <h2>Worth a second look</h2>
+          <p class="card-sub">Open ports with a known way to go wrong. Often fine on purpose; worth knowing.</p>
+        </div>
+      </div>
+      <ul class="look-list">
+        {% for r in look %}
+        <li>
+          <div>
+            <strong><a href="/devices/{{ r.device.id }}">{{ r.device.display_name }}</a></strong>
+            <code class="small">{{ r.service.name or '' }} {{ r.service.port }}</code>
+            <span class="look-why">{{ r.concern[:1] | upper }}{{ r.concern[1:] }}.</span>
+          </div>
+          {% if r.state %}{{ state_pill(r.state) }}{% else %}
+          <form method="post" action="/devices/services/{{ r.service.id }}/watch">
+            <button type="submit" class="btn-quiet" title="Watch this service (TCP check on port {{ r.service.port }})">Watch</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if common_ports %}
+    <section class="card">
+      <div class="card-head">
+        <span class="card-icon">{{ ICON }}<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg></span>
+        <div>
+          <h2>Most common ports</h2>
+          <p class="card-sub">Pick one to list every device running it.</p>
+        </div>
+      </div>
+      <ul class="ports-top">
+        {% for p in common_ports %}
+        <li><a href="/services?q={{ p.port }}"><code>{{ p.port }}</code><span>{{ p.name or '—' }}</span><span class="muted small">{{ p.devices }} device{{ 's' if p.devices != 1 }}</span></a></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+  </div>
   </div>
 </div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+  // Sort the table by a column heading, in the browser: the rows are all on
+  // the page already. Kept outside #live and re-applied after each refresh.
+  (function () {
+    var state = { sort: 'port', dir: 1 };
+    function key(tr) {
+      var v = tr.getAttribute('data-' + state.sort);
+      return state.sort === 'port' ? parseInt(v, 10) : v;
+    }
+    function apply() {
+      var body = document.querySelector('#live .svc-table tbody');
+      if (!body) return;
+      document.querySelectorAll('#live .svc-table th[data-sort]').forEach(function (th) {
+        th.setAttribute('aria-sort', th.getAttribute('data-sort') !== state.sort ? 'none'
+          : state.dir === 1 ? 'ascending' : 'descending');
+      });
+      var rows = [].slice.call(body.rows);
+      rows.sort(function (a, b) {
+        var x = key(a), y = key(b);
+        var c = x < y ? -1 : x > y ? 1 : 0;
+        if (c === 0) c = a.getAttribute('data-port') - b.getAttribute('data-port') ||
+          (a.getAttribute('data-device') < b.getAttribute('data-device') ? -1 : 1);
+        return c * state.dir;
+      });
+      rows.forEach(function (tr) { body.appendChild(tr); });
+    }
+    document.addEventListener('click', function (event) {
+      var th = event.target.closest('#live .svc-table th[data-sort]');
+      if (!th) return;
+      var k = th.getAttribute('data-sort');
+      state.dir = state.sort === k ? -state.dir : 1;
+      state.sort = k;
+      apply();
+    });
+    // The subnet dropdown applies itself, like the Devices filters.
+    document.addEventListener('change', function (event) {
+      var el = event.target;
+      if (el.matches && el.matches('.service-search select.auto-submit') && el.form) el.form.submit();
+    });
+    document.addEventListener('spark:live-updated', apply);
+    apply();
+  })();
+</script>
 {% endblock %}

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — SPARK 2, the Services page (2026-10-03)
+
+### Added
+
+- **Six tiles over the page**: Services, On devices, Watched, Worth a look,
+  Distinct ports and Last port scan. They count every service, whatever the
+  list below is narrowed to.
+- **Chips to narrow the list**: All, Watched, Not watched, Worth a look,
+  each with its count, and a subnet dropdown. Both go in the URL with the
+  search (`?show=`, `?subnet=`), so a view can be bookmarked.
+- **Worth a second look**: every open port with a known way to go wrong,
+  why, and a Watch button (or its status once watched). Flagged ports carry
+  a warning sign in the list too.
+- **Most common ports**: the eight busiest, each a link to every device
+  running it.
+- **Sort the list** by Service, Port or Device (click the heading).
+- **Scan ports on this page**, which comes back here rather than to Devices.
+
 ## Unreleased — SPARK 2, the Network map (2026-10-03)
 
 ### Added

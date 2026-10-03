@@ -115,6 +115,13 @@ port scan found on it.
 service on the network ("plex", "8080", "nas", "192.168.1." all work), with
 its status and a **Watch** button for the ones not watched yet. An old
 `/map?q=…` link goes there. The dashboard's Services tile opens it too.
+The chips over the list show all, watched, not watched, or only those
+**worth a look** (open ports with a known way to go wrong: telnet, FTP, SMB,
+RDP, an open Docker socket, databases and the like), and a dropdown narrows
+it to one subnet; all of it goes in the URL. Click Service, Port or Device to
+sort. Beside the list, **Worth a second look** says why each flagged port is
+flagged, and **Most common ports** lists the busiest ports, each a link to
+every device running it. **Scan ports** here returns to this page.
 
 **Placing a device** is done on its own page, in the **On the network map**
 card: a **Role** (gateway, switch, access point, server, NAS, UPS, client,

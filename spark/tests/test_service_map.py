@@ -433,7 +433,7 @@ class TestPages:
 
     def test_searching_services(self, site):
         page = site.get("/services?q=8080").text
-        table = page[page.index("<th>Service</th>"):]
+        table = page[page.index('<th data-sort="name"'):page.index("</table>")]
         assert "http-alt" in table and "Plex" not in table
         assert "Nothing matches “zzz”." in site.get("/services?q=zzz").text
         page = site.get("/services?q=<script>alert(1)</script>").text
@@ -443,15 +443,66 @@ class TestPages:
         page = " ".join(site.get("/services").text.split())
         assert '<a href="/services" class="active">Services</a>' in page
         assert '<span class="nav-full">Network map</span><span class="nav-short">Map</span>' in page
-        assert "<h1>Services</h1>" in page and "<th>Service</th>" in page
+        assert "<h1>Services</h1>" in page and '<button type="button">Service</button></th>' in page
         assert '<form method="get" action="/services" class="row-form service-search">' in page
         assert "Plex" in page and "3 services" in page
         page = " ".join(site.get("/services?q=8080").text.split())
         assert "1 of 3 match" in page and '<a href="/services" class="btn-quiet">Clear</a>' in page
 
+    def test_the_services_tiles_count_everything(self, site):
+        page = " ".join(site.get("/services?q=8080").text.split())
+        tiles = dict(re.findall(r'<span class="stat-name">([^<]+)</span></span> ?<span class="stat-value">([^<]+)</span>', page))
+        assert tiles == {"Services": "3", "On devices": "2", "Watched": "0", "Worth a look": "1",
+                         "Distinct ports": "3", "Last port scan": "—"}, "whatever the search"
+
+    def test_worth_a_second_look_and_common_ports(self, site):
+        page = " ".join(site.get("/services").text.split())
+        look = page[page.index("<h2>Worth a second look</h2>"):page.index("<h2>Most common ports</h2>")]
+        assert ">nas</a></strong> <code class=\"small\">SMB 445</code>" in look
+        assert "SMB has a long history of wormable flaws." in look and "Plex" not in look
+        assert '<a href="/services?q=445"><code>445</code><span>SMB</span><span class="muted small">1 device</span></a>' in page
+        assert 'class="svc-flag" title="SMB has a long history of wormable flaws"' in page
+
+    def test_the_chips_narrow_and_keep_the_search(self, site):
+        page = " ".join(site.get("/services?q=nas").text.split())
+        assert '<a class="chip k-warn" href="/services?q=nas&amp;show=look" >' in page \
+            or '<a class="chip k-warn" href="/services?q=nas&amp;show=look">' in page
+        page = " ".join(site.get("/services?show=look").text.split())
+        table = page[page.index('<tbody>'):page.index("</table>")]
+        assert "SMB" in table and "Plex" not in table and "http-alt" not in table
+        page = " ".join(site.get("/services?show=unwatched").text.split())
+        assert page.count("<tr data-name=") == 3
+        page = " ".join(site.get("/services?show=watched").text.split())
+        assert "<tr data-name=" not in page and "Show every service" in page
+        assert page.count('aria-current="true"') == 1
+        assert "<tr data-name=" in site.get("/services?show=nonsense").text, "unknown shows all"
+
+    def test_the_subnet_filter(self, site):
+        site.post("/settings/subnets", data={"cidr": "10.0.0.0/27", "name": "Low", "attached": "1", "enabled": "1"})
+        page = " ".join(site.get("/services").text.split())
+        assert '<select name="subnet" class="auto-submit">' in page
+        assert page.count("<tr data-name=") == 3
+        low = re.search(r'<option value="(\d+)" >Low · 10.0.0.0/27</option>', page)
+        assert low, "the subnet is offered"
+        page = " ".join(site.get(f"/services?subnet={low.group(1)}").text.split())
+        table = page[page.index("<tbody>"):page.index("</table>")]
+        assert "SMB" in table and "Plex" in table and "http-alt" not in table, "10.0.0.50 is outside a /27"
+        assert page.count("<tr data-name=") == 2
+
+    def test_scan_ports_comes_back_to_the_page_it_was_pressed_on(self, site, monkeypatch):
+        from spark import scheduler as scheduler_module
+        monkeypatch.setattr(scheduler_module, "trigger_port_scan_now", lambda: None)
+        assert site.post("/devices/scan-ports", data={"back": "/services?q=nas"}).headers["location"] \
+            == "/services?q=nas"
+        assert site.post("/devices/scan-ports", data={"back": "/devices?subnet=1"}).headers["location"] \
+            == "/devices?subnet=1"
+        assert site.post("/devices/scan-ports", data={"back": "https://evil.example/"}).headers["location"] \
+            == "/devices"
+        assert site.post("/devices/scan-ports").headers["location"] == "/devices"
+
     def test_the_map_no_longer_lists_services(self, site):
         page = " ".join(site.get("/map").text.split())
-        assert "<h1>Network map</h1>" in page and "<th>Service</th>" not in page
+        assert "<h1>Network map</h1>" in page and ">Service</button></th>" not in page
         assert 'class="row-form service-search"' not in page
         assert '<a href="/services">Services</a>' in page, "the map points at the new tab"
 

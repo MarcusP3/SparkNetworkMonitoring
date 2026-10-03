@@ -648,10 +648,19 @@ async def add_snmp_found(
 
 
 @router.post("/devices/scan-ports")
-async def scan_ports_now(_user: User = Depends(require_user)):
-    """Queue a port scan now. Returns at once; the page updates itself."""
+async def scan_ports_now(
+    back: str = Form("/devices", max_length=limits.URL),
+    _user: User = Depends(require_user),
+):
+    """Queue a port scan now. Returns at once; the page updates itself.
+
+    Pressed on Devices or on Services, and returns to whichever it was, as
+    it was: only those two, and nowhere else (`_safe_next` first)."""
     scheduler_module.trigger_port_scan_now()
-    return redirect("/devices")
+    target = _safe_next(back)
+    if target == "/services" or target.startswith("/services?"):
+        return redirect(target)
+    return redirect(_back(back))
 
 
 @router.post("/devices/services/{service_id}/watch")

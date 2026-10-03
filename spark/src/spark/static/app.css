@@ -2381,3 +2381,82 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .page-map .tree ul { margin-left: 8px; padding-left: 10px; }
   .page-map .tree ul > li::before { left: -10px; width: 8px; }
 }
+
+/* ---------- SPARK 2: Services ---------- */
+.page-services .page-head h1 { font-size: 46px; line-height: 1.05; margin: 0; }
+.page-services .page-sub { margin-top: 10px; font-size: 15px; }
+.page-services .stat-row { margin-bottom: 22px; }
+.page-services .stat.is-warn .stat-value { color: var(--c); text-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
+
+/* The list on the left, the second-look list and the common ports beside it. */
+.svc-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.svc-grid > .card, .svc-side > .card { margin-bottom: 0; }
+.svc-side { display: grid; gap: 20px; }
+.page-services .card-head .head-actions form { margin: 0; }
+.page-services .service-search { gap: 10px 12px; margin-bottom: 12px; }
+.page-services .service-search .search input { width: 260px; }
+.svc-count { margin-left: auto; }
+
+/* The chips: links, so they work without scripts and keep the URL honest. */
+.tbar-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.tbar-chips .chip {
+  --k: var(--accent);
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px;
+  background: rgba(8, 16, 30, .8); border: 1px solid rgba(148, 178, 214, .22); color: #c9d5e4;
+  font-size: 12.5px; font-weight: 500; text-decoration: none;
+}
+.tbar-chips .chip b { font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+.tbar-chips .chip:hover { border-color: var(--accent); }
+.tbar-chips .chip[aria-current] { background: rgba(34, 211, 238, .14); border-color: rgba(34, 211, 238, .55); color: var(--accent); }
+.tbar-chips .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--k); box-shadow: 0 0 6px var(--k); }
+.tbar-chips .chip.k-warn { --k: var(--warn); }
+
+/* The table: sortable headings, names in capitals like a port list. */
+.svc-table th button { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.svc-table th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.svc-table th[aria-sort] button::after { content: ""; border: 4px solid transparent; border-top-color: currentColor; margin-top: 4px; opacity: .35; }
+.svc-table th[aria-sort="ascending"] button::after { border-top-color: transparent; border-bottom-color: var(--accent); margin: 0 0 4px; opacity: 1; }
+.svc-table th[aria-sort="descending"] button::after { border-top-color: var(--accent); opacity: 1; }
+.svc-table .svc-name { font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }
+.svc-table .map-name { color: #dfe8f3; text-decoration: underline dotted rgba(148, 178, 214, .5); text-underline-offset: 3px; }
+.svc-flag { display: inline-flex; vertical-align: -2px; margin-right: 6px; color: var(--warn); }
+.svc-flag .icon { width: 14px; height: 14px; }
+.svc-table th.actions-head { position: relative; }
+
+/* Worth a second look: amber-framed rows with the reason under them. */
+.look-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.look-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 4px;
+  background: color-mix(in srgb, var(--warn) 6%, rgba(8, 16, 30, .7));
+}
+.look-list li form { margin: 0; }
+.look-list strong a { color: #fff; text-decoration: none; }
+.look-list code { color: #c7d3e1; background: none; padding: 0; margin-left: 4px; }
+.look-why { display: block; margin-top: 3px; font-size: 13px; color: var(--warn); }
+
+/* Most common ports. */
+.ports-top { list-style: none; margin: 0; padding: 0; }
+.ports-top a {
+  display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 9px 4px; border-bottom: 1px solid var(--line-soft); color: #e3ebf5; text-decoration: none; font-size: 13.5px;
+}
+.ports-top li:last-child a { border-bottom: 0; }
+.ports-top a:hover { background: rgba(34, 211, 238, .05); }
+.ports-top code { color: var(--accent); background: none; padding: 0; }
+.ports-top span:nth-child(2) { text-transform: uppercase; }
+
+@media (max-width: 62rem) {
+  .svc-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .page-services .page-head h1 { font-size: 34px; }
+}
+@media (max-width: 640px) {
+  .page-services .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-services .card-head { flex-wrap: wrap; }
+  .page-services .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
+  .page-services .card-head .head-actions { flex-basis: 100%; margin-left: 0; }
+  .page-services .service-search .search, .page-services .service-search .search input { width: 100%; }
+  .svc-count { margin-left: 0; flex-basis: 100%; }
+}
