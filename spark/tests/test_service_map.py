@@ -441,7 +441,7 @@ class TestPages:
 
     def test_the_dashboard_tile_opens_services(self, site):
         page = " ".join(site.get("/").text.split())
-        assert '<a class="stat" href="/services">' in page
+        assert '<a class="stat s-svc" href="/services"' in page
 
     def test_place_a_device_from_its_page(self, site):
         page = site.get("/devices/4").text

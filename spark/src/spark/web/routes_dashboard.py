@@ -7,6 +7,7 @@ engine and discovery workers land in the next increments.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from urllib.parse import urlencode
 
@@ -218,6 +219,16 @@ async def dashboard(
     # never read again, so reading it here showed the file's idea of the
     # network rather than the one the Settings page edits.
     known_subnets = await subnet_service.list_subnets(session)
+    # How many of the devices SPARK knows sit on each subnet, for the network
+    # overview. By address, not the stored label (Subnet.contains says why).
+    device_counts: Counter[int] = Counter()
+    if known_subnets:
+        for address in (await session.execute(
+            select(Device.primary_ip).where(Device.ignored.is_(False))
+        )).scalars():
+            home = subnet_service.subnet_for(known_subnets, address)
+            if home is not None:
+                device_counts[home.id] += 1
 
     if not known_subnets:
         warnings.append(
@@ -233,7 +244,7 @@ async def dashboard(
             "for segments you want on record without scanning."
         )
     # No banner for routed subnets: routed is a setting, not a fault, and the
-    # subnet table below already marks each one "Routed · IP identity only".
+    # network overview below already marks each one "Routed · IP identity only".
 
     return templates.TemplateResponse(
         request,
@@ -245,6 +256,7 @@ async def dashboard(
             "stats": stats,
             "warnings": warnings,
             "subnets": known_subnets,
+            "device_counts": device_counts,
             "watched": watched,
             "incidents": incidents,
             "greeting": _greeting(),

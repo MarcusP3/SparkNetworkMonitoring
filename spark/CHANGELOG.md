@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — SPARK 2, the dashboard (2026-10-03)
+
+### Changed
+
+- **The greeting is larger, and the date moved up beside your name**, where
+  it no longer sits under the user chip.
+- **Each stat tile keeps one colour**: Devices and Services cyan, Monitored
+  green, Degraded amber, Down red, Open incidents pink. The number is what
+  says something is wrong: it takes the tile's colour only above zero. What
+  each tile counts is in its tooltip rather than a line under the number.
+- **Network overview replaces the subnet table**: SPARK in the middle with a
+  line to each subnet, how it reaches it, its VLAN, and how many of your
+  devices sit there (with a bar for their share of the total).
+- **Recent incidents sits beside it**, with an amber edge, and shows a calm
+  "All systems operational" when nothing has gone wrong and something is
+  being watched.
+- **Watched devices runs the full width below**, with a View all link to
+  Targets and bolder status pills.
+
+### Fixed
+
+- The stray divider left of the avatar in the top bar.
+
 ## Unreleased — SPARK 2, the console shell (2026-10-03)
 
 ### Changed

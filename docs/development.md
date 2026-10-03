@@ -270,10 +270,13 @@ Ten things that will bite you if you don't know them:
   things you can click. Up, degraded and down are green, amber and red; unknown
   and paused are grey. The reverse holds too: status colours appear only on
   statuses, and never on charts: the first series on a chart is cyan, the
-  second neutral grey. Icon tiles are cyan unless what they count is actually happening:
-  the Degraded, Down and Open incidents tiles turn amber or red only when their
-  number is above zero, on the same condition as the number itself. A red that
-  is always there is a red you learn to stop seeing. No blue "info" state — it
+  second neutral grey. The one exception is the dashboard's stat tiles (SPARK 2):
+  each keeps one colour for good as an identity, not a status (Devices and
+  Services cyan, Monitored green, Degraded amber, Down red, Open incidents
+  pink). What says something is wrong there is the number, which takes its
+  tile's colour only when it is above zero (`is-warn`/`is-bad`); at zero it
+  stays white. A number that is always coloured is one you learn to stop
+  seeing, and `tests/test_dashboard.py` holds that line. No blue "info" state — it
   read as a fourth status beside
   the cyan. Nothing loads from a CDN, fonts included: SPARK runs on LANs with no
   internet. The mark is the flat-top bolt in `templates/_brand.html`; its path

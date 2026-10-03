@@ -158,7 +158,8 @@ class TestDashboard:
         finally:
             client.__exit__(None, None, None)
         assert "Outages, and SNMP, storage and API alerts." in page
-        assert '<span class="stat-value">2</span> <span class="stat-note">Still unresolved</span>' in page
+        tile = page[page.index('<span class="stat-name">Open incidents</span>'):]
+        assert tile.startswith('<span class="stat-name">Open incidents</span> </span> <span class="stat-value">2</span>')
         page = page[page.index("<h2>Recent incidents</h2>"):]
         plex = page.index("<strong>plex web</strong>")
         cpu = page.index('<strong><a href="/devices/1">core-switch: CPU is high (95%)</a></strong>')

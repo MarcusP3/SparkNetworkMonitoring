@@ -1025,15 +1025,6 @@ input.narrow { max-width: 5.5rem; }
 }
 .greeting p { margin: 0; font-size: .9375rem; color: var(--text-muted); }
 
-.greeting-when {
-  margin-left: auto;
-  text-align: right;
-  font-size: .8125rem;
-  color: var(--text-muted);
-  line-height: 1.45;
-  font-variant-numeric: tabular-nums;
-}
-
 /* Two columns on a wide screen, stacked below it. The minmax floor is what
    stops the right column squeezing the activity timestamps onto their own
    line before the breakpoint arrives. */
@@ -1048,7 +1039,6 @@ input.narrow { max-width: 5.5rem; }
 @media (max-width: 62rem) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); }
   .dash-grid > .card { margin-bottom: 1.25rem; }
-  .greeting-when { margin-left: 0; text-align: left; }
 }
 
 /* The activity list. A rail with a dot per entry, rather than another table:
@@ -2032,4 +2022,115 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .topline .who { display: none; }
   .stat { --skew: 12px; min-height: 84px; padding: 14px 12px 12px calc(var(--skew) + 16px); }
   .stat::before { transform: skewX(-8.1deg); }
+}
+
+/* ---------- SPARK 2: the dashboard ---------- */
+
+/* The date beside the user chip, split from it by a hairline. The chip's own
+   left border was the old top bar's divider; here the rule does that job,
+   and only when there is a date to divide from. */
+.topline .user-chip { border-left: 0; padding-left: 0; }
+.topline .clock {
+  text-align: right; font-size: 13px; font-weight: 500; color: #e3ebf5; line-height: 1.5;
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px rgba(0, 0, 0, .85), 0 0 12px rgba(0, 0, 0, .6);
+}
+.topline-rule { width: 1px; height: 42px; background: rgba(255, 255, 255, .18); }
+
+.page-dash .greeting { display: block; margin: -8px 0 1.9rem; }
+.page-dash .greeting h1 { margin: 0; font-size: inherit; letter-spacing: 0; text-shadow: 0 2px 12px rgba(0, 0, 0, .55); }
+.page-dash .greeting .hello { display: block; font-size: 36px; font-weight: 300; line-height: 1.1; color: #dbe6f3; }
+.page-dash .greeting .who-big { display: block; font-size: 50px; font-weight: 800; line-height: 1.05; letter-spacing: -.01em; color: #fff; }
+.page-dash .greeting .tagline {
+  margin: 14px 0 0; font-family: var(--mono); font-size: 13px; letter-spacing: .2em;
+  text-transform: uppercase; color: #c3d0df;
+}
+
+/* Each tile keeps one colour (see dashboard.html); the number alone turns
+   amber or red, and only above zero. */
+.stat.s-dev, .stat.s-svc { --c: var(--accent); }
+.stat.s-mon { --c: var(--ok); }
+.stat.s-deg { --c: var(--warn); }
+.stat.s-down { --c: var(--bad); }
+.stat.s-inc { --c: var(--pink); }
+.page-dash .stat-row { margin-bottom: 22px; }
+.page-dash .stat.is-warn .stat-value, .page-dash .stat.is-bad .stat-value { color: var(--c); text-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
+
+.page-dash .dash-grid { grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 20px; align-items: stretch; margin-bottom: 20px; }
+.card-icon.is-warn { color: var(--warn); filter: drop-shadow(0 0 6px rgba(245, 158, 11, .5)); }
+.card-icon.is-warn .icon { width: 30px; height: 30px; }
+
+/* Network overview: SPARK, a line to each subnet. The lines are borders on
+   the list items, so the drawing grows with the list. */
+.net { position: relative; display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; margin-top: 6px; }
+.net-hub { display: grid; justify-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: .04em; position: relative; z-index: 1; }
+.hub-ring {
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  border: 1.5px solid rgba(34, 211, 238, .7); background: radial-gradient(circle, rgba(34, 211, 238, .16), rgba(34, 211, 238, 0) 70%);
+  box-shadow: 0 0 18px rgba(34, 211, 238, .35), inset 0 0 12px rgba(34, 211, 238, .2);
+}
+.hub-ring .brand-mark { width: 26px; height: 32px; filter: drop-shadow(0 0 8px rgba(34, 211, 238, .6)); }
+.net::before { /* hub to the spine */
+  content: ""; position: absolute; left: 98px; width: 54px; top: 50%; border-top: 1.5px solid rgba(34, 211, 238, .75);
+  filter: drop-shadow(0 0 3px rgba(34, 211, 238, .6));
+}
+.subnets { list-style: none; margin: 0; padding: 0 0 0 46px; display: grid; gap: 18px; }
+.subnet { position: relative; display: grid; grid-template-columns: minmax(0, 230px) minmax(0, 1fr); gap: 24px; align-items: center; }
+.subnet::before, .subnet::after { content: ""; position: absolute; left: -24px; pointer-events: none; }
+.subnet::before { top: 50%; width: 24px; border-top: 1.5px solid rgba(34, 211, 238, .75); }
+.subnet::after { top: 0; bottom: -18px; border-left: 1.5px solid rgba(34, 211, 238, .75); }
+.subnet:first-child::after { top: 50%; }
+.subnet:last-child::after { bottom: 50%; }
+.subnet:only-child::after { display: none; }
+.net-node {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px; min-width: 0;
+  border: 1px solid rgba(34, 211, 238, .28); border-radius: 4px; background: rgba(6, 14, 26, .85);
+}
+.net-node-icon { width: 44px; height: 44px; flex: none; display: grid; place-items: center; color: var(--accent); border: 1px solid rgba(34, 211, 238, .5); border-radius: 6px; }
+.net-node-icon .icon { width: 26px; height: 26px; }
+.net-node strong { display: block; font-size: 14.5px; color: #fff; }
+.net-node code { display: block; font-size: 12.5px; color: #c7d3e1; background: none; padding: 0; overflow-wrap: anywhere; }
+.net-reach { display: grid; gap: 9px; justify-items: start; min-width: 0; }
+.net-vlan { font-size: 13px; color: #d5dfeb; }
+.net-vlan .sep { color: var(--text-faint); margin: 0 6px; }
+.net-track { width: 136px; max-width: 100%; height: 4px; display: block; }
+.net-track-bg { fill: rgba(148, 178, 214, .16); }
+.net-track.is-ok .net-track-fill { fill: var(--ok); }
+.net-track.is-warn .net-track-fill { fill: var(--warn); }
+
+/* Recent incidents, when there are none. */
+.calm { display: grid; justify-items: center; text-align: center; gap: 4px; padding: 6px 0 4px; }
+.calm .radar { width: 170px; height: 150px; }
+.calm .radar-core { filter: drop-shadow(0 0 6px #22d3ee); }
+.calm strong { font-size: 15px; color: #fff; margin-top: 2px; }
+.calm span { font-size: 13px; color: var(--text-muted); }
+
+/* Watched devices. */
+.page-dash .head-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.page-dash .head-actions a { white-space: nowrap; }
+.btn-quiet.is-accent { border-color: rgba(34, 211, 238, .55); }
+.btn-quiet.is-accent .count, .btn-quiet.is-accent [aria-hidden] { color: var(--accent); }
+.page-dash .pill[class*="status-"] { min-width: 96px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.is-bad-text { color: var(--bad) !important; }
+
+@media (max-width: 62rem) {
+  .page-dash .dash-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .net { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .net::before, .subnet::before, .subnet::after { display: none; }
+  .net-hub { justify-self: start; grid-auto-flow: column; align-items: center; }
+  .hub-ring { width: 44px; height: 44px; }
+  .hub-ring .brand-mark { width: 18px; height: 22px; }
+  .subnets { padding-left: 0; }
+  .subnet { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .page-dash .greeting .hello { font-size: 26px; }
+  .page-dash .greeting .who-big { font-size: 38px; }
+}
+@media (max-width: 640px) {
+  .topline .clock, .topline-rule { display: none; }
+  .page-dash .greeting .tagline { font-size: 11px; letter-spacing: .14em; }
+  .page-dash .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-dash .card-head { flex-wrap: wrap; }
+  .page-dash .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
+  .page-dash .card-head .head-actions { flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
 }
