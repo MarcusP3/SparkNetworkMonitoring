@@ -204,6 +204,7 @@ spark/
     test_snmp_crypto.py SNMPv3 privacy actually works; failures are told apart
     test_snmp_settings.py  profiles, devices, Test; secrets absent from DB and pages
     test_snmp_poll.py   counter wraps and resets, recording, scheduling, SNMP history
+    test_devices_page.py the Devices tiles, search and Watched filter
     test_device_page.py history read back weighted and gap-true; charts; the page
     test_layout.py      every table scrolls inside its card
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter

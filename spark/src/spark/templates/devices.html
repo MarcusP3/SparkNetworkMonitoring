@@ -2,49 +2,12 @@
 {% block content %}
 {# This page as it is now, filters and all: where its buttons come back to. #}
 {% set here = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
-<div class="page">
+<div class="page page-devices">
   <div class="page-head">
-    <div class="page-title">
-      <span class="page-icon">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-             aria-hidden="true">
-          <rect x="3" y="4" width="18" height="7" rx="2"/>
-          <rect x="3" y="13" width="18" height="7" rx="2"/>
-          <path d="M7 7.5h.01M7 16.5h.01"/>
-        </svg>
-      </span>
-      <div>
-        <h1>Devices</h1>
-        <p class="page-sub">Everything the sweep has found, and what it is running.</p>
-      </div>
-    </div>
-    <div class="head-actions">
-      {% if unreviewed %}
-      <form method="post" action="/devices/acknowledge-all">
-        <button type="submit" class="btn-quiet"
-                title="Dismiss the badge on all {{ unreviewed }} of them">
-          Mark all {{ unreviewed }} reviewed
-        </button>
-      </form>
-      {% endif %}
-      {% if snmp_find.profiles %}
-      <form method="post" action="/devices/find-snmp">
-        <input type="hidden" name="back" value="{{ here }}">
-        <button type="submit" class="btn-quiet"
-                title="Try your SNMP profiles on every device not already polled. Only suggests; adds nothing.">Find SNMP</button>
-      </form>
-      {% else %}
-      <a href="/settings/snmp" class="btn-quiet"
-         title="Find SNMP needs a profile to try: a community string or a v3 user">Set up SNMP</a>
-      {% endif %}
-      <form method="post" action="/devices/scan-ports">
-        <button type="submit" class="btn-quiet"
-                title="Check discovered devices for listening services">Scan ports</button>
-      </form>
-      <form method="post" action="/devices/scan">
-        <button type="submit" class="btn-primary">Scan now</button>
-      </form>
+    <div>
+      <p class="page-tag">Inventory</p>
+      <h1>Devices</h1>
+      <p class="page-sub">Everything the sweep has found, and what it is running.</p>
     </div>
   </div>
 
@@ -59,44 +22,17 @@
   </div>
   {% endif %}
 
-  {# Deliberately outside #live: a live refresh replaces that region wholesale,
-     which would discard a dropdown you had changed but not yet applied. #}
-  <section class="card scan-schedule">
-    <form method="post" action="/devices/schedule" class="row-form">
-      <label class="checkbox">
-        <input type="checkbox" name="auto" value="1" id="auto-scan"
-               {% if scan.enabled %}checked{% endif %}>
-        <span>Scan automatically</span>
-      </label>
-
-      <label class="inline-field" id="interval-field">
-        <span class="muted">every</span>
-        {# Not disabled when the box is unticked, on purpose: a disabled select
-           submits nothing, which would silently reset the interval every time
-           automatic scanning was switched off. CSS greys it instead. #}
-        <select name="interval_minutes" id="scan-interval">
-          {% if scan.interval_minutes not in scan.choices %}
-            <option value="{{ scan.interval_minutes }}" selected>{{ scan.interval_minutes }} minutes</option>
-          {% endif %}
-          {% for minutes in scan.choices %}
-            <option value="{{ minutes }}" {% if minutes == scan.interval_minutes %}selected{% endif %}>
-              {% if minutes < 60 %}{{ minutes }} minutes
-              {% elif minutes == 60 %}1 hour
-              {% else %}{{ minutes // 60 }} hours{% endif %}
-            </option>
-          {% endfor %}
-        </select>
-      </label>
-
-      <button type="submit" class="btn-quiet">Apply</button>
-
-      <span class="muted small next-scan" id="next-scan"
-            data-in="{{ scan.next_in if scan.next_in is not none else '' }}"
-            data-interval="{{ scan.interval_seconds }}">{{ scan.text }}</span>
-    </form>
-  </section>
-
   <div id="live">
+
+  {# The whole inventory, whatever the filters further down show. #}
+  <section class="stat-row">
+    <div class="stat s-dev"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span class="stat-name">Devices</span></span><span class="stat-value">{{ tiles.devices }}</span></div>
+    <div class="stat s-new" title="Not reviewed yet: name one, or press its new badge"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.3 5.2L20 9l-4.2 3.9L17 18.5 12 15.8 7 18.5l1.2-5.6L4 9l5.7-.8z"/></svg></span><span class="stat-name">New</span></span><span class="stat-value">{{ tiles.new }}</span></div>
+    <div class="stat s-mon"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span><span class="stat-name">Watched</span></span><span class="stat-value">{{ tiles.watched }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18v-3M8 18v-6M12 18V9M16 18V6M20 18V4"/></svg></span><span class="stat-name">SNMP polled</span></span><span class="stat-value">{{ tiles.snmp }}</span></div>
+    <a class="stat s-svc" href="/services"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg></span><span class="stat-name">Services</span></span><span class="stat-value">{{ tiles.services }}</span></a>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="stat-name">Last sweep</span></span><span class="stat-value">{{ tiles.sweep or '—' }}</span></div>
+  </section>
 
   {# Find SNMP's progress and result. Inside #live: the search finishes a few
      seconds after the button is pressed and the page refreshes itself. #}
@@ -135,37 +71,6 @@
   </section>
   {% endif %}
 
-  {% if suggested %}
-  <section class="card suggest-card" id="suggested">
-    <div class="card-head">
-      <div>
-        <h2>Possible duplicates</h2>
-        <p class="card-sub">SNMP devices report these as one device seen at several
-          addresses. Nothing is merged until you confirm it.</p>
-      </div>
-    </div>
-    <ul class="suggest-list">
-      {% for s, reason in suggested %}
-      <li>
-        <div>
-          <span><a href="/devices/{{ s.other.id }}">{{ s.other.display_name }}</a>
-            is part of <a href="/devices/{{ s.keep.id }}">{{ s.keep.display_name }}</a>?</span>
-          <span class="muted small">{{ reason }}</span>
-        </div>
-        <div class="suggest-actions">
-          <a class="btn-quiet" href="/devices/{{ s.keep.id }}/merge?other={{ s.other.id }}">Review merge…</a>
-          <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss" data-stay>
-            <input type="hidden" name="other_id" value="{{ s.other.id }}">
-            <input type="hidden" name="back" value="/devices#suggested">
-            <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
-          </form>
-        </div>
-      </li>
-      {% endfor %}
-    </ul>
-  </section>
-  {% endif %}
-
   {% if port_scan and port_scan.intercepted %}
   <section class="card">
     <div class="alert warn">
@@ -183,28 +88,42 @@
   </section>
   {% endif %}
 
-  {% if sweep %}
+  <div class="dev-grid{% if suggested %} has-dupes{% endif %}">
   <section class="card sweep-status">
     <div class="card-head">
-      <span class="card-icon">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-             aria-hidden="true">
-          <path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 3v9l6.5 3.5"/>
-        </svg>
-      </span>
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></span>
       <div>
         <h2>Last sweep</h2>
         <p class="card-sub">
-          {% if sweep.age_seconds is not none and sweep.age_seconds is defined %}
+          {% if sweep and sweep.age_seconds is defined and sweep.age_seconds is not none %}
             {% if sweep.age_seconds < 120 %}Just now.
             {% elif sweep.age_seconds < 3600 %}{{ (sweep.age_seconds // 60) | int }} minutes ago.
             {% else %}{{ (sweep.age_seconds // 3600) | int }} hours ago.{% endif %}
           {% else %}Not yet recorded.{% endif %}
         </p>
       </div>
+      <div class="head-actions">
+      {% if snmp_find.profiles %}
+      <form method="post" action="/devices/find-snmp">
+        <input type="hidden" name="back" value="{{ here }}">
+        <button type="submit" class="btn-quiet"
+                title="Try your SNMP profiles on every device not already polled. Only suggests; adds nothing.">Find SNMP</button>
+      </form>
+      {% else %}
+      <a href="/settings/snmp" class="btn-quiet"
+         title="Find SNMP needs a profile to try: a community string or a v3 user">Set up SNMP</a>
+      {% endif %}
+      <form method="post" action="/devices/scan-ports">
+        <button type="submit" class="btn-quiet"
+                title="Check discovered devices for listening services">Scan ports</button>
+      </form>
+      <form method="post" action="/devices/scan">
+        <button type="submit" class="btn-primary">Scan now</button>
+      </form>
+      </div>
     </div>
 
+    {% if sweep %}
     {% if sweep.error %}
       <div class="alert error">
         The last sweep failed: <code>{{ sweep.error }}</code>
@@ -262,10 +181,100 @@
     </table>
     </div>
     {% endif %}
+    {% endif %}
+
+    {# Inside #live now, beside what it schedules. That used to be unsafe -- a
+       refresh would throw away a dropdown changed but not yet applied -- so a
+       change now applies itself the moment it is made, and there is nothing
+       unapplied to lose. #}
+    <form method="post" action="/devices/schedule" class="row-form scan-schedule">
+      <label class="checkbox">
+        <input type="checkbox" name="auto" value="1" id="auto-scan"
+               {% if scan.enabled %}checked{% endif %}>
+        <span>Scan automatically</span>
+      </label>
+
+      <label class="inline-field" id="interval-field">
+        <span class="muted">every</span>
+        {# Not disabled when the box is unticked, on purpose: a disabled select
+           submits nothing, which would silently reset the interval every time
+           automatic scanning was switched off. CSS greys it instead. #}
+        <select name="interval_minutes" id="scan-interval">
+          {% if scan.interval_minutes not in scan.choices %}
+            <option value="{{ scan.interval_minutes }}" selected>{{ scan.interval_minutes }} minutes</option>
+          {% endif %}
+          {% for minutes in scan.choices %}
+            <option value="{{ minutes }}" {% if minutes == scan.interval_minutes %}selected{% endif %}>
+              {% if minutes < 60 %}{{ minutes }} minutes
+              {% elif minutes == 60 %}1 hour
+              {% else %}{{ minutes // 60 }} hours{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      {# With scripts on, a change applies itself (see the foot of the page);
+         the button is for when they are off. #}
+      <button type="submit" class="btn-quiet schedule-apply">Apply</button>
+
+      <span class="muted small next-scan" id="next-scan"
+            data-in="{{ scan.next_in if scan.next_in is not none else '' }}"
+            data-interval="{{ scan.interval_seconds }}">{{ scan.text }}</span>
+    </form>
+  </section>
+
+  {% if suggested %}
+  <section class="card suggest-card" id="suggested">
+    <div class="card-head">
+      <div>
+        <h2>Possible duplicates</h2>
+        <p class="card-sub">SNMP devices report these as one device seen at several
+          addresses. Nothing is merged until you confirm it.</p>
+      </div>
+    </div>
+    <ul class="suggest-list">
+      {% for s, reason in suggested %}
+      <li>
+        <div>
+          <span><a href="/devices/{{ s.other.id }}">{{ s.other.display_name }}</a>
+            is part of <a href="/devices/{{ s.keep.id }}">{{ s.keep.display_name }}</a>?</span>
+          <span class="muted small">{{ reason }}</span>
+        </div>
+        <div class="suggest-actions">
+          <a class="btn-quiet" href="/devices/{{ s.keep.id }}/merge?other={{ s.other.id }}">Review merge…</a>
+          <form method="post" action="/devices/{{ s.keep.id }}/merge/dismiss" data-stay>
+            <input type="hidden" name="other_id" value="{{ s.other.id }}">
+            <input type="hidden" name="back" value="/devices#suggested">
+            <button type="submit" class="btn-quiet" title="Stop suggesting this merge">Not the same</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
   </section>
   {% endif %}
+  </div>
 
-  {% if subnets or paging.offer or snmp_filter.listed or snmp_filter.value or api_filter.offer %}
+  <section class="card devices-card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span>
+      <div>
+        <h2>All devices</h2>
+        <p class="card-sub">Name a device to mark it reviewed. Watch it to add a ping check.</p>
+      </div>
+      <div class="head-actions">
+      {% if unreviewed %}
+      <form method="post" action="/devices/acknowledge-all">
+        <button type="submit" class="btn-quiet"
+                title="Dismiss the badge on all {{ unreviewed }} of them">
+          Mark all {{ unreviewed }} reviewed
+        </button>
+      </form>
+      {% endif %}
+      </div>
+    </div>
+
+  {% if tiles.devices or subnets or paging.offer or snmp_filter.listed or snmp_filter.value or api_filter.offer or search or watch_filter.value %}
   <section class="card filter-bar">
     {# A GET form, so the filter lands in the URL and survives a reload, a
        bookmark and the live refresh -- which refetches location.search for
@@ -275,6 +284,14 @@
        changing the page size makes the old page number meaningless, and
        leaving it out is how "back to page 1" happens without any JavaScript. #}
     <form method="get" action="/devices" class="row-form">
+      {# Enter searches. Matched on the server against name, host name, every
+         address, MAC and vendor, so it pages and composes with the rest. #}
+      <label class="search">
+        <span class="visually-hidden">Search devices</span>
+        <input type="search" name="q" value="{{ search }}" maxlength="100" autocomplete="off"
+               placeholder="Search name, IP, MAC, vendor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </label>
       {% if subnets %}
       <label class="inline-field">
         <span class="muted small">Subnet</span>
@@ -317,6 +334,16 @@
       </label>
       {% endif %}
 
+      <label class="inline-field">
+        <span class="muted small">Watched</span>
+        <select name="watch" id="watch-filter" class="auto-submit">
+          <option value="">Watched or not</option>
+          {% for key, label in watch_filter.choices.items() %}
+            <option value="{{ key }}" {% if key == watch_filter.value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
       {% if paging.offer %}
       <label class="inline-field">
         <span class="muted small">Per page</span>
@@ -351,7 +378,6 @@
   {% endif %}
 
   {% if rows %}
-  <section class="card">
     <div class="table-scroll">
     <table class="table">
       <thead>
@@ -367,7 +393,7 @@
           <th>SNMP</th>
           <th>Services</th>
           <th>Last seen</th>
-          <th></th>
+          <th class="actions-head">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -399,12 +425,9 @@
                        data-original="{{ device.friendly_name or '' }}"
                        placeholder="{{ device.hostname or device.primary_ip }}"
                        aria-label="Friendly name">
+                <svg class="name-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>
                 <button type="submit" class="btn-quiet save-name">Save</button>
               </form>
-              {% for a in row.apis %}
-                <a class="pill neutral api-pill" href="/devices/{{ device.id }}#api-{{ a.id }}"
-                   title="{{ a.label }} API — open its card">{{ a.label }}</a>
-              {% endfor %}
               {% if not device.acknowledged %}
                 <form method="post" action="/devices/{{ device.id }}/acknowledge">
                   <button type="submit" class="pill warn as-button"
@@ -412,10 +435,12 @@
                 </form>
               {% endif %}
             </div>
+            {% if device.vendor %}<small class="dev-vendor">{{ device.vendor }}</small>{% endif %}
           </td>
           <td>
             <code>{{ device.primary_ip or '—' }}</code>
             {% if row.extra_ips %}<span class="muted small" title="Also answers at {{ row.extra_ips | join(', ') }}">+{{ row.extra_ips | length }}</span>{% endif %}
+            {% if device.mac %}<div class="dev-mac">{{ device.mac }}</div>{% endif %}
             {# The subnet a device is on now, matched by address, rather than
                the label recorded whenever it was first seen. #}
             {% if row.subnet %}
@@ -445,9 +470,15 @@
             {% elif row.snmp_refused %}
               <span class="muted small"
                     title="Answered SNMP but refused every profile's credentials ({{ row.snmp_refused.profiles | join(', ') }}). Add a profile with the right SNMPv3 user in Settings → SNMP.">refused</span>
-            {% else %}
+            {% elif not row.apis %}
               <span class="muted small">—</span>
             {% endif %}
+            {# API credentials beside the SNMP state: both are how SPARK reads
+               the device, rather than whether it answers. #}
+            {% for a in row.apis %}
+              <a class="pill neutral api-pill" href="/devices/{{ device.id }}#api-{{ a.id }}"
+                 title="{{ a.label }} API — open its card">{{ a.label }}</a>
+            {% endfor %}
           </td>
           <td class="services">
             {% if row.services %}
@@ -462,7 +493,7 @@
                 <button type="submit"
                         class="pill service{% if entry.concern %} warn{% endif %}"
                         title="{% if entry.concern %}{{ entry.concern }} — {% endif %}Watch this service (TCP check on port {{ service.port }})">
-                  {{ service.name or service.port }}
+                  {% if service.name %}{{ service.name }} {% endif %}{{ service.port }}
                 </button>
               </form>
               {% endfor %}
@@ -480,7 +511,6 @@
             {% endif %}
           </td>
           <td class="actions">
-            <a class="btn-quiet" href="/devices/{{ device.id }}">Details</a>
             {% if row.watched %}
               <span class="btn-quiet is-watched" title="A target is watching this device">Watched</span>
             {% else %}
@@ -491,6 +521,7 @@
             <form method="post" action="/devices/{{ device.id }}/ignore">
               <button type="submit" class="btn-quiet">Ignore</button>
             </form>
+            <a class="btn-quiet" href="/devices/{{ device.id }}">Details</a>
           </td>
         </tr>
         {% endfor %}
@@ -516,16 +547,16 @@
       {% endif %}
     </nav>
     {% endif %}
-  </section>
-
-  <p class="muted small">
-    Devices are identified by MAC where one is available, so a device keeps its
-    history when DHCP moves it. On routed subnets ARP cannot reach across the
-    router, so those fall back to IP identity and will look like a new device if
-    their lease changes.
-  </p>
+  {% elif search or watch_filter.value %}
+  <div class="empty-state">
+    <h2>No devices match</h2>
+    <p class="muted">
+      No device{% if search %} matches <strong>{{ search }}</strong>{% endif %}{% if watch_filter.value %}{{ ' and' if search }} is {{ 'watched' if watch_filter.value == 'yes' else 'unwatched' }}{% endif %}{% if subnet_filter.selected or snmp_filter.value or api_filter.value %} with the other filters{% endif %}.
+      <a href="/devices">Show all</a>.
+    </p>
+  </div>
   {% elif api_filter.value %}
-  <section class="card empty-state">
+  <div class="empty-state">
     <h2>No devices match</h2>
     <p class="muted">
       No device{% if subnet_filter.selected or snmp_filter.value %} that matches the other filters{% endif %}
@@ -533,9 +564,9 @@
       Add one in <a href="/settings/credentials">Settings → Credentials</a>, and choose its device.
       <a href="/devices">Show all</a>.
     </p>
-  </section>
+  </div>
   {% elif snmp_filter.value %}
-  <section class="card empty-state">
+  <div class="empty-state">
     <h2>No devices match</h2>
     <p class="muted">
       {% if snmp_filter.value == 'on' %}No device{% if subnet_filter.selected %} on this subnet{% endif %} is polled over SNMP.
@@ -545,9 +576,9 @@
       {% else %}Every device{% if subnet_filter.selected %} on this subnet{% endif %} is already polled over SNMP.{% endif %}
       <a href="/devices">Show all</a>.
     </p>
-  </section>
+  </div>
   {% elif subnet_filter.selected %}
-  <section class="card empty-state">
+  <div class="empty-state">
     <h2>Nothing on this subnet</h2>
     <p class="muted">
       {{ subnet_filter.total }} device(s) have been discovered, but none of them
@@ -556,9 +587,9 @@
       {% else %}{{ subnet_filter.selected.label }}{% endif %}.
       <a href="/devices">Show all</a>.
     </p>
-  </section>
+  </div>
   {% else %}
-  <section class="card empty-state">
+  <div class="empty-state">
     <h2>Nothing discovered yet</h2>
     {% if subnets %}
     {% if not sweep %}
@@ -578,7 +609,17 @@
       <a href="/settings">Add one in Settings</a>.
     </p>
     {% endif %}
+  </div>
+  {% endif %}
   </section>
+
+  {% if rows %}
+  <p class="muted small">
+    Devices are identified by MAC where one is available, so a device keeps its
+    history when DHCP moves it. On routed subnets ARP cannot reach across the
+    router, so those fall back to IP identity and will look like a new device if
+    their lease changes.
+  </p>
   {% endif %}
 
   {% if has_ignored %}
@@ -682,44 +723,21 @@
     });
   })();
 
-  // Two small things, both progressive enhancement: with JS off the form still
-  // works and the text still reads correctly, it just stops counting down.
+  // The scan schedule sits in the Last sweep panel, inside #live, so a live
+  // refresh replaces it. Two consequences, both handled here:
+  //
+  //   * a change applies itself at once (the form posts, the page reloads):
+  //     there is never an unapplied choice for a refresh to throw away. The
+  //     Apply button stays for browsers without scripts;
+  //   * the countdown is re-armed after every refresh, from the fresh
+  //     data-in the server just rendered, rather than bound once at load to
+  //     an element that is about to be replaced.
+  //
+  // Progressive enhancement throughout: with JS off the form still works and
+  // the text still reads correctly, it just stops counting down.
   (function () {
-    var box = document.getElementById('auto-scan');
-    var field = document.getElementById('interval-field');
-    var status = document.getElementById('next-scan');
-    if (!box || !field) return;
-
-    function syncDimming() {
-      field.classList.toggle('dimmed', !box.checked);
-    }
-    box.addEventListener('change', syncDimming);
-    syncDimming();
-
-    // A countdown, so the page answers "is this actually scheduled" by
-    // visibly moving rather than by asserting it once and going stale.
-    if (!status) return;
-    var select = document.getElementById('scan-interval');
-    var settled = status.textContent;
-    var wasOn = box.checked;
-    var wasEvery = select ? select.value : null;
-
-    // Changing a control does not change the schedule; pressing Apply does.
-    // Without this the page counts down to a scan on the old interval while
-    // displaying the new one, which reads as the setting having taken effect.
-    function dirty() {
-      return box.checked !== wasOn || (select !== null && select.value !== wasEvery);
-    }
-    function show(text) {
-      settled = text;
-      status.textContent = dirty() ? 'Not applied yet — press Apply.' : text;
-    }
-    box.addEventListener('change', function () { show(settled); });
-    if (select) select.addEventListener('change', function () { show(settled); });
-
-    var remaining = parseInt(status.getAttribute('data-in'), 10);
-    var interval = parseInt(status.getAttribute('data-interval'), 10);
-    if (isNaN(remaining) || isNaN(interval)) return;
+    document.documentElement.classList.add('js-schedule');
+    var timer = null;
 
     function words(seconds) {
       if (seconds < 60) return 'under a minute';
@@ -729,19 +747,49 @@
       return 'about ' + hours + ' hour' + (hours === 1 ? '' : 's');
     }
 
-    setInterval(function () {
-      remaining -= 10;
-      if (remaining > 0) {
-        show('Next scan in ' + words(remaining) + '.');
-      } else if (remaining > -60) {
-        show('Scanning now…');
-      } else {
-        // The sweep has been and gone; re-arm rather than sit at zero. The
-        // real schedule carries jitter, so this is an estimate either way, and
-        // any page load replaces it with the scheduler's own answer.
-        remaining = interval;
-      }
-    }, 10000);
+    function dim() {
+      var box = document.getElementById('auto-scan');
+      var field = document.getElementById('interval-field');
+      if (box && field) field.classList.toggle('dimmed', !box.checked);
+    }
+
+    // A countdown, so the page answers "is this actually scheduled" by
+    // visibly moving rather than by asserting it once and going stale.
+    function arm() {
+      dim();
+      if (timer) { clearInterval(timer); timer = null; }
+      var status = document.getElementById('next-scan');
+      if (!status) return;
+      var remaining = parseInt(status.getAttribute('data-in'), 10);
+      var interval = parseInt(status.getAttribute('data-interval'), 10);
+      if (isNaN(remaining) || isNaN(interval)) return;
+      timer = setInterval(function () {
+        var line = document.getElementById('next-scan');
+        if (!line) return;
+        remaining -= 10;
+        if (remaining > 0) {
+          line.textContent = 'Next scan in ' + words(remaining) + '.';
+        } else if (remaining > -60) {
+          line.textContent = 'Scanning now…';
+        } else {
+          // The sweep has been and gone; re-arm rather than sit at zero. The
+          // real schedule carries jitter, so this is an estimate either way,
+          // and any page load replaces it with the scheduler's own answer.
+          remaining = interval;
+        }
+      }, 10000);
+    }
+
+    document.addEventListener('change', function (event) {
+      var form = event.target.closest && event.target.closest('form.scan-schedule');
+      if (!form) return;
+      dim();
+      var line = document.getElementById('next-scan');
+      if (line) line.textContent = 'Saving…';
+      form.submit();
+    });
+    document.addEventListener('spark:live-updated', arm);
+    arm();
   })();
 </script>
 {% endblock %}

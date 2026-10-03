@@ -432,12 +432,15 @@ def test_the_asset_version_follows_charts_js(tmp_path, monkeypatch):
     assert deps._asset_version() != first, "a changed script would be served stale"
 
 
-def test_mac_and_vendor_live_on_the_device_page_not_the_list(site):
-    """The list lost its MAC and Vendor columns; the device page keeps both,
-    and the randomised-MAC warning that used to sit in the list moved with them."""
+def test_mac_and_vendor_are_small_lines_on_the_list_and_in_full_on_the_page(site):
+    """The list lost its MAC and Vendor columns. SPARK 2 brought both back as
+    small lines under the address and the name, not as columns; the device
+    page keeps them in full, with the randomised-MAC warning, which stays
+    there rather than crowding the list."""
     listing = site.get("/devices").text
     assert "<th>MAC</th>" not in listing and "<th>Vendor</th>" not in listing
-    assert "aa:bb:cc:00:00:01" not in listing
+    assert '<div class="dev-mac">aa:bb:cc:00:00:01</div>' in listing
+    assert "random MAC" not in listing
     page = site.get("/devices/1").text
     assert "aa:bb:cc:00:00:01" in page
     # 0xaa has the locally-administered bit set: a randomised address.

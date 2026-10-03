@@ -28,6 +28,12 @@ On the Targets list a target's name opens its device's page — the device it
 was watched from, or the device at its address (a URL's host counts). One
 with no device, such as an outside website, is plain text.
 
+The Devices list has a search box (name, host name, any address, MAC or
+vendor; press Enter) and filters by subnet, SNMP, API credential and whether
+a device is watched. All of them go in the URL, so a filtered view can be
+bookmarked. The automatic-scan schedule is at the foot of the Last sweep
+panel and applies as soon as you change it.
+
 The chips over the list show only the targets in one state, the search box
 matches a name or address, and the check filter one kind of check; click a
 column heading to sort by it. Each row's trend is its latency over its last
@@ -366,8 +372,8 @@ read-write community, SPARK never writes, and v2c would send it in clear text
 — to every device, when **Find SNMP devices** is pressed.
 
 **SPARK does not look for SNMP devices on its own** — it polls the devices on
-the list, and only those. To find candidates, press **Find SNMP** at the top
-of the Devices page, or **Find SNMP devices** on the same card. It sends one read-only question (the device's name) to every
+the list, and only those. To find candidates, press **Find SNMP** in the Devices
+page's Last sweep panel, or **Find SNMP devices** on the same card. It sends one read-only question (the device's name) to every
 discovered device not already listed, trying each profile in turn, and lists
 the ones that answer with the profile that worked. **Add** or **Add all** puts
 them on the list; nothing is added until you do. About 250 devices take around

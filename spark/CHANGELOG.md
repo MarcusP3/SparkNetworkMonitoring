@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — SPARK 2, the Devices page (2026-10-03)
+
+### Added
+
+- **Six tiles over the page**: Devices, New, Watched, SNMP polled, Services
+  and Last sweep. They count the whole inventory, whatever the filters below
+  are showing.
+- **A search box** on the device list: name, host name, any address, MAC or
+  vendor. Press Enter; it pages and combines with the other filters, and
+  lands in the URL like them (`?q=`).
+- **A Watched filter**: watched devices only, or only those not watched yet
+  (`?watch=yes` or `no`).
+
+### Changed
+
+- **The page is two panels.** *Last sweep* holds Scan now, Scan ports and
+  Find SNMP, the sweep's figures, and the automatic-scan schedule, which
+  now applies the moment you change it (the Apply button remains for
+  browsers without scripts). *Possible duplicates* sits beside it when
+  there are any. *All devices* holds the filters, Mark all reviewed and the
+  list.
+- **Each row** shows the vendor under the name and the MAC under the address
+  as small lines (not columns), API credentials beside the SNMP state,
+  services as port badges ("ssh 22"), and Watched as a green status. The
+  name reads as text with a pencil and becomes a field when you point at it.
+
 ## Unreleased — SPARK 2, the Targets page (2026-10-03)
 
 ### Added

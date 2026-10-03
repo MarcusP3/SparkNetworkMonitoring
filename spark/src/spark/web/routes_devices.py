@@ -12,7 +12,7 @@ from datetime import datetime
 from urllib.parse import parse_qsl, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import limits
@@ -23,7 +23,7 @@ from ..config import Config
 from ..db import get_setting, save_setting
 from ..discovery.ports import concern
 from ..discovery.runner import SWEEP_INTERVAL_CHOICES, last_port_scan, last_sweep
-from ..discovery.services import services_for
+from ..discovery.services import CLOSED, services_for
 from ..models import (
     ApiCredential,
     CheckType,
@@ -103,6 +103,23 @@ SNMP_FILTERS = {
 # Credentials), or one kind. Anything else shows everything.
 API_FILTERS = {"any": "Any API", **credentials.KINDS}
 
+# The Watched filter's values. `watch`, not `watched`: that one is taken by the
+# "Now watching N more" note after Watch selected.
+WATCH_FILTERS = {"yes": "Watched", "no": "Not watched"}
+
+# Longest search the page honours. A search box is not a place for a paste of
+# the whole inventory, and every character is matched against every device.
+MAX_SEARCH = 100
+
+
+def matches_search(row: dict, needle: str) -> bool:
+    """Whether a device row matches the search box: its name (friendly or
+    host), any of its addresses, its MAC or its vendor, case-blind."""
+    d = row["device"]
+    hay = " ".join(str(v) for v in (d.friendly_name, d.hostname, d.primary_ip, d.mac, d.vendor,
+                                    *row["extra_ips"]) if v)
+    return needle in hay.lower()
+
 # How long a finished Find SNMP says so at the top of the page. Found devices
 # stay marked in the SNMP column until they are added; this is only the
 # "nothing new answered" kind of news, which is stale after a few minutes.
@@ -126,7 +143,8 @@ def snmp_state(row: SnmpDevice | None, poll: SnmpPoll | None) -> dict | None:
     return {"label": "polling", "kind": "ok"}
 
 
-def _query(subnet: str, per_page: int, page: int, snmp: str = "", api: str = "") -> str:
+def _query(subnet: str, per_page: int, page: int, snmp: str = "", api: str = "",
+           q: str = "", watch: str = "") -> str:
     """The Devices URL for one combination of filter, page size and page.
 
     Defaults are left out rather than spelled out, so the plain `/devices` link
@@ -135,10 +153,14 @@ def _query(subnet: str, per_page: int, page: int, snmp: str = "", api: str = "")
     parts: list[tuple[str, str]] = []
     if subnet:
         parts.append(("subnet", subnet))
+    if q:
+        parts.append(("q", q))
     if snmp in SNMP_FILTERS:
         parts.append(("snmp", snmp))
     if api in API_FILTERS:
         parts.append(("api", api))
+    if watch in WATCH_FILTERS:
+        parts.append(("watch", watch))
     if per_page != DEFAULT_PAGE_SIZE:
         parts.append(("per_page", str(per_page)))
     if page > 1:
@@ -147,7 +169,7 @@ def _query(subnet: str, per_page: int, page: int, snmp: str = "", api: str = "")
 
 
 def _paginate(rows, subnet: str, per_page: int, page: int,  # type: ignore[no-untyped-def]
-              snmp: str = "", api: str = ""):
+              snmp: str = "", api: str = "", q: str = "", watch: str = ""):
     """Cut the list down to one page. Returns (paging, rows).
 
     Sliced in Python rather than with LIMIT/OFFSET because the subnet a device
@@ -187,8 +209,8 @@ def _paginate(rows, subnet: str, per_page: int, page: int,  # type: ignore[no-un
         "first": start + 1 if window else 0,
         "last": start + len(window),
         "total": total,
-        "prev_url": _query(subnet, per_page, page - 1, snmp, api) if page > 1 else None,
-        "next_url": _query(subnet, per_page, page + 1, snmp, api) if page < pages else None,
+        "prev_url": _query(subnet, per_page, page - 1, snmp, api, q, watch) if page > 1 else None,
+        "next_url": _query(subnet, per_page, page + 1, snmp, api, q, watch) if page < pages else None,
     }, window
 
 
@@ -275,6 +297,8 @@ async def list_devices(
     snmp: str = "",
     api: str = "",
     watched: str = "",
+    q: str = "",
+    watch: str = "",
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -372,6 +396,19 @@ async def list_devices(
     # Counted before filtering: "3 of 41" is the useful reading, and a filtered
     # count that shrinks as you narrow tells you nothing.
     total = len(rows)
+    # The tiles over the page count the whole inventory, whatever the filters
+    # below them show: they describe the network, not the current view.
+    services_total = await session.scalar(
+        select(func.count()).select_from(Service).join(Device, Device.id == Service.device_id)
+        .where(Service.ignored.is_(False), Service.state != CLOSED,
+               Device.ignored.is_(False))) or 0
+    tiles = {
+        "devices": total,
+        "new": sum(1 for r in rows if not r["device"].acknowledged),
+        "watched": sum(1 for r in rows if r["watched"]),
+        "snmp": sum(1 for r in rows if r["snmp"] is not None),
+        "services": services_total,
+    }
     selected, rows = _apply_subnet_filter(rows, known_subnets, subnet)
     snmp = snmp if snmp in SNMP_FILTERS else ""
     if snmp == "on":
@@ -385,6 +422,13 @@ async def list_devices(
         rows = [r for r in rows if r["apis"]]
     elif api:
         rows = [r for r in rows if any(a["kind"] == api for a in r["apis"])]
+    watch = watch if watch in WATCH_FILTERS else ""
+    if watch:
+        rows = [r for r in rows if r["watched"] == (watch == "yes")]
+    q = q.strip()[:MAX_SEARCH]
+    if q:
+        needle = q.lower()
+        rows = [r for r in rows if matches_search(r, needle)]
 
     # Counted before paging, deliberately. "Mark all 12 reviewed" acts on every
     # unacknowledged device, so a number that shrank to what happens to be on
@@ -396,7 +440,7 @@ async def list_devices(
         wanted_page = int(page)
     except (TypeError, ValueError):
         wanted_page = 1
-    paging, rows = _paginate(rows, subnet, size, wanted_page, snmp, api)
+    paging, rows = _paginate(rows, subnet, size, wanted_page, snmp, api, q, watch)
 
     # Services are fetched after paging rather than before: one query either
     # way, but for the devices actually being shown rather than for every
@@ -416,6 +460,10 @@ async def list_devices(
             sweep["age_seconds"] = (now - finished).total_seconds()
         except (ValueError, TypeError):
             sweep["age_seconds"] = None
+    age = sweep.get("age_seconds")
+    tiles["sweep"] = (None if age is None else "now" if age < 60
+                      else f"{int(age // 60)} min" if age < 3600
+                      else f"{int(age // 3600)} h" if age < 86400 else f"{int(age // 86400)} d")
 
     return templates.TemplateResponse(
         request,
@@ -446,6 +494,9 @@ async def list_devices(
                 "choices": SNMP_FILTERS,
                 "listed": len(snmp_rows) + len(found),
             },
+            "tiles": tiles,
+            "search": q,
+            "watch_filter": {"value": watch, "choices": WATCH_FILTERS},
             "api_filter": {
                 "value": api,
                 "label": API_FILTERS.get(api),
@@ -458,7 +509,7 @@ async def list_devices(
             # How many "Watch selected" just added; None when it was not used.
             "any_watchable": any(r["watchable"] for r in rows),
             "just_watched": int(watched) if watched.isdigit() and len(watched) < 6 else None,
-            "filtered": bool(selected) or bool(snmp) or bool(api),
+            "filtered": bool(selected) or bool(snmp) or bool(api) or bool(q) or bool(watch),
             "sweep": sweep,
             "port_scan": port_scan,
             "scan": await _scan_schedule(

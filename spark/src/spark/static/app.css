@@ -826,8 +826,9 @@ tr.just-changed td {
 
 .inline-name input {
   /* A set width rather than the browser's 20-character default, which is
-     wider than the column needs. MAC and Vendor moved to the device page,
-     which gave some of the room back. Long names scroll inside the field. */
+     wider than the column needs. Long names scroll inside the field. (MAC and
+     vendor came back to the list in SPARK 2, as small lines under the address
+     and the name, rather than as columns of their own.) */
   width: 11rem;
   min-width: 6rem;      /* the Name column is narrower since VLAN arrived */
   padding: .3rem .45rem;
@@ -2227,4 +2228,80 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .page-targets .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
   .page-targets .card-head .head-actions { flex-basis: 100%; margin-left: 0; }
   .tbar-right, .search, .search input { width: 100%; }
+}
+
+/* ---------- SPARK 2: Devices ---------- */
+.page-devices .page-head h1 { font-size: 46px; line-height: 1.05; margin: 0; }
+.page-devices .page-sub { margin-top: 10px; font-size: 15px; }
+.stat.s-new { --c: var(--accent); }
+.page-devices .stat-row { margin-bottom: 22px; }
+.page-devices .stat-value { white-space: nowrap; }
+
+/* Last sweep beside Possible duplicates when there are any; alone, full width. */
+.dev-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; margin-bottom: 20px; align-items: stretch; }
+.dev-grid.has-dupes { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.dev-grid > .card { margin-bottom: 0; }
+.page-devices .card-head { flex-wrap: wrap; }
+.page-devices .card-head .head-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.page-devices .card-head .head-actions form { margin: 0; }
+.page-devices .sweep-figures { margin: 0 0 1rem; }
+.page-devices .sweep-figures dd { color: #fff; }
+
+/* The schedule, at the foot of the sweep panel: a line, not a card. */
+.sweep-status .scan-schedule { padding: 14px 0 0; margin-top: 14px; border-top: 1px solid var(--line-soft); background: none; }
+.js-schedule .schedule-apply { display: none; }
+
+/* Possible duplicates: the amber edge of something waiting for a decision. */
+.card.suggest-card::after { background: linear-gradient(var(--warn), var(--warn)) 0 0 / 3px 52px no-repeat, var(--panel); }
+.page-devices .suggest-list li { padding: 12px 14px; border: 1px solid rgba(34, 211, 238, .22); border-radius: 4px; background: rgba(6, 14, 26, .7); }
+
+/* All devices: the filters sit inside the panel, so the bar loses its own frame. */
+.devices-card .card.filter-bar { padding: 0; margin: 0 0 14px; background: none; }
+.devices-card .card.filter-bar::before, .devices-card .card.filter-bar::after { display: none; }
+.devices-card .filter-bar .row-form { gap: 10px 12px; }
+.devices-card .search input { width: 270px; }
+.devices-card .table th.actions-head { text-align: right; }
+
+/* The name reads as text with a pencil, and turns into a field on hover or
+   focus; Save still appears only once it differs. */
+.page-devices .inline-name input {
+  background: transparent; border-color: transparent; color: #fff; font-weight: 600; padding-left: 0;
+  width: 9.5rem; text-overflow: ellipsis;
+}
+/* As wide as the name, where the browser can: the pencil then sits beside it
+   rather than at the far end of a fixed box. */
+@supports (field-sizing: content) {
+  .page-devices .inline-name input { field-sizing: content; width: auto; min-width: 4rem; max-width: 12rem; }
+}
+.page-devices .inline-name input::placeholder { color: #fff; opacity: 1; }
+.page-devices .inline-name input:hover { border-color: rgba(148, 178, 214, .25); padding-left: .45rem; }
+.page-devices .inline-name input:focus { background: #060d19; border-color: var(--accent); padding-left: .45rem; }
+.name-pen { width: 14px; height: 14px; flex: none; color: var(--text-muted); pointer-events: none; }
+.page-devices .inline-name input:focus + .name-pen { display: none; }
+.dev-vendor { display: block; font-size: 11.5px; color: var(--text-faint); margin-top: -2px; }
+.dev-mac { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
+
+/* Services as mono badges, like a port list. */
+.page-devices .pill.service {
+  border-radius: 3px; font-family: var(--mono); font-size: 11px; font-weight: 500; padding: 2px 6px;
+  border: 1px solid rgba(148, 178, 214, .28); background: rgba(148, 178, 214, .06); color: #c9d5e4;
+}
+.page-devices .pill.service.warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); color: var(--warn); }
+
+/* Watched: a green pill with a lit dot, the same box as its neighbours. */
+.page-devices .btn-quiet.is-watched { display: inline-flex; align-items: center; gap: 7px; }
+.page-devices .btn-quiet.is-watched::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+.page-devices .api-pill { margin-left: 4px; }
+
+@media (max-width: 62rem) {
+  .dev-grid.has-dupes { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .page-devices .page-head h1 { font-size: 34px; }
+}
+@media (max-width: 640px) {
+  .page-devices .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-devices .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
+  .page-devices .card-head .head-actions { flex-basis: 100%; }
+  .devices-card .search, .devices-card .search input { width: 100%; }
 }
