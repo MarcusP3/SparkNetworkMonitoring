@@ -22,105 +22,56 @@
 }
 
 :root {
-  color-scheme: light dark;
+  /* Dark only since SPARK 2: the banner art and the glows are drawn for a dark
+     page. A light theme would be a second design, not a second palette. */
+  color-scheme: dark;
 
-  --bg: #f4f6fa;
-  /* The page behind the panels. Dark mode paints a deep navy with two soft
-     glows on it; light mode has no business glowing, so it sets these to
-     nothing rather than inventing a pastel version of the same effect. */
+  --bg: #050a14;
+  /* The banner now carries the colour at the top of every page, so the old
+     corner glows are off. Kept as tokens so the body rule still resolves. */
   --glow-warm: transparent;
   --glow-cool: transparent;
 
-  --surface: #ffffff;
-  --surface-2: #eef1f6;
-  --surface-3: #e4e9f0;
-  --border: #dde2ea;
-  --border-strong: #ccd3de;
-  --text: #121722;
-  --text-muted: #5b6676;
-  --text-faint: #646d7b;
+  --surface: #0b1626;
+  --surface-2: #101d30;
+  --surface-3: #17253a;
+  --border: #1a2a40;
+  --border-strong: #2a3d58;
+  --text: #e8eef7;
+  --text-muted: #9aaabf;
+  /* 5.6:1 on the panels, 4.7:1 on the darkest control surface. */
+  --text-faint: #7f90a7;
 
-  /* Brand cyan. Interactive and brand only -- never a status. Light mode uses
-     cyan-700 because the bright brand cyan is 1.8:1 on white; this is 5.4:1,
-     and white text on it is too. */
-  --accent: #0e7490;
-  --accent-soft: rgba(14, 116, 144, .10);
-  --accent-line: rgba(14, 116, 144, .28);
-  --accent-contrast: #ffffff;
+  /* Brand cyan: 10:1 on the panels. White text on it fails (1.8:1), so
+     anything filled with it takes the page's near-black. */
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, .14);
+  --accent-line: rgba(34, 211, 238, .45);
+  --accent-contrast: #021219;
 
-  --ok: #17835b;
-  --warn: #985f04;
-  --bad: #c0392f;
-  /* Neutral, not blue: a blue next to the cyan brand read as a fourth status. */
-  --info: #5b6676;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  /* #f87171 rather than a deeper red: it stays above 4.5:1 on every surface. */
+  --bad: #f87171;
+  --info: #9aaabf;
 
-  --ok-bg: #e4f4ec;
-  --warn-bg: #fdf2e0;
-  --bad-bg: #fbeae8;
-  --info-bg: #e4e9f0;
+  --ok-bg: rgba(34, 197, 94, .14);
+  --warn-bg: rgba(245, 158, 11, .14);
+  --bad-bg: rgba(248, 113, 113, .14);
+  --info-bg: rgba(154, 170, 191, .12);
 
-  /* Tinted squares behind icons. Cyan for everything that is not a status;
-     amber and red only where the thing counted IS degraded or down. A green,
-     violet or pink tile on Settings or Targets used to make colour mean
-     nothing, which is the one thing a monitoring UI cannot afford. */
-  --tile-1: rgba(14, 116, 144, .12);
-  --tile-4: rgba(168, 106, 5, .12);
-  --tile-5: rgba(192, 57, 47, .12);
+  --tile-1: rgba(34, 211, 238, .16);
+  --tile-4: rgba(245, 158, 11, .16);
+  --tile-5: rgba(248, 113, 113, .16);
 
   --radius: 14px;
   --radius-sm: 8px;
   --radius-pill: 999px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
-  --shadow-lift: 0 2px 4px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, .5), 0 16px 40px rgba(0, 0, 0, .45);
 
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #070b13;
-    /* Two fixed radial washes, warm from the bottom-left and cool from the
-       top-right. Kept as tokens rather than baked into the body rule so the
-       light theme can switch them off without a second selector. */
-    --glow-warm: radial-gradient(70rem 40rem at -10% 115%,
-                                 rgba(234, 88, 12, .16), transparent 62%);
-    --glow-cool: radial-gradient(70rem 45rem at 105% -15%,
-                                 rgba(34, 211, 238, .10), transparent 60%);
-
-    --surface: #0d1320;
-    --surface-2: #141c2c;
-    --surface-3: #1b2436;
-    --border: #1e2739;
-    --border-strong: #2b374d;
-    --text: #e8edf6;
-    --text-muted: #8e9bb0;
-    --text-faint: #78859a;
-
-    /* The brand cyan itself: 10.3:1 on the panels. White text on it fails
-       (1.8:1), so anything filled with it takes the page's near-black. */
-    --accent: #22d3ee;
-    --accent-soft: rgba(34, 211, 238, .14);
-    --accent-line: rgba(34, 211, 238, .45);
-    --accent-contrast: #070b13;
-
-    --ok: #34d399;
-    --warn: #fbbf24;
-    --bad: #f87171;
-    --info: #8e9bb0;
-
-    --ok-bg: rgba(52, 211, 153, .12);
-    --warn-bg: rgba(251, 191, 36, .12);
-    --bad-bg: rgba(248, 113, 113, .12);
-    --info-bg: rgba(142, 155, 176, .12);
-
-    --tile-1: rgba(34, 211, 238, .16);
-    --tile-4: rgba(251, 191, 36, .16);
-    --tile-5: rgba(248, 113, 113, .16);
-
-    --shadow: 0 1px 2px rgba(0, 0, 0, .5);
-    --shadow-lift: 0 2px 4px rgba(0, 0, 0, .5), 0 16px 40px rgba(0, 0, 0, .45);
-  }
 }
 
 * { box-sizing: border-box; }
@@ -151,8 +102,8 @@ body {
 
 /* The glows. A fixed pseudo-element rather than a background on <body>: the
    page scrolls and the light should not, or a long Devices list drags the
-   corner wash down with it. Both tokens are transparent in light mode, so this
-   costs nothing there. */
+   corner wash down with it. The shell's banner replaced the glows, so both
+   tokens are transparent; kept so a page can turn one back on. */
 body::before {
   content: "";
   position: fixed;
@@ -1912,3 +1863,173 @@ code.fingerprint.small { display: inline; }
 .code-block code { background: none; padding: 0; font-size: inherit; white-space: pre; }
 #backup .sub-title { margin-top: 1.25rem; }
 #backup td { white-space: nowrap; }
+
+/* =====================================================================
+   SPARK 2: the console shell. Sidebar, time-of-day banner, chamfered
+   panels, slanted stat tiles. Dark only: the banner art and the glows are
+   drawn for a dark page, and a light version would be a second design
+   rather than a second palette.
+   Layered on top of the rules above rather than replacing them, so every
+   page keeps working while it is brought over one at a time.
+   ===================================================================== */
+
+:root {
+  --panel: rgba(9, 17, 31, .92);
+  --line-soft: rgba(148, 178, 214, .12);
+  --pink: #e879f9;
+  --chamfer: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+/* ---------- shell layout ---------- */
+body:has(> .shell) { display: block; }
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+.side {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  background: linear-gradient(180deg, #07101e 0%, #050b16 100%);
+  border-right: 1px solid var(--line-soft);
+}
+.side::after { /* the lit rail on the right edge */
+  content: ""; position: absolute; top: 0; right: -1px; width: 3px; height: 260px; pointer-events: none;
+  background: linear-gradient(180deg, var(--accent), rgba(34, 211, 238, .25) 70%, transparent);
+  box-shadow: 0 0 12px rgba(34, 211, 238, .7);
+}
+.shell .brand { padding: 26px 24px 22px; font-size: 26px; font-weight: 800; gap: 10px; }
+.shell .brand .brand-mark { width: 30px; height: 36px; filter: drop-shadow(0 0 8px rgba(34, 211, 238, .55)); }
+.shell .nav { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; margin: 0; }
+.shell .nav a {
+  display: flex; align-items: center; gap: 14px; padding: 12px 26px; border-radius: 0;
+  color: #c9d5e4; font-size: 14.5px; font-weight: 500; border: 0; border-left: 3px solid transparent;
+}
+/* Icons as masks over currentColor, so the nav markup stays plain text links. */
+.shell .nav a::before { content: ""; width: 20px; height: 20px; flex: none; background: #9fb2c8;
+  -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.shell .nav a[href="/"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='7' rx='1.5'/%3E%3Crect x='3' y='13' width='18' height='7' rx='1.5'/%3E%3Cpath d='M7 7.5h4M7 16.5h4'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='7' rx='1.5'/%3E%3Crect x='3' y='13' width='18' height='7' rx='1.5'/%3E%3Cpath d='M7 7.5h4M7 16.5h4'/%3E%3C/svg%3E"); }
+.shell .nav a[href="/targets"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='3.5' width='7' height='7' rx='1.5'/%3E%3Crect x='13.5' y='3.5' width='7' height='7' rx='1.5'/%3E%3Crect x='3.5' y='13.5' width='7' height='7' rx='1.5'/%3E%3Crect x='13.5' y='13.5' width='7' height='7' rx='1.5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='3.5' width='7' height='7' rx='1.5'/%3E%3Crect x='13.5' y='3.5' width='7' height='7' rx='1.5'/%3E%3Crect x='3.5' y='13.5' width='7' height='7' rx='1.5'/%3E%3Crect x='13.5' y='13.5' width='7' height='7' rx='1.5'/%3E%3C/svg%3E"); }
+.shell .nav a[href="/devices"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='7' rx='1.5'/%3E%3Crect x='3' y='13' width='18' height='7' rx='1.5'/%3E%3Cpath d='M7 7.5h.01M7 16.5h.01'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='7' rx='1.5'/%3E%3Crect x='3' y='13' width='18' height='7' rx='1.5'/%3E%3Cpath d='M7 7.5h.01M7 16.5h.01'/%3E%3C/svg%3E"); }
+.shell .nav a[href="/map"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='5' rx='1'/%3E%3Crect x='2.5' y='16' width='6' height='5' rx='1'/%3E%3Crect x='15.5' y='16' width='6' height='5' rx='1'/%3E%3Cpath d='M12 8v4M5.5 16v-2a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v2'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='5' rx='1'/%3E%3Crect x='2.5' y='16' width='6' height='5' rx='1'/%3E%3Crect x='15.5' y='16' width='6' height='5' rx='1'/%3E%3Cpath d='M12 8v4M5.5 16v-2a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v2'/%3E%3C/svg%3E"); }
+.shell .nav a[href="/services"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 2.5 8 12 13l9.5-5L12 3z'/%3E%3Cpath d='m2.5 12 9.5 5 9.5-5'/%3E%3Cpath d='m2.5 16 9.5 5 9.5-5'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 2.5 8 12 13l9.5-5L12 3z'/%3E%3Cpath d='m2.5 12 9.5 5 9.5-5'/%3E%3Cpath d='m2.5 16 9.5 5 9.5-5'/%3E%3C/svg%3E"); }
+.shell .nav a[href="/settings"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z'/%3E%3C/svg%3E"); }
+.shell .nav a:hover { background: rgba(34, 211, 238, .06); color: var(--text); }
+.shell .nav a.active {
+  color: #fff; border-left-color: var(--accent);
+  background: linear-gradient(90deg, rgba(34, 211, 238, .28), rgba(34, 211, 238, .06) 75%, transparent);
+}
+.shell .nav a.active::before { background: var(--accent); }
+.shell .nav .nav-short { display: none; }
+.side-scene {
+  flex: 1 1 auto; min-height: 120px; margin-top: 8px; pointer-events: none;
+  background: url("brand/sidebar-mountains.webp") center bottom / 100% auto no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent);
+  mask-image: linear-gradient(180deg, #000 78%, transparent);
+}
+.side-foot { padding: 16px 26px 22px; border-top: 1px solid var(--line-soft); margin: 0 0 0; font-size: 12.5px; color: var(--text-faint); }
+.side-foot a { color: var(--text-muted); text-decoration: none; }
+.side-foot a:hover { color: var(--accent); }
+
+.shell-main { position: relative; min-width: 0; display: flex; flex-direction: column; }
+.shell-main > main { flex: 1; position: relative; z-index: 1; }
+.shell-main > .footer { position: relative; z-index: 1; }
+
+/* ---------- the banner: one picture per part of the day ---------- */
+.sky { position: absolute; inset: 0 0 auto 0; height: 310px; z-index: 0; overflow: hidden; pointer-events: none; }
+.sky .scn { position: absolute; inset: 0; background: right 38% / cover no-repeat; opacity: 0; transition: opacity .9s ease; }
+.sky .scn.on { opacity: 1; }
+.sky .scn-morning { background-image: url("brand/banner-morning.webp"); }
+.sky .scn-sunset { background-image: url("brand/banner-sunset.webp"); }
+.sky .scn-night { background-image: url("brand/banner-night.webp"); }
+.sky::after { /* left fade keeps the page title readable; the bottom melts into the page */
+  content: ""; position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(5, 10, 20, .92) 0%, rgba(5, 10, 20, .55) 22%, rgba(5, 10, 20, 0) 42%),
+    linear-gradient(180deg, rgba(5, 10, 20, 0) 55%, rgba(5, 10, 20, 1) 100%);
+}
+.sky.is-morning::before { /* the morning sky is bright: shade the corner the user chip sits in */
+  content: ""; position: absolute; z-index: 1; right: 0; top: 0; width: 520px; height: 130px;
+  background: radial-gradient(ellipse at 75% 30%, rgba(5, 10, 20, .55), rgba(5, 10, 20, 0) 70%);
+}
+@media (prefers-reduced-motion: reduce) { .sky .scn { transition: none; } }
+
+.topline { position: relative; z-index: 2; display: flex; justify-content: flex-end; align-items: center; gap: 14px; padding: 22px 32px 0; }
+.topline .user-chip { margin: 0; gap: 14px; }
+.topline .who-link { text-shadow: 0 1px 3px rgba(0, 0, 0, .85), 0 0 12px rgba(0, 0, 0, .6); }
+.topline .avatar {
+  width: 38px; height: 38px; font-size: 16px; font-weight: 800; color: #021219;
+  background: linear-gradient(145deg, #38e1f5, #0ea5c6); box-shadow: 0 0 14px rgba(34, 211, 238, .45);
+}
+.topline .who-name { color: #fff; }
+.topline .who-role { color: #c3d0df; }
+.topline .btn-quiet { background: rgba(5, 10, 20, .55); backdrop-filter: blur(6px); }
+
+.shell .page { padding-top: 6px; }
+.shell .page-head h1, .shell .greeting h1 { text-shadow: 0 2px 12px rgba(0, 0, 0, .55); }
+.shell .page-head h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -.01em; color: #fff; }
+.shell .page-sub, .shell .greeting p { color: #d3dde9; text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+.shell .page-head { margin-bottom: 1.75rem; }
+
+/* ---------- panels: chamfered corners, hairline cyan frame ---------- */
+.card { position: relative; isolation: isolate; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.card::before {
+  content: ""; position: absolute; inset: 0; z-index: -2; pointer-events: none; clip-path: var(--chamfer);
+  background: linear-gradient(135deg, rgba(34, 211, 238, .55), rgba(34, 211, 238, .16) 30%, rgba(34, 211, 238, .1) 70%, rgba(34, 211, 238, .38));
+}
+.card::after {
+  content: ""; position: absolute; inset: 1px; z-index: -1; pointer-events: none;
+  clip-path: polygon(13px 0, 100% 0, 100% calc(100% - 13px), calc(100% - 13px) 100%, 0 100%, 0 13px);
+  background: linear-gradient(var(--accent), var(--accent)) 0 0 / 3px 52px no-repeat, var(--panel);
+}
+.card.is-warn-edge::after { background: linear-gradient(var(--warn), var(--warn)) 0 0 / 3px 52px no-repeat, var(--panel); }
+.card-head h2 { text-transform: uppercase; letter-spacing: .03em; font-size: .95rem; font-weight: 700; color: #fff; }
+.card-icon, .page-icon { background: transparent; border: 0; color: var(--accent); filter: drop-shadow(0 0 6px rgba(34, 211, 238, .4)); }
+
+/* ---------- stat tiles: parallelograms with a lit slanted edge ---------- */
+.stat-row { gap: 14px; }
+.stat {
+  --c: var(--accent); --skew: 18px;
+  position: relative; border: 0; border-radius: 0; box-shadow: none; min-height: 96px;
+  padding: 18px 18px 16px calc(var(--skew) + 22px);
+  clip-path: polygon(var(--skew) 0, 100% 0, calc(100% - var(--skew)) 100%, 0 100%);
+  background: linear-gradient(180deg, rgba(148, 178, 214, .10), rgba(148, 178, 214, 0) 1px), linear-gradient(160deg, rgba(14, 24, 42, .92), rgba(6, 12, 24, .92));
+}
+.stat::before {
+  content: ""; position: absolute; left: calc(var(--skew) / 2 - 1px); top: 0; bottom: 0; width: 3px;
+  background: var(--c); box-shadow: 0 0 10px var(--c); transform: skewX(-10.6deg);
+}
+.stat::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 18%, transparent), transparent 55%); opacity: .5; }
+.stat > * { position: relative; z-index: 1; }
+a.stat:hover { transform: none; box-shadow: none; filter: brightness(1.15); }
+.stat-icon { background: transparent; width: auto; height: auto; color: var(--c); }
+.stat-name { text-transform: uppercase; letter-spacing: .02em; color: #dce6f2; font-weight: 500; font-size: .8125rem; }
+.stat-value { color: #fff; font-size: 2.1rem; }
+.stat:has(.stat-icon.tile-4) { --c: var(--warn); }
+.stat:has(.stat-icon.tile-5) { --c: var(--bad); }
+
+/* ---------- tables, pills, buttons, inputs ---------- */
+.table th { background: rgba(148, 178, 214, .06); color: #b9c6d6; letter-spacing: .06em; }
+.table td { border-bottom-color: var(--line-soft); }
+.table tbody tr:hover { background: rgba(34, 211, 238, .04); }
+.btn-primary { background: linear-gradient(180deg, #3fe0f5, #18bcd6); color: #021219; border: 0; box-shadow: 0 0 16px rgba(34, 211, 238, .35); font-weight: 700; }
+.btn-quiet { background: rgba(8, 16, 30, .8); border-color: rgba(148, 178, 214, .22); color: #dfe8f3; }
+.btn-quiet:hover { border-color: var(--accent); background: rgba(8, 16, 30, .9); color: #fff; }
+input:not([type=checkbox]):not([type=radio]), select, textarea { background: #060d19; border-color: rgba(148, 178, 214, .25); color: var(--text); }
+.pill.dot::before { box-shadow: 0 0 6px currentColor; }
+
+/* ---------- smaller screens: the sidebar becomes a top bar ---------- */
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; height: auto; flex-direction: row; align-items: center; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .side::after, .side-scene, .side-foot { display: none; }
+  .shell .brand { padding: 14px 16px; font-size: 20px; }
+  .shell .brand .brand-mark { width: 22px; height: 28px; }
+  .shell .nav { flex-direction: row; padding: 0 8px 0 0; }
+  .shell .nav a { padding: 10px 12px; border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .shell .nav a.active { border-bottom-color: var(--accent); background: rgba(34, 211, 238, .12); }
+  .shell .nav a::before { display: none; }
+  .topline { padding: 14px 16px 0; }
+  .shell .page-head h1 { font-size: 1.9rem; }
+}
+@media (max-width: 640px) {
+  .shell .nav { order: 3; }
+  .topline .who { display: none; }
+  .stat { --skew: 12px; min-height: 84px; padding: 14px 12px 12px calc(var(--skew) + 16px); }
+  .stat::before { transform: skewX(-8.1deg); }
+}

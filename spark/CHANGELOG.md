@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — SPARK 2, the console shell (2026-10-03)
+
+### Changed
+
+- **A new look, applied to every page at once.** A sidebar with icons for
+  each page, a banner picture across the top that follows the time of day
+  (morning, sunset, night, by your browser's clock), panels with cut corners
+  and a cyan frame, and slanted stat tiles. Pages keep their content; each one
+  is brought fully into the new design in its own change after this.
+- **Dark only.** The light theme is gone: SPARK no longer follows the OS
+  light/dark setting. The new design is drawn for a dark page.
+- **On a phone or narrow window** the sidebar becomes a bar across the top.
+
+### Upgrade
+
+- Rebuild the container (`docker compose up -d --build`). No database change.
+
 ## Unreleased — Devices filters fixed (2026-10-02)
 
 ### Fixed

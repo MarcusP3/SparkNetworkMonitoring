@@ -11,12 +11,13 @@
 </head>
 <body{% if user and request.state.idle_seconds is defined %} data-idle="{{ request.state.idle_seconds }}"{% endif %}>
 {% if user %}
-<header class="topbar">
+<div class="shell">
+<aside class="side">
   <a class="brand" href="/">
     {{ mark() }}
     <span>{{ config.app.instance_name }}</span>
   </a>
-  <nav class="nav">
+  <nav class="nav" aria-label="Main">
     <a href="/" class="{% if request.url.path == '/' %}active{% endif %}"><span class="nav-full">Dashboard</span><span class="nav-short">Home</span></a>
     <a href="/targets" class="{% if request.url.path.startswith('/targets') %}active{% endif %}">Targets</a>
     <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
@@ -24,23 +25,42 @@
     <a href="/services" class="{% if request.url.path.startswith('/services') %}active{% endif %}">Services</a>
     <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>
   </nav>
-  <div class="user-chip">
-    {# An initial, not a photo. There is nowhere to upload one, and a generic
-       silhouette is a grey blob that says nothing. The name opens your
-       Preferences, which is where people look for them. #}
-    <a href="/preferences" class="who-link{% if request.url.path.startswith('/preferences') %} active{% endif %}"
-       title="Preferences">
-      <span class="avatar" aria-hidden="true">{{ user.username[0] }}</span>
-      <span class="who">
-        <span class="who-name">{{ user.username }}</span>
-        <span class="who-role">{{ 'Administrator' if user.is_admin else 'User' }}</span>
-      </span>
-    </a>
-    <form method="post" action="/logout">
-      <button type="submit" class="btn-quiet">Sign out</button>
-    </form>
-  </div>
-</header>
+  <div class="side-scene" aria-hidden="true"></div>
+  <div class="side-foot">SPARK v{{ app_version }}</div>
+</aside>
+<div class="shell-main">
+  {# The banner follows the clock of whoever is looking: morning 5-11,
+     sunset 12-19, night 20-4. Set before first paint, so it never flashes. #}
+  <div class="sky" id="sky" aria-hidden="true"><div class="scn scn-morning"></div><div class="scn scn-sunset"></div><div class="scn scn-night"></div></div>
+  <script nonce="{{ request.state.csp_nonce }}">
+    (function () {
+      var sky = document.getElementById('sky');
+      function set() {
+        var h = new Date().getHours(), n = h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 20 ? 'sunset' : 'night';
+        sky.querySelectorAll('.scn').forEach(function (el) { el.classList.toggle('on', el.classList.contains('scn-' + n)); });
+        sky.classList.toggle('is-morning', n === 'morning');
+      }
+      set(); setInterval(set, 60000);
+    })();
+  </script>
+  <header class="topline">
+    <div class="user-chip">
+      {# An initial, not a photo. There is nowhere to upload one, and a generic
+         silhouette is a grey blob that says nothing. The name opens your
+         Preferences, which is where people look for them. #}
+      <a href="/preferences" class="who-link{% if request.url.path.startswith('/preferences') %} active{% endif %}"
+         title="Preferences">
+        <span class="avatar" aria-hidden="true">{{ user.username[0] }}</span>
+        <span class="who">
+          <span class="who-name">{{ user.username }}</span>
+          <span class="who-role">{{ 'Administrator' if user.is_admin else 'User' }}</span>
+        </span>
+      </a>
+      <form method="post" action="/logout">
+        <button type="submit" class="btn-quiet">Sign out</button>
+      </form>
+    </div>
+  </header>
 {% endif %}
 
 <main class="{% if not user %}centered{% endif %}">
@@ -51,6 +71,10 @@
   <span><strong>SPARK</strong>{% if user %} <span class="muted">v{{ app_version }}</span>{% endif %}</span>
   <span class="muted">© 2026 Marcus Pierce · PolyForm Noncommercial 1.0.0</span>
 </footer>
+{% if user %}
+</div>
+</div>
+{% endif %}
 <script nonce="{{ request.state.csp_nonce }}">
   // Live updates. The server pushes a one-line event when a target changes
   // state; the page then re-fetches itself and swaps in the #live region.

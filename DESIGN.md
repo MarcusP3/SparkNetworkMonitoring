@@ -172,8 +172,9 @@ Switch config backup with diffs · syslog/trap receiver · PoE control and port 
 
 - **Name:** SPARK, all caps, wherever a person reads it; `spark` for the package, CLI, container and config file.
 - **Mark:** a flat-top lightning bolt, drawn as inline SVG (`templates/_brand.html`) and repeated in the favicon set under `static/brand/`. Never reused inside the app to mean something else.
-- **Colour:** electric cyan is the brand and the interactive colour (`#22d3ee` dark, `#0e7490` light) and is never a status. Green, amber and red mean up, degraded and down, and appear only on statuses; unknown and paused are grey. There is no blue "info" state.
-- **Theme:** follows the OS light/dark setting, with dark as the tuned default.
+- **Colour:** electric cyan is the brand and the interactive colour (`#22d3ee`) and is never a status. Green, amber and red mean up, degraded and down, and appear only on statuses; unknown and paused are grey. There is no blue "info" state.
+- **Theme:** dark only (SPARK 2, October 2026). The console look (a sidebar, a banner picture that follows the time of day, chamfered panels, slanted stat tiles) is drawn for a dark page; a light version would be a second design rather than a second palette, so the light theme was dropped rather than kept half-working.
+- **Banner art:** three pictures under `static/brand/` (morning 05:00–11:59, sunset 12:00–19:59, night 20:00–04:59, by the browser's clock) and the mountains at the foot of the sidebar. Original artwork, part of the brand, covered by the same licence.
 - **Type:** Inter for text, JetBrains Mono for data (addresses, MACs, OIDs, latency), both self-hosted. Nothing loads from the internet: SPARK has to work on a LAN with no internet access.
 - **Licence:** PolyForm Noncommercial 1.0.0, © Marcus Pierce. See `LICENSE.md`.
 

@@ -183,7 +183,8 @@ spark/
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
-      brand/            favicon (SVG + ICO) and Apple touch icon
+      brand/            favicon (SVG + ICO), Apple touch icon, and the banner
+                        and sidebar art (WebP)
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_events.py      what live updates publish, and what they stay quiet about
@@ -277,6 +278,14 @@ Ten things that will bite you if you don't know them:
   the cyan. Nothing loads from a CDN, fonts included: SPARK runs on LANs with no
   internet. The mark is the flat-top bolt in `templates/_brand.html`; its path
   is duplicated in `static/brand/favicon.svg`, so change both together.
+- **Dark only, one shell.** `base.html` wraps every signed-in page in the
+  console shell: the sidebar, the time-of-day banner (`.sky`) and the user chip
+  (`.topline`). Pages fill `{% block content %}` and nothing else; the banner
+  sits behind the top of `<main>`, so a page's heading sits on the picture. The
+  sidebar links stay plain `<a>` text: their icons are CSS masks keyed on the
+  `href` in `app.css`, so a new page adds its icon there, not in the template.
+  Panels are `.card` (the chamfered frame is drawn by `::before`/`::after`, so
+  a card must not use those itself); stat tiles are `.stat`.
 
 
 ---
