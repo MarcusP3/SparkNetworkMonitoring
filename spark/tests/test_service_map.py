@@ -402,6 +402,28 @@ class TestPages:
         assert '<span class="muted small">NAS</span>' in tree and '<span class="muted small">UPS</span>' in tree
         assert tree.index('data-branch="3"') < tree.index('data-branch="6"'), "NAS before UPS"
 
+    def test_the_tiles(self, site):
+        """SPARK 2's tiles. Outside the live region, beside the toolbar, so the
+        page script recounts them from the tree: the role classes it counts
+        by have to be on the page."""
+        page = " ".join(site.get("/map").text.split())
+        tiles = dict(re.findall(r'<span class="stat-value" data-tile="(\w+)">(\d+)</span>', page))
+        assert tiles == {"placed": "3", "gear": "2", "servers": "1", "problems": "0",
+                         "unplaced": "1", "hints": "0"}
+        assert page.index('data-tile="placed"') < page.index('<div id="live">')
+        assert 'class="map-icon role-gateway"' in page and 'class="map-icon role-switch"' in page
+        assert "querySelectorAll('[data-tile]')" in page
+
+    def test_the_targets_filter_chips_leave_the_map_tiles_alone(self):
+        """The Targets page's status chips were styled as a bare .chip, which
+        is also the map's device tile: it turned the map's grid of tiles into
+        a row of round buttons. Scoped to their toolbar now."""
+        from pathlib import Path
+        import spark
+        css = (Path(spark.__file__).parent / "static" / "app.css").read_text()
+        targets = css[css.index("SPARK 2: Targets"):css.index("SPARK 2: Devices")]
+        assert not re.search(r"^\.chips? ", targets, re.M), "a bare .chip rule in the Targets section"
+
     def test_not_placed_is_one_line_of_tiles(self, site):
         page = " ".join(site.get("/map").text.split())
         assert '<details class="card strip unplaced" data-strip="unplaced">' in page

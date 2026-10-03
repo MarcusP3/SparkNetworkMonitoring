@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — SPARK 2, the Network map (2026-10-03)
+
+### Added
+
+- **Six tiles over the map**: Placed, Network gear, Servers, Problems, Not
+  placed, and SNMP hints (places SNMP suggests, waiting for Accept). They
+  keep up with the map as it refreshes.
+
+### Changed
+
+- **One Network panel** holds the Find box, Problems only, Infrastructure /
+  Everything, Collapse and Expand all, the Found by SNMP and Not placed yet
+  strips, and the tree.
+- **Each device is a framed row**: the fold arrow first, a status dot, its
+  icon, name, address and role, with its ports as badges on the right. Up
+  is the green dot alone; down and degraded keep their label, and the row
+  turns red.
+- **End devices are framed tiles**, with a ring for one nothing watches.
+
+### Fixed
+
+- **The map's device tiles had turned into round buttons** in one long row
+  after the Targets page change: that page's status chips shared their
+  class. Scoped to their own toolbar now, with a test.
+
 ## Unreleased — SPARK 2, the Devices page (2026-10-03)
 
 ### Added

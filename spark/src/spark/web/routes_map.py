@@ -15,6 +15,10 @@ from .deps import ItemId, get_config, get_session, redirect, require_user, templ
 
 router = APIRouter()
 
+# What the map's tiles count as network gear and as servers, by role.
+GEAR = {"gateway", "switch", "access_point"}
+SERVERS = {"host", "nas"}
+
 
 @router.get("/map")
 async def network_map(
@@ -32,11 +36,24 @@ async def network_map(
         return redirect("/services?" + urlencode({"q": q.strip()[:100]}))
     result = await servicemap.build(session)
     discovery, suggested = await topology.suggestions(session)
+    placed = list(_placed(result))
+    roles = [str(getattr(n.device.role, "value", n.device.role)) for n in placed]
+    # The tiles sit outside the live region (beside the Find box, which must
+    # keep its text), so the page script recounts them from the tree after
+    # each refresh; these are the numbers for the first paint, and for a
+    # browser without scripts.
+    tiles = {
+        "placed": len(placed),
+        "gear": sum(r in GEAR for r in roles),
+        "servers": sum(r in SERVERS for r in roles),
+        "unplaced": len(result.unplaced),
+        "hints": len(suggested),
+    }
     return templates.TemplateResponse(
         request,
         "map.html",
         {"config": config, "user": user, "title": "Network map", "map": result,
-         "problems": sum(1 for n in _placed(result) if n.problem),
+         "problems": sum(1 for n in placed if n.problem), "tiles": tiles,
          "discovery": discovery, "suggested": suggested,
          "mode": await topology.get_mode(session),
          "accepted": _count(accepted), "wiped": _count(wiped)},

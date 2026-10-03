@@ -21,23 +21,46 @@
    data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}
    title="{{ n.device.display_name }}{% if n.device.primary_ip %} — {{ n.device.primary_ip }}{% endif %} — {{ n.state.label }}{% if n.services %} — {{ n.services | length }} port{{ 's' if n.services | length != 1 }}{% endif %}">
   <span class="status-dot {{ n.state.kind }}" aria-hidden="true"></span>
-  {% if n.device.role not in ('client', 'unknown') %}<span class="chip-icon" title="{{ n.role }}">{{ role_icon(n.device.role) }}</span>{% endif %}
+  {% if n.device.role not in ('client', 'unknown') %}<span class="chip-icon role-{{ n.device.role }}" title="{{ n.role }}">{{ role_icon(n.device.role) }}</span>{% endif %}
   <span class="chip-name">{{ n.device.display_name }}</span>
   {% if n.device.primary_ip %}<span class="chip-ip">{{ n.device.primary_ip.rsplit('.', 1)[-1] if '.' in n.device.primary_ip else '' }}</span>{% endif %}
   <span class="visually-hidden">{{ n.state.label }}</span>
 </a>
 {%- endmacro %}
 {% block content %}
-<div class="page">
+<div class="page page-map">
   <div class="page-head">
-    <div class="page-title">
-      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span>
-      <div>
-        <h1>Network map</h1>
-        <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page; every service, searchable, is under <a href="/services">Services</a>.</p>
-      </div>
+    <div>
+      <p class="page-tag">Topology</p>
+      <h1>Network map</h1>
+      <p class="page-sub">What is connected to what, and what each thing runs. Place a device from its own page; every service, searchable, is under <a href="/services">Services</a>.</p>
     </div>
   </div>
+
+  {# Outside #live like the toolbar, so the script recounts them from the tree
+     after each refresh (data-tile says which count). #}
+  <section class="stat-row map-tiles">
+    <div class="stat s-dev"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span><span class="stat-name">Placed</span></span><span class="stat-value" data-tile="placed">{{ tiles.placed }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h.01"/></svg></span><span class="stat-name">Network gear</span></span><span class="stat-value" data-tile="gear">{{ tiles.gear }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span class="stat-name">Servers</span></span><span class="stat-value" data-tile="servers">{{ tiles.servers }}</span></div>
+    <div class="stat s-down{% if problems %} is-bad{% endif %}" data-tile-alarm><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span><span class="stat-name">Problems</span></span><span class="stat-value" data-tile="problems">{{ problems }}</span></div>
+    <div class="stat s-svc"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/><path d="M12 8v8M8 12h8"/></svg></span><span class="stat-name">Not placed</span></span><span class="stat-value" data-tile="unplaced">{{ tiles.unplaced }}</span></div>
+    <div class="stat s-svc" title="Places SNMP suggests, waiting for Accept"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18v-3M8 18v-6M12 18V9M16 18V6M20 18V4"/></svg></span><span class="stat-name">SNMP hints</span></span><span class="stat-value" data-tile="hints">{{ 0 if mode == 'automatic' else tiles.hints }}</span></div>
+  </section>
+
+  <section class="card map-card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span>
+      <div>
+        <h2>Network</h2>
+        <p class="card-sub">
+          Status comes from each device's targets, or its SNMP polling if it has none.
+          While anything is down, nothing below it alerts — you hear about the switch,
+          not everything behind it. Ports you watch show on each device; the rest are
+          counted, and listed under <a href="/services">Services</a>.
+        </p>
+      </div>
+    </div>
 
   {# The toolbar sits outside #live: a live refresh swaps what is inside, and
      must not take the text out of the Find box while someone is typing. #}
@@ -51,6 +74,10 @@
       <button type="button" data-mode="all" aria-pressed="false">Everything</button>
     </span>
     <span class="map-count" id="map-count" aria-live="polite"></span>
+    <span class="tree-actions">
+      <button type="button" class="btn-quiet" data-fold="all">Collapse all</button>
+      <button type="button" class="btn-quiet" data-fold="none">Expand all</button>
+    </span>
   </div>
 
   <div id="live">
@@ -132,37 +159,30 @@
   </details>
   {% endif %}
 
-  <section class="card">
-    <div class="card-head">
-      <div>
-        <h2>Network</h2>
-        <p class="card-sub">
-          Status comes from each device's targets, or its SNMP polling if it has none.
-          While anything is down, nothing below it alerts — you hear about the switch,
-          not everything behind it. Ports you watch show on each device; the rest are
-          counted, and listed under <a href="/services">Services</a>.
-        </p>
-      </div>
-    </div>
     {% if map.roots %}
-    {# Folding, finding and the Infrastructure view are JavaScript's (the
-       script below): without it every branch is open and every device shows. #}
-    <div class="tree-actions js-only">
-      <button type="button" class="btn-quiet" data-fold="all">Collapse all</button>
-      <button type="button" class="btn-quiet" data-fold="none">Expand all</button>
-    </div>
     <ul class="tree">
       {% for n in map.roots recursive %}
       <li data-branch="{{ n.device.id }}">
         <div class="map-node" data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}>
-          <span class="map-icon">{{ role_icon(n.device.role) }}</span>
+          {% if n.children %}
+          <button type="button" class="branch-toggle js-only" aria-expanded="true"
+                  aria-controls="branch-{{ n.device.id }}"
+                  title="Fold or unfold what is connected below {{ n.device.display_name }}">
+            <span class="branch-count">{{ n.count - 1 }} below</span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          {% endif %}
+          <span class="status-dot {{ n.state.kind }}" title="{{ n.state.label }}" aria-hidden="true"></span>
+          <span class="map-icon role-{{ n.device.role }}">{{ role_icon(n.device.role) }}</span>
           <a href="/devices/{{ n.device.id }}" class="map-name">{{ n.device.display_name }}</a>
           {% if n.device.primary_ip %}<code class="small muted">{{ n.device.primary_ip }}</code>{% endif %}
           {% if n.device.role != 'unknown' %}<span class="muted small">{{ n.role }}</span>{% endif %}
-          {{ state_pill(n.state) }}
+          {# Up needs no words beside a green dot; anything else does. #}
+          {% if n.state.kind in ('bad', 'warn') %}{{ state_pill(n.state) }}{% else %}<span class="visually-hidden">{{ n.state.label }}</span>{% endif %}
           {# Ports someone watches carry a status, so they stay in view. The
              rest are only what the port scan found: counted, and listed on
              the Services tab under this device's address. #}
+          <span class="map-ports">
           {% for s in n.watched %}
             <span class="pill {{ s.state.kind if s.state else 'neutral' }}"
                   title="Watched by {{ s.target.name }}: {{ s.state.label }}">
@@ -174,14 +194,7 @@
           <a class="more-ports" href="/services?q={{ (n.device.primary_ip or n.device.display_name) | urlencode }}"
              title="Found by the port scan; not watched">{% if n.watched %}+{{ others }} port{{ 's' if others != 1 }}{% else %}{{ others }} port{{ 's' if others != 1 }}{% endif %}</a>
           {% endif %}
-          {% if n.children %}
-          <button type="button" class="branch-toggle js-only" aria-expanded="true"
-                  aria-controls="branch-{{ n.device.id }}"
-                  title="Fold or unfold what is connected below {{ n.device.display_name }}">
-            <span class="branch-count">{{ n.count - 1 }} below</span>
-            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          {% endif %}
+          </span>
         </div>
         {% if n.children %}
         <ul id="branch-{{ n.device.id }}">
@@ -215,8 +228,8 @@
       </p>
     </div>
     {% endif %}
-  </section>
   </div>
+  </section>
 </div>
 <script nonce="{{ request.state.csp_nonce }}">
   // The map's Find box, Problems only, Infrastructure / Everything, and
@@ -281,8 +294,29 @@
       });
     }
 
+    // The tiles over the panel, recounted from what the page now shows.
+    function tiles(tree) {
+      function n(sel) { return tree ? tree.querySelectorAll(sel).length : 0; }
+      var counts = {
+        placed: n('.map-node, .chip'),
+        gear: n('.role-gateway, .role-switch, .role-access_point'),
+        servers: n('.role-host, .role-nas'),
+        problems: n('.map-node[data-problem], .chip[data-problem]'),
+        unplaced: document.querySelectorAll('details.unplaced .chip').length,
+        hints: document.querySelectorAll('#suggested .suggest-list > li').length
+      };
+      document.querySelectorAll('[data-tile]').forEach(function (el) {
+        el.textContent = counts[el.getAttribute('data-tile')];
+      });
+      var alarm = document.querySelector('[data-tile-alarm]');
+      if (alarm) alarm.classList.toggle('is-bad', counts.problems > 0);
+      var folds = document.querySelector('.map-toolbar .tree-actions');
+      if (folds) folds.hidden = !tree;
+    }
+
     function apply() {
       var tree = document.querySelector('.tree');
+      tiles(tree);
       document.querySelectorAll('[data-mode]').forEach(function (b) {
         b.setAttribute('aria-pressed', b.getAttribute('data-mode') === mode ? 'true' : 'false');
       });

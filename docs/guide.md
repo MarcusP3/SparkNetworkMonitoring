@@ -200,9 +200,9 @@ everything:
   are small tiles in a grid: in **Infrastructure**, the default, folded to
   a count ("9 devices · 1 with a problem ▸") that opens on a click; in
   **Everything**, all shown.
-- **Folding.** A device with things below it has a ▾: fold that branch
-  away ("12 below ▸"), or **Collapse all** / **Expand all**. Finding
-  ignores folds while it is in use.
+- **Folding.** A device with things below it has a ▾ at the start of its
+  row: fold that branch away (the arrow turns ▸), or **Collapse all** /
+  **Expand all**. Finding ignores folds while it is in use.
 - **Found by SNMP** and **Not placed yet** are one line each at the top
   until opened.
 - Ports: the ones you watch with a target show on each device; the rest
@@ -210,6 +210,10 @@ everything:
 
 Folds, the view and opened groups are remembered in that browser. Without
 JavaScript every branch and device simply shows.
+
+The tiles over the map count what is placed, how much of it is network gear
+(gateways, switches, access points) and servers (servers and NAS), what has
+a problem, what is not placed yet, and how many places SNMP is suggesting.
 
 **Status** comes from the device's targets (the worst of them), or from SNMP
 polling if it has none, or reads *not watched*. A service watched by a

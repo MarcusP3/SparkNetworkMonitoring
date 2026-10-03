@@ -2159,21 +2159,22 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 .tbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
 .tbar[hidden], .tfoot[hidden] { display: none; }
 .tbar-right { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.chip {
+/* .tbar-scoped: the map's device tiles are .chip too. */
+.tbar .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tbar .chip {
   --k: var(--accent);
   display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; cursor: pointer;
   background: rgba(8, 16, 30, .8); border: 1px solid rgba(148, 178, 214, .22); color: #c9d5e4;
   font: inherit; font-size: 12.5px; font-weight: 500;
 }
-.chip b { font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
-.chip:hover { border-color: var(--accent); }
-.chip[aria-pressed="true"] { background: rgba(34, 211, 238, .14); border-color: rgba(34, 211, 238, .55); color: var(--accent); }
-.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--k); box-shadow: 0 0 6px var(--k); }
-.chip.k-ok { --k: var(--ok); }
-.chip.k-warn { --k: var(--warn); }
-.chip.k-bad { --k: var(--bad); }
-.chip.k-idle { --k: #94a3b8; }
+.tbar .chip b { font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+.tbar .chip:hover { border-color: var(--accent); }
+.tbar .chip[aria-pressed="true"] { background: rgba(34, 211, 238, .14); border-color: rgba(34, 211, 238, .55); color: var(--accent); }
+.tbar .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--k); box-shadow: 0 0 6px var(--k); }
+.tbar .chip.k-ok { --k: var(--ok); }
+.tbar .chip.k-warn { --k: var(--warn); }
+.tbar .chip.k-bad { --k: var(--bad); }
+.tbar .chip.k-idle { --k: #94a3b8; }
 .search { position: relative; display: block; }
 .search input { width: 260px; max-width: 100%; padding-right: 34px; }
 .search svg { position: absolute; right: 11px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
@@ -2304,4 +2305,79 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .page-devices .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
   .page-devices .card-head .head-actions { flex-basis: 100%; }
   .devices-card .search, .devices-card .search input { width: 100%; }
+}
+
+/* ---------- SPARK 2: Network map ---------- */
+.page-map .page-head h1 { font-size: 46px; line-height: 1.05; margin: 0; }
+.page-map .page-sub { margin-top: 10px; font-size: 15px; max-width: 46rem; }
+.page-map .stat-row { margin-bottom: 22px; }
+.page-map .stat.is-bad .stat-value { color: var(--c); text-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
+
+/* The toolbar, then the strips and the tree, all inside the Network panel. */
+.map-card .map-toolbar { margin-bottom: 14px; }
+.map-card .map-toolbar input[type="search"] { max-width: 20rem; }
+.map-card .map-toolbar .tree-actions { display: inline-flex; gap: 8px; margin: 0; }
+.map-card .map-toolbar .tree-actions[hidden] { display: none; }
+.map-card .map-count { margin-left: auto; }
+.map-card .seg { border-color: rgba(148, 178, 214, .25); background: rgba(8, 16, 30, .8); }
+.map-card .seg button[aria-pressed="true"] { background: rgba(34, 211, 238, .14); }
+
+/* Found by SNMP / Not placed yet: framed rows, not cards of their own. */
+.map-card .card.strip { margin: 0 0 10px; border: 1px solid rgba(148, 178, 214, .2); border-radius: 4px; background: rgba(6, 14, 26, .6); }
+.map-card .card.strip::before, .map-card .card.strip::after { display: none; }
+.map-card .strip > summary { padding: 11px 14px; }
+.map-card .strip > summary .pill.neutral { order: 1; background: none; border: 0; padding: 0; color: var(--accent); font-weight: 700; font-size: .875rem; }
+.map-card .strip > summary strong { order: 0; font-weight: 500; color: #fff; }
+.map-card .strip > summary .muted { order: 2; }
+.map-card .strip > summary .strip-chevron { order: 3; }
+
+/* The tree: each device a framed row, the chevron first, guide lines down
+   the left. */
+.page-map .tree li { padding: 3px 0; }
+.page-map .tree ul { margin-left: 18px; padding-left: 18px; border-left-color: rgba(148, 178, 214, .16); }
+.page-map .tree ul > li::before { left: -18px; width: 14px; top: 22px; border-top-color: rgba(148, 178, 214, .16); }
+.page-map .map-node {
+  gap: 6px 10px; padding: 7px 12px 7px 36px; position: relative; flex-wrap: nowrap;
+  border: 1px solid rgba(148, 178, 214, .16); border-radius: 4px; background: rgba(8, 16, 30, .55);
+}
+.page-map .map-node[data-problem] { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad) 7%, rgba(8, 16, 30, .55)); }
+.page-map .map-node .branch-toggle {
+  position: absolute; left: 6px; top: 50%; transform: translateY(-50%); padding: 4px; color: #9fb2c8;
+}
+.page-map .map-node .branch-toggle .branch-count { display: none; }
+.page-map .tree li.folded > .map-node .branch-count { display: none; }
+.page-map .map-node .status-dot { width: 9px; height: 9px; opacity: 1; box-shadow: 0 0 6px currentColor; }
+.page-map .map-node .status-dot.ok { color: var(--ok); }
+.page-map .map-node .status-dot.warn { color: var(--warn); }
+.page-map .map-node .status-dot.bad { color: var(--bad); }
+.page-map .map-node .status-dot.neutral { background: none; border: 1.5px solid var(--text-muted); box-shadow: none; }
+.page-map .map-icon { width: 28px; height: 28px; background: transparent; border: 1px solid rgba(34, 211, 238, .45); border-radius: 6px; }
+.page-map .map-name { color: #fff; white-space: nowrap; }
+.page-map .map-node > code { color: #c7d3e1; background: none; padding: 0; white-space: nowrap; }
+.page-map .map-node > .muted.small { text-transform: uppercase; letter-spacing: .08em; font-size: 11px; white-space: nowrap; }
+/* Watched ports and the count of the rest, pushed to the right as badges. */
+.map-ports { margin-left: auto; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.map-ports .pill { font-family: var(--mono); border-radius: 3px; font-size: 11px; padding: 2px 6px; }
+.page-map .map-node .more-ports {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  border: 1px solid rgba(34, 211, 238, .4); border-radius: 3px; padding: 2px 6px; white-space: nowrap;
+}
+.page-map .map-node .more-ports:hover { background: rgba(34, 211, 238, .1); text-decoration: none; }
+
+/* End devices: framed tiles, a ring for not watched. */
+.page-map .chips { gap: 6px; }
+.page-map .chip { background: rgba(8, 16, 30, .55); border-color: rgba(148, 178, 214, .18); border-radius: 4px; padding: 6px 10px; }
+.page-map .chip:hover { border-color: var(--accent); }
+.page-map .chip .status-dot.neutral { background: none; border: 1.5px solid var(--text-muted); opacity: 1; }
+.page-map .leaf-toggle { border-style: solid; border-color: rgba(148, 178, 214, .22); border-radius: 4px; }
+
+@media (max-width: 860px) {
+  .page-map .page-head h1 { font-size: 34px; }
+  .page-map .map-node { flex-wrap: wrap; }
+}
+@media (max-width: 640px) {
+  .page-map .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .map-card .map-count { margin-left: 0; }
+  .page-map .tree ul { margin-left: 8px; padding-left: 10px; }
+  .page-map .tree ul > li::before { left: -10px; width: 8px; }
 }
