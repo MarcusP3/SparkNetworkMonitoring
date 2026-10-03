@@ -289,6 +289,12 @@ Ten things that will bite you if you don't know them:
   `href` in `app.css`, so a new page adds its icon there, not in the template.
   Panels are `.card` (the chamfered frame is drawn by `::before`/`::after`, so
   a card must not use those itself); stat tiles are `.stat`.
+- **A page brought into SPARK 2 has a page class and a tag.** `page-dash`,
+  `page-targets` and so on scope its rules, and `<p class="page-tag">` over the
+  `<h1>` replaces the old page icon. Filtering and sorting a list happens in
+  the browser over the rows the server sent (data attributes on each `<tr>`),
+  with state kept outside `#live` and re-applied on `spark:live-updated`;
+  controls that only work with scripts start `hidden data-js-only`.
 
 
 ---

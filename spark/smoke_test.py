@@ -278,8 +278,10 @@ def main() -> int:
                 check("the device now reads as watched", "watched" in r.text)
 
                 r = client.post(f"/devices/{dev_id}/watch")
+                # Counted as rows (the address is in each row twice: shown,
+                # and in the data the page's search reads).
                 check("watching twice does not make a second target",
-                      client.get("/targets").text.count("172.16.10.77") == 1)
+                      client.get("/targets").text.count("<code>172.16.10.77</code>") == 1)
 
                 # Tidy up: later sections count targets, and leaving this one
                 # behind makes their arithmetic wrong rather than their logic.

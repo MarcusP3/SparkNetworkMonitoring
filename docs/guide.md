@@ -28,6 +28,12 @@ On the Targets list a target's name opens its device's page — the device it
 was watched from, or the device at its address (a URL's host counts). One
 with no device, such as an outside website, is plain text.
 
+The chips over the list show only the targets in one state, the search box
+matches a name or address, and the check filter one kind of check; click a
+column heading to sort by it. Each row's trend is its latency over its last
+thirty results, in the colour of its state now. The Checks / min tile is the
+load the intervals put on the engine, not a health figure.
+
 ### Check types
 
 | Check | Address | Useful params |

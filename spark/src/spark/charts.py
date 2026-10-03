@@ -296,3 +296,29 @@ def sparkline(inbound: Sequence[float | None], outbound: Sequence[float | None])
         'vector-effect="non-scaling-stroke"/>'
         '</svg>'
     )
+
+
+TREND_POINTS = 30
+
+
+def trend(latencies: Sequence[float | None], status: str) -> Markup:
+    """Latency over a target's last few results, oldest first, for its row.
+
+    Coloured by the state it is in now -- green, amber, red -- because that is
+    the question the row is asking. Scaled to its own peak, like `sparkline`:
+    a 1 ms gateway and a 90 ms website both show their shape. A target that is
+    down with nothing to draw gets a flat red line on the floor, which is what
+    "no answers lately" looks like; anything else with no data gets a dash.
+    """
+    kind = {"up": "is-ok", "degraded": "is-warn", "down": "is-bad"}.get(status, "is-idle")
+    values = list(latencies)
+    top = max([v for v in values if v is not None], default=0.0)
+    if top <= 0 and status != "down":
+        return Markup('<span class="muted small">—</span>')
+    path = (line_path(values, top * 1.15) if top > 0
+            else f"M0,{PLOT_H - 2:.0f}H{PLOT_W:.0f}")
+    return Markup(
+        f'<svg class="trend {kind}" viewBox="0 0 {PLOT_W:.0f} {PLOT_H:.0f}" '
+        'preserveAspectRatio="none" aria-hidden="true">'
+        f'<path class="line" d="{path}" vector-effect="non-scaling-stroke"/></svg>'
+    )

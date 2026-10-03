@@ -1,68 +1,119 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page">
+<div class="page page-targets">
   <div class="page-head">
-    <div class="page-title">
-      <span class="page-icon">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-             aria-hidden="true">
-          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
-          <circle cx="12" cy="12" r="2.5"/>
-        </svg>
-      </span>
-      <div>
-        <h1>Targets</h1>
-        <p class="page-sub">What SPARK checks on a schedule, and how each one answered last.</p>
-      </div>
-    </div>
-    <div class="head-actions">
-      <a class="btn-primary" href="/targets/new">Add target</a>
+    <div>
+      <p class="page-tag">Monitoring</p>
+      <h1>Targets</h1>
+      <p class="page-sub">What SPARK checks on a schedule, and how each one answered last.</p>
     </div>
   </div>
 
   <div id="live">
 
-  {% if targets %}
-  <section class="card">
+  <section class="stat-row">
+    <div class="stat s-dev"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg></span><span class="stat-name">Targets</span></span><span class="stat-value">{{ stats.total }}</span></div>
+    <div class="stat s-up"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></svg></span><span class="stat-name">Up</span></span><span class="stat-value">{{ stats.up }}</span></div>
+    <div class="stat s-deg{% if stats.degraded %} is-warn{% endif %}"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 4.3 2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4M12 17h.01"/></svg></span><span class="stat-name">Degraded</span></span><span class="stat-value">{{ stats.degraded }}</span></div>
+    <div class="stat s-down{% if stats.down %} is-bad{% endif %}"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10.5 4.5 4 4.5-4"/><path d="M5 19h14"/></svg></span><span class="stat-name">Down</span></span><span class="stat-value">{{ stats.down }}</span></div>
+    <div class="stat s-paused"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg></span><span class="stat-name">Paused</span></span><span class="stat-value">{{ stats.paused }}</span></div>
+    <div class="stat s-svc" title="Checks the engine runs per minute at the intervals set"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="stat-name">Checks / min</span></span><span class="stat-value">{{ stats.per_minute }}</span></div>
+  </section>
+
+  <section class="card targets-card">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></span>
+      <div>
+        <h2>All targets</h2>
+        <p class="card-sub">Ping, TCP, HTTP and DNS checks. A target goes down after its failure threshold, not on one dropped packet.</p>
+      </div>
+      <div class="head-actions">
+        <a class="btn-primary" href="/targets/new"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add target</a>
+      </div>
+    </div>
+
+    {% if targets %}
+    {# The chips, the search box and the check filter narrow the rows in the
+       browser, and the column headings sort them. All of it is page-side: the
+       list is one screen's worth of rows the server already sent, and with
+       scripts off every row is simply shown. #}
+    <div class="tbar" hidden data-js-only>
+      <div class="chips" role="group" aria-label="Show">
+        <button type="button" class="chip" data-show="all" aria-pressed="true">All <b>{{ stats.total }}</b></button>
+        <button type="button" class="chip k-ok" data-show="up" aria-pressed="false"><i aria-hidden="true"></i>Up <b>{{ stats.up }}</b></button>
+        <button type="button" class="chip k-warn" data-show="degraded" aria-pressed="false"><i aria-hidden="true"></i>Degraded <b>{{ stats.degraded }}</b></button>
+        <button type="button" class="chip k-bad" data-show="down" aria-pressed="false"><i aria-hidden="true"></i>Down <b>{{ stats.down }}</b></button>
+        <button type="button" class="chip k-idle" data-show="paused" aria-pressed="false"><i aria-hidden="true"></i>Paused <b>{{ stats.paused }}</b></button>
+      </div>
+      <div class="tbar-right">
+        <label class="search">
+          <span class="visually-hidden">Search targets</span>
+          <input type="search" id="target-q" placeholder="Search name or address…" autocomplete="off">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </label>
+        <label>
+          <span class="visually-hidden">Check type</span>
+          <select id="target-kind">
+            <option value="">All checks</option>
+            {% for kind in check_types %}<option value="{{ kind }}">{{ kind | upper }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    </div>
+
     <div class="table-scroll">
     <table class="table targets-table">
       <thead>
         <tr>
-          <th>Status</th>
-          <th>Name</th>
+          <th data-sort="order"><button type="button">Status</button></th>
+          <th data-sort="name" aria-sort="ascending"><button type="button">Name</button></th>
           <th>Check</th>
           <th>Address</th>
-          <th>Every</th>
+          <th data-sort="every"><button type="button">Every</button></th>
+          <th data-sort="latency"><button type="button">Latency</button></th>
           <th>Last result</th>
-          <th></th>
+          <th>Trend</th>
+          <th class="actions-head">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for target in targets %}
-        {% set row_status = target.status.value if target.status.value is defined else target.status %}
-        <tr data-target-id="{{ target.id }}" data-status="{{ row_status }}"
+        {% set row = rows[loop.index0] %}
+        {% set status = row.status %}
+        {% set kind = target.check_type.value if target.check_type.value is defined else target.check_type %}
+        <tr data-target-id="{{ target.id }}" data-status="{{ status }}"
+            data-name="{{ target.name | lower }}" data-address="{{ target.address | lower }}"
+            data-kind="{{ kind }}" data-order="{{ row.order }}" data-every="{{ target.interval_seconds }}"
+            data-latency="{{ row.latency_ms if row.latency_ms is not none else '' }}"
+            {% if not target.enabled %}data-paused{% endif %}
             class="{% if not target.enabled %}is-paused{% endif %}">
           <td>
-            {% set status = target.status.value if target.status.value is defined else target.status %}
             <span class="pill dot status-{{ status }}">{{ status }}</span>
             {% if open_counts.get(target.id) %}
               <span class="pill bad" title="Open incident">!</span>
             {% endif %}
           </td>
-          <td>
+          <td class="tname">
             {% set dev = device_of.get(target.id) %}
             {% if dev %}<a class="target-link" href="/devices/{{ dev.id }}" title="Open {{ dev.display_name }}"><strong>{{ target.name }}</strong></a>
             {% else %}<strong>{{ target.name }}</strong>{% endif %}
             {% if target.depends_on %}
-              <div class="muted small">depends on {{ target.depends_on.name }}</div>
+              <small>depends on {{ target.depends_on.name }}</small>
             {% endif %}
           </td>
-          <td><code>{{ target.check_type.value if target.check_type.value is defined else target.check_type }}</code></td>
+          <td><span class="ctype">{{ kind | upper }}</span></td>
           <td><code>{{ target.address }}</code></td>
-          <td class="muted">{{ target.interval_seconds }}s</td>
-          <td class="muted small">
-            {{ target.last_checked_at | local('%H:%M:%S') }}
+          <td class="muted">{{ row.every }}</td>
+          <td class="muted">{% if row.latency_ms is none %}—{% elif row.latency_ms < 10 %}{{ '%.1f ms' % row.latency_ms }}{% else %}{{ '%.0f ms' % row.latency_ms }}{% endif %}</td>
+          <td class="tresult{% if status == 'down' %} is-bad-text{% endif %}">
+            {{ row.detail or '—' }}
+            {% if target.enabled and target.last_checked_at %}
+            {# Epoch seconds, not an ISO time: the page shows times only in the
+               zone chosen under Preferences, and a UTC clock in an attribute
+               is still a UTC clock on the page. #}
+            <time class="ago" data-at="{{ target.last_checked_at.timestamp() | int }}"
+                  title="Last checked {{ target.last_checked_at | local('%H:%M:%S') }}">{{ row.ago }}</time>
+            {% endif %}
             {# Only while it is on its way down. Once a target is DOWN the count
                just climbs forever -- 2613 consecutive failures says nothing the
                status pill and the incident have not already said. Below the
@@ -70,25 +121,31 @@
                before it flips, so it reads as progress toward a state change
                rather than as a running tally. #}
             {% if target.consecutive_failures and status not in ('down', 'paused') %}
-              <span class="muted">· failing, {{ target.consecutive_failures }} of {{ target.failure_threshold }}</span>
+              <small class="muted">failing, {{ target.consecutive_failures }} of {{ target.failure_threshold }}</small>
             {% endif %}
           </td>
+          <td>{{ row.trend }}</td>
           <td class="actions">
-            <form method="post" action="/targets/{{ target.id }}/check">
-              <button type="submit" class="btn-quiet">Check now</button>
+            <form method="post" action="/targets/{{ target.id }}/check" data-stay>
+              <button type="submit" class="ib" title="Check now" aria-label="Check {{ target.name }} now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
             </form>
-            <a class="btn-quiet" href="/targets/{{ target.id }}/edit">Edit</a>
-            <form method="post" action="/targets/{{ target.id }}/toggle">
-              {# Fixed width: this button's label is the only thing in the row
-                 that changes length, and the table is width:100%, so "Pause"
-                 becoming "Resume" redistributes the difference across every
-                 other column. #}
-              <button type="submit" class="btn-quiet toggle-enabled">
-                {{ 'Resume' if not target.enabled else 'Pause' }}
+            <a class="ib" href="/targets/{{ target.id }}/edit" title="Edit" aria-label="Edit {{ target.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></a>
+            <form method="post" action="/targets/{{ target.id }}/toggle" data-stay>
+              {# toggle-enabled: the hook the paused-row tests look for. The
+                 icon buttons are all one size, so Pause becoming Resume no
+                 longer moves the column; the word is still there for screen
+                 readers and the tooltip. #}
+              <button type="submit" class="ib toggle-enabled" title="{{ 'Resume' if not target.enabled else 'Pause' }}">
+                {% if not target.enabled %}
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"/></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>
+                {% endif %}
+                <span class="visually-hidden">{{ 'Resume' if not target.enabled else 'Pause' }} {{ target.name }}</span>
               </button>
             </form>
-            <form method="post" action="/targets/{{ target.id }}/delete">
-              <button type="submit" class="btn-quiet danger">Delete</button>
+            <form method="post" action="/targets/{{ target.id }}/delete" data-stay>
+              <button type="submit" class="ib danger" title="Delete" aria-label="Delete {{ target.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
             </form>
           </td>
         </tr>
@@ -96,25 +153,129 @@
       </tbody>
     </table>
     </div>
+    <p class="tfoot muted small" hidden data-js-only><span class="showing"></span></p>
+    {% else %}
+    <div class="empty-state">
+      <h2>Nothing is being watched yet</h2>
+      <p class="muted">
+        Start with the things whose failure you would actually want to know
+        about — your gateway, your switch, the one service you would notice
+        missing. Discovery has probably found them already: the
+        <a href="/devices">Devices</a> page has a <strong>Watch</strong> button
+        against each one, which is the same thing with the address filled in.
+      </p>
+      <p class="muted">
+        Give the switch a <strong>depends on</strong> pointing at the gateway, and
+        the hosts behind it a <strong>depends on</strong> pointing at the switch.
+        When the switch goes down you then get one incident rather than thirty.
+      </p>
+      <a class="btn-primary" href="/targets/new">Add your first target</a>
+    </div>
+    {% endif %}
   </section>
-  {% else %}
-  <section class="card empty-state">
-    <h2>Nothing is being watched yet</h2>
-    <p class="muted">
-      Start with the things whose failure you would actually want to know
-      about — your gateway, your switch, the one service you would notice
-      missing. Discovery has probably found them already: the
-      <a href="/devices">Devices</a> page has a <strong>Watch</strong> button
-      against each one, which is the same thing with the address filled in.
-    </p>
-    <p class="muted">
-      Give the switch a <strong>depends on</strong> pointing at the gateway, and
-      the hosts behind it a <strong>depends on</strong> pointing at the switch.
-      When the switch goes down you then get one incident rather than thirty.
-    </p>
-    <a class="btn-primary" href="/targets/new">Add your first target</a>
-  </section>
-  {% endif %}
   </div>
 </div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+  // Narrow, sort and age the Targets list in the browser. The state lives
+  // here, outside #live, so a live refresh (which replaces every row) keeps
+  // the filter you chose: after each one the rows are put through it again.
+  (function () {
+    var state = { show: 'all', q: '', kind: '', sort: 'name', dir: 1 };
+
+    function matches(tr) {
+      if (state.show === 'paused' ? !tr.hasAttribute('data-paused')
+          : state.show !== 'all' && tr.getAttribute('data-status') !== state.show) return false;
+      if (state.kind && tr.getAttribute('data-kind') !== state.kind) return false;
+      if (state.q) {
+        var hay = tr.getAttribute('data-name') + ' ' + tr.getAttribute('data-address');
+        if (hay.indexOf(state.q) < 0) return false;
+      }
+      return true;
+    }
+
+    function key(tr) {
+      var v = tr.getAttribute('data-' + state.sort);
+      if (state.sort === 'name') return v;
+      // An empty latency (down, or never checked) sorts last either way.
+      return v === '' ? null : parseFloat(v);
+    }
+
+    function apply() {
+      var live = document.getElementById('live');
+      var body = live && live.querySelector('.targets-table tbody');
+      if (!body) return;
+      live.querySelectorAll('[data-js-only]').forEach(function (el) { el.hidden = false; });
+      var q = document.getElementById('target-q'), kind = document.getElementById('target-kind');
+      if (q && q.value !== state.q) q.value = state.q;
+      if (kind) kind.value = state.kind;
+      live.querySelectorAll('.chip[data-show]').forEach(function (chip) {
+        chip.setAttribute('aria-pressed', String(chip.getAttribute('data-show') === state.show));
+      });
+      live.querySelectorAll('.targets-table th[data-sort]').forEach(function (th) {
+        th.setAttribute('aria-sort', th.getAttribute('data-sort') !== state.sort ? 'none'
+          : state.dir === 1 ? 'ascending' : 'descending');
+      });
+      var rows = [].slice.call(body.rows);
+      rows.sort(function (a, b) {
+        var x = key(a), y = key(b);
+        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+        var c = x < y ? -1 : x > y ? 1 : 0;
+        if (c === 0 && state.sort !== 'name') {
+          c = a.getAttribute('data-name') < b.getAttribute('data-name') ? -1 : 1;
+          return c;
+        }
+        return c * state.dir;
+      });
+      var shown = 0;
+      rows.forEach(function (tr) {
+        body.appendChild(tr);
+        tr.hidden = !matches(tr);
+        if (!tr.hidden) shown += 1;
+      });
+      var note = live.querySelector('.tfoot .showing');
+      if (note) {
+        note.textContent = shown === rows.length ? 'Showing all ' + rows.length + ' targets'
+          : 'Showing ' + shown + ' of ' + rows.length + ' targets';
+      }
+    }
+
+    function agoText(seconds) {
+      if (seconds < 60) return seconds + ' s ago';
+      if (seconds < 3600) return Math.floor(seconds / 60) + ' min ago';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + ' h ago';
+      return Math.floor(seconds / 86400) + ' d ago';
+    }
+    // The server says how long ago each check was when it drew the page; this
+    // keeps the words true between refreshes.
+    function tick() {
+      var now = Date.now();
+      document.querySelectorAll('#live time.ago[data-at]').forEach(function (el) {
+        var at = parseInt(el.getAttribute('data-at'), 10) * 1000;
+        if (!isNaN(at)) el.textContent = agoText(Math.max(0, Math.round((now - at) / 1000)));
+      });
+    }
+
+    document.addEventListener('click', function (event) {
+      var chip = event.target.closest('#live .chip[data-show]');
+      if (chip) { state.show = chip.getAttribute('data-show'); apply(); return; }
+      var th = event.target.closest('#live .targets-table th[data-sort]');
+      if (th) {
+        var k = th.getAttribute('data-sort');
+        state.dir = state.sort === k ? -state.dir : 1;
+        state.sort = k;
+        apply();
+      }
+    });
+    document.addEventListener('input', function (event) {
+      if (event.target.id === 'target-q') { state.q = event.target.value.trim().toLowerCase(); apply(); }
+    });
+    document.addEventListener('change', function (event) {
+      if (event.target.id === 'target-kind') { state.kind = event.target.value; apply(); }
+    });
+    document.addEventListener('spark:live-updated', function () { apply(); tick(); });
+    apply();
+    setInterval(tick, 5000);
+  })();
+</script>
 {% endblock %}

@@ -9,13 +9,14 @@ exactly the experience the Setting model was written to avoid.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import limits
+from .. import charts, limits
 from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
@@ -28,6 +29,7 @@ from ..models import (
     DEFAULT_INTERVAL_SECONDS,
     DEFAULT_RECOVERY_THRESHOLD,
     DEFAULT_TIMEOUT_SECONDS,
+    CheckResult,
     CheckType,
     Device,
     DeviceAddress,
@@ -35,6 +37,7 @@ from ..models import (
     Incident,
     Target,
     User,
+    utcnow,
 )
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
@@ -188,6 +191,32 @@ def target_host(address: str) -> str:
     return raw.lower()
 
 
+def ago(when: datetime | None, now: datetime) -> str:
+    """How long since, in the fewest words: "12 s ago", "4 min ago"."""
+    if when is None:
+        return "never checked"
+    seconds = max(0, int((now - when).total_seconds()))
+    if seconds < 60:
+        return f"{seconds} s ago"
+    if seconds < 3600:
+        return f"{seconds // 60} min ago"
+    if seconds < 86400:
+        return f"{seconds // 3600} h ago"
+    return f"{seconds // 86400} d ago"
+
+
+def every(seconds: int) -> str:
+    """A check interval as people say it: "15 s", "1 min", "2 h"."""
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600} h"
+    if seconds % 60 == 0:
+        return f"{seconds // 60} min"
+    return f"{seconds} s"
+
+
+STATUS_ORDER = {"down": 0, "degraded": 1, "unknown": 2, "up": 3, "paused": 4}
+
+
 async def devices_for(session: AsyncSession, targets: list[Target]) -> dict[int, Device]:
     """The device each target belongs to, for linking to its page: the one
     it was made from (Watch), or else the device at its address -- primary,
@@ -229,6 +258,47 @@ async def list_targets(
             )
         ).all()
     )
+    # Each target's last few results, newest first: the latest is the row's
+    # latency and result, the rest its trend. One small query per target, not
+    # a window over the table: each is an index seek on (target_id, ts) that
+    # stops after TREND_POINTS rows, where a window over the raw table would
+    # sort a week of every target's results to keep thirty of each.
+    now = utcnow()
+    rows = []
+    for t in targets:
+        recent = (await session.execute(
+            select(CheckResult.latency_ms, CheckResult.detail, CheckResult.suppressed)
+            .where(CheckResult.target_id == t.id)
+            .order_by(CheckResult.ts.desc())
+            .limit(charts.TREND_POINTS)
+        )).all()
+        status = getattr(t.status, "value", t.status)
+        latest = recent[0] if recent else None
+        rows.append({
+            "status": status,
+            "latency_ms": latest.latency_ms if latest else None,
+            "detail": latest.detail if latest else None,
+            "ago": ago(t.last_checked_at, now),
+            "every": every(t.interval_seconds),
+            # Speed-test samples are left out of the trend, as on the charts:
+            # a deliberately saturated link is not the target getting slower.
+            "trend": charts.trend([r.latency_ms for r in reversed(recent) if not r.suppressed],
+                                  status),
+            "order": STATUS_ORDER.get(status, 2),
+        })
+
+    enabled = [t for t in targets if t.enabled]
+    statuses = [r["status"] for r in rows]
+    stats = {
+        "total": len(targets),
+        "up": statuses.count("up"),
+        "degraded": statuses.count("degraded"),
+        "down": statuses.count("down"),
+        "paused": len(targets) - len(enabled),
+        # What the engine does in a minute, at the intervals set: a load figure
+        # rather than a health one.
+        "per_minute": round(sum(60 / max(t.interval_seconds, 1) for t in enabled)),
+    }
     return templates.TemplateResponse(
         request,
         "targets.html",
@@ -237,6 +307,9 @@ async def list_targets(
             "user": user,
             "title": "Targets",
             "targets": targets,
+            "rows": rows,
+            "stats": stats,
+            "check_types": [k.value for k in CheckType if k is not CheckType.DOCKER],
             "open_counts": open_counts,
             # Each target's device, to link its name to the device's page.
             "device_of": await devices_for(session, targets),

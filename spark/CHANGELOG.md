@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — SPARK 2, the Targets page (2026-10-03)
+
+### Added
+
+- **Six tiles over the list**: Targets, Up, Degraded, Down, Paused, and
+  Checks / min (what the engine runs a minute at the intervals set).
+- **Narrow the list without leaving the page**: status chips with counts, a
+  search on name or address, and a check-type filter. Click a column heading
+  (Status, Name, Every, Latency) to sort by it. All of it happens in the
+  browser and survives the live refresh; with scripts off every row shows.
+- **Latency and a trend on each row**: the latency of the latest result, and
+  a small line of the last thirty, in the colour of the target's state now.
+  Speed-test samples are left out of the trend, as on the charts.
+- **How long ago** each target was checked ("12 s ago"), kept current while
+  the page is open; the exact time is in its tooltip.
+
+### Changed
+
+- **The page header** has a small "Monitoring" label over the title, and
+  **Add target** moved into the list's own header, clear of your name.
+- **Row actions are icons** (Check now, Edit, Pause or Resume, Delete), and
+  Check now, Pause and Delete no longer reload the page, so a filter stays
+  as you set it.
+- **Intervals read as people say them** ("15 s", "1 min"), check types as
+  badges, and a dependency as a line under the name.
+
 ## Unreleased — SPARK 2, the dashboard (2026-10-03)
 
 ### Changed

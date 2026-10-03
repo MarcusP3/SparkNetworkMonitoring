@@ -216,3 +216,126 @@ class TestDeviceLinks:
         assert target_host("fe80::1") == "fe80::1"
         assert target_host("nas:445") == "nas"
         assert target_host("http://[bad") == ""
+
+
+# --------------------------------------------------------------------------
+# SPARK 2: the tiles, the latest result, the trend, and the browser filters
+# --------------------------------------------------------------------------
+
+
+def tile(page: str, name: str) -> str:
+    match = re.search(r'<span class="stat-name">' + re.escape(name) +
+                      r'</span></span><span class="stat-value">([^<]*)</span>', page)
+    assert match, f"no tile {name!r}"
+    return match.group(1)
+
+
+class TestTiles:
+    def test_counts_by_state(self):
+        client = client_with([
+            Target(name="a", check_type=CheckType.PING, address="172.16.10.1", status=HealthStatus.UP),
+            Target(name="b", check_type=CheckType.PING, address="172.16.10.2", status=HealthStatus.UP,
+                   interval_seconds=30),
+            Target(name="c", check_type=CheckType.PING, address="172.16.10.3", status=HealthStatus.DOWN),
+            Target(name="d", check_type=CheckType.PING, address="172.16.10.4", status=HealthStatus.PAUSED,
+                   enabled=False),
+        ])
+        try:
+            page = client.get("/targets").text
+            assert [tile(page, n) for n in ("Targets", "Up", "Degraded", "Down", "Paused")] == \
+                ["4", "2", "0", "1", "1"]
+            # 15 s + 30 s + 15 s among the enabled three: 4 + 2 + 4 a minute.
+            assert tile(page, "Checks / min") == "10"
+            # The chips carry the same numbers.
+            assert '<button type="button" class="chip k-bad" data-show="down" aria-pressed="false">' \
+                   '<i aria-hidden="true"></i>Down <b>1</b></button>' in page
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+
+class TestLatestResult:
+    def test_latency_result_and_trend_come_from_the_history(self):
+        from datetime import timedelta
+        from spark.models import CheckResult
+        now = utcnow()
+        client = client_with([
+            Target(id=1, name="gw", check_type=CheckType.PING, address="172.16.10.1",
+                   status=HealthStatus.UP, last_checked_at=now),
+        ])
+
+        async def history():
+            async with D.session_scope() as s:
+                for k in range(40):
+                    s.add(CheckResult(target_id=1, ts=now - timedelta(seconds=15 * k),
+                                      status=HealthStatus.UP, latency_ms=1.0 + k, detail=f"reply {k}"))
+                # A speed-test sample: on the row as the latest, left off the trend.
+                s.add(CheckResult(target_id=1, ts=now + timedelta(seconds=1), status=HealthStatus.UP,
+                                  latency_ms=900.0, detail="busy", suppressed=True))
+        try:
+            asyncio.run(history())
+            row = row_for(client.get("/targets").text, "<strong>gw</strong>")
+            assert "900 ms" in row and "busy" in row, "the newest result is the row's"
+            assert '<svg class="trend is-ok"' in row
+            assert 'data-latency="900.0"' in row and 'data-every="15"' in row
+            assert "15 s" in row
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+    def test_never_checked_says_so_without_a_clock(self):
+        client = client_with([
+            Target(name="new", check_type=CheckType.TCP, address="172.16.10.1:22"),
+        ])
+        try:
+            row = row_for(client.get("/targets").text, "<strong>new</strong>")
+            assert '<span class="ctype">TCP</span>' in row
+            assert "—" in row and 'class="ago"' not in row
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+
+class TestFilters:
+    def test_the_toolbar_is_for_scripts_only(self):
+        """With scripts off the chips would do nothing, so they start hidden
+        and the page script shows them."""
+        client = client_with([
+            Target(name="a", check_type=CheckType.PING, address="172.16.10.1"),
+        ])
+        try:
+            page = client.get("/targets").text
+            assert '<div class="tbar" hidden data-js-only>' in page
+            assert 'id="target-q"' in page and 'id="target-kind"' in page
+            assert '<th data-sort="name" aria-sort="ascending">' in page
+            # The row actions stay on the page when they are used.
+            assert page.count(" data-stay>") == 3
+        finally:
+            client.__exit__(None, None, None)
+            asyncio.run(D.close_engine())
+
+
+class TestHelpers:
+    def test_every(self):
+        from spark.web.routes_targets import every
+        assert [every(n) for n in (15, 30, 60, 90, 120, 3600, 7200)] == \
+            ["15 s", "30 s", "1 min", "90 s", "2 min", "1 h", "2 h"]
+
+    def test_ago(self):
+        from datetime import timedelta
+        from spark.web.routes_targets import ago
+        now = utcnow()
+        assert ago(None, now) == "never checked"
+        assert ago(now - timedelta(seconds=12), now) == "12 s ago"
+        assert ago(now - timedelta(minutes=4, seconds=5), now) == "4 min ago"
+        assert ago(now - timedelta(hours=3), now) == "3 h ago"
+        assert ago(now - timedelta(days=2), now) == "2 d ago"
+        assert ago(now + timedelta(seconds=3), now) == "0 s ago", "a clock skew is not the future"
+
+    def test_trend(self):
+        from spark.charts import trend
+        assert 'class="trend is-warn"' in trend([5.0, 9.0, 7.0], "degraded")
+        flat = trend([None, None], "down")
+        assert 'class="trend is-bad"' in flat and 'd="M0,98H1000"' in flat, "down with nothing: a red floor"
+        assert "—" in trend([], "up") and "—" in trend([None], "unknown")
+        assert "M" in trend([None, 3.0, 4.0, None], "down"), "what it did answer is still drawn"
