@@ -151,6 +151,7 @@ spark/
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
     unifi.py            the UniFi Network Integration API: an API key over pinned HTTPS, GET only; the UniFi card
     servicemap.py       the network map: the tree, each device's status, the services list
+    diagram.py          the map's Diagram view: where each box goes, top-down; lines coloured by trouble below
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
     merge.py            merging a duplicate device into the real one; what moves, what is refused
     identity.py         SNMP own addresses and ARP tables: merge suggestions, MACs across routers
@@ -219,6 +220,7 @@ spark/
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in
     test_topology.py    the map from MAC tables and LLDP across network shapes; accept, dismiss, never overwrite
+    test_diagram.py     the Diagram layout: grouping, nothing overlapping, the path to trouble coloured
     test_preferences.py the time zone: set at setup and in Preferences, used on pages, charts, quiet hours
     test_idle_timeout.py  sign-in timeout: enforced, not extended by background requests, tab sent to sign-in
     test_vault.py       credential encryption, key derivation, the key file

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — the network map as a diagram (2026-10-04)
+
+### Added
+
+- **A Diagram view of the network map** (List / Diagram in the Network
+  panel's header). The same map drawn top-down: gateway, switches and access
+  points as boxes; a parent's servers with nothing below them in one
+  *Servers* group; end devices in a group under what they plug into.
+- **Lines take the colour of trouble below them**: amber or red all the way
+  down the path to a degraded or down device.
+- **Pan and zoom**: drag, Ctrl or ⌘ and scroll, or + / − / Fit. Click a
+  device to open it. Find and Problems only dim what does not match.
+- The view is remembered in the browser. On a phone the list always shows.
+- Laid out on the server and drawn as SVG, with no chart library: SPARK
+  still loads nothing from the internet.
+
 ## Unreleased — SPARK 2, the Settings pages (2026-10-03)
 
 ### Added

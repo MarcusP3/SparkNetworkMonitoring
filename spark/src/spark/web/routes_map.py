@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import limits, servicemap, topology
+from .. import diagram, limits, servicemap, topology
 from .. import subnets as subnet_service
 from ..discovery.ports import concern
 from ..discovery.runner import last_port_scan
@@ -60,6 +60,9 @@ async def network_map(
         "map.html",
         {"config": config, "user": user, "title": "Network map", "map": result,
          "problems": sum(1 for n in placed if n.problem), "tiles": tiles,
+         # The Diagram view: the same tree, laid out top-down here.
+         "diagram": diagram.layout(result.roots), "trouble": diagram.trouble,
+         "short": diagram.short, "box_chars": diagram.BOX_NAME_CHARS,
          "discovery": discovery, "suggested": suggested,
          "mode": await topology.get_mode(session),
          "accepted": _count(accepted), "wiped": _count(wiped)},

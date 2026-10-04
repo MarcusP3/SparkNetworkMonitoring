@@ -218,6 +218,15 @@ everything:
 Folds, the view and opened groups are remembered in that browser. Without
 JavaScript every branch and device simply shows.
 
+**List / Diagram.** The switch in the Network panel's header draws the same
+map top-down instead: gateway at the top, then switches and access points as
+boxes, servers with nothing below them in one *Servers* group, and end
+devices in a group under what they plug into. Lines turn amber or red along
+the path to anything degraded or down. Drag to pan, Ctrl or ⌘ and scroll to
+zoom (or the + / − / Fit buttons), click a device to open it. Find and
+Problems only dim what does not match. The choice is remembered in that
+browser; on a phone the list is always shown.
+
 The tiles over the map count what is placed, how much of it is network gear
 (gateways, switches, access points) and servers (servers and NAS), what has
 a problem, what is not placed yet, and how many places SNMP is suggesting.

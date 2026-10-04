@@ -60,6 +60,14 @@
           counted, and listed under <a href="/services">Services</a>.
         </p>
       </div>
+      {# List or Diagram. Scripts only (the drawing pans and zooms by script),
+         and wide screens only: on a phone the list is the better read. #}
+      <div class="head-actions">
+        <span class="seg view-switch js-only" role="group" aria-label="View">
+          <button type="button" data-view="list" aria-pressed="true">List</button>
+          <button type="button" data-view="diagram" aria-pressed="false">Diagram</button>
+        </span>
+      </div>
     </div>
 
   {# The toolbar sits outside #live: a live refresh swaps what is inside, and
@@ -218,6 +226,62 @@
       {% endfor %}
     </ul>
     <p class="muted small map-nothing" id="map-nothing" hidden>Nothing on the map matches.</p>
+
+    {# The Diagram view: the same map, drawn top-down by diagram.py. Shown in
+       place of the list when chosen (wide screens only: on a phone the list
+       is the better read), panned and zoomed by the script below. #}
+    {% set d = diagram %}
+    <div class="dia" id="map-diagram">
+      <svg class="dia-svg" viewBox="0 0 {{ d.width | round | int }} {{ d.height | round | int }}"
+           data-w="{{ d.width | round | int }}" data-h="{{ d.height | round | int }}"
+           width="100%" height="{{ d.height | round | int }}" role="img" aria-label="Network diagram">
+        <g class="dia-edges">
+          {% for e in d.edges %}<path d="{{ e.d }}" class="dia-edge{% if e.kind %} is-{{ e.kind }}{% endif %}"/>{% endfor %}
+        </g>
+        {% for it in d.items %}
+        {% if it.kind == 'node' %}
+        {% set n = it.node %}{% set t = trouble(n) %}
+        <a href="/devices/{{ n.device.id }}" class="dia-node{% if t %} is-{{ t }}{% endif %}" data-find="{{ n.find }}"{% if n.problem %} data-problem{% endif %}
+           transform="translate({{ it.x | round | int }} {{ it.y | round | int }})">
+          <title>{{ n.device.display_name }}{% if n.device.primary_ip %} — {{ n.device.primary_ip }}{% endif %} — {{ n.state.label }}</title>
+          <rect class="dia-box" width="{{ it.w }}" height="{{ it.h }}" rx="6"/>
+          <rect class="dia-bar is-{{ n.state.kind }}" x="0" y="8" width="3" height="{{ it.h - 16 }}" rx="1.5"/>
+          <rect class="dia-icon-box" x="12" y="13" width="28" height="28" rx="6"/>
+          <g class="dia-icon" transform="translate(17 18)">{{ role_icon(n.device.role) }}</g>
+          <text class="dia-name" x="50" y="24">{{ short(n.device.display_name, box_chars) }}</text>
+          <text class="dia-sub" x="50" y="41">{{ n.device.primary_ip or n.role }}</text>
+          <circle class="dia-dot is-{{ n.state.kind }}" cx="{{ it.w - 13 }}" cy="13" r="4.5"/>
+        </a>
+        {% else %}
+        <g class="dia-group{% if it.problem %} is-{{ it.problem }}{% endif %}" transform="translate({{ it.x | round | int }} {{ it.y | round | int }})">
+          <rect class="dia-gbox" width="{{ it.w }}" height="{{ it.h }}" rx="6"/>
+          <text class="dia-gtitle" x="10" y="19">{{ it.title }}</text>
+          {% for c in it.chips %}
+          {% set ct = trouble(c.node) %}
+          <a href="/devices/{{ c.node.device.id }}" class="dia-chip{% if ct %} is-{{ ct }}{% endif %}" data-find="{{ c.node.find }}"{% if c.node.problem %} data-problem{% endif %}
+             transform="translate({{ c.x }} {{ c.y }})">
+            <title>{{ c.node.device.display_name }}{% if c.node.device.primary_ip %} — {{ c.node.device.primary_ip }}{% endif %} — {{ c.node.state.label }}</title>
+            <rect width="{{ c.w }}" height="{{ c.h }}" rx="4"/>
+            <circle class="dia-dot is-{{ c.node.state.kind }}" cx="11" cy="12" r="3.5"/>
+            <text x="21" y="16">{{ c.label }}</text>
+          </a>
+          {% endfor %}
+          {% if it.more %}<text class="dia-more" x="10" y="{{ it.h - 9 }}">+{{ it.more }} more — all of them are in the List view</text>{% endif %}
+        </g>
+        {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="dia-legend" aria-hidden="true">
+        <span><i class="status-dot ok"></i>Up</span><span><i class="status-dot warn"></i>Degraded</span>
+        <span><i class="status-dot bad"></i>Down</span><span><i class="status-dot neutral"></i>Not watched</span>
+      </div>
+      <div class="dia-zoom">
+        <button type="button" data-zoom="in" aria-label="Zoom in">+</button>
+        <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
+        <button type="button" data-zoom="fit" aria-label="Fit the whole map">Fit</button>
+      </div>
+      <p class="dia-help muted small">Drag to pan; Ctrl or ⌘ and scroll to zoom. Click a device to open it.</p>
+    </div>
     {% else %}
     <div class="empty-state">
       <p class="muted">
@@ -294,6 +358,17 @@
       });
     }
 
+    // Find and Problems only on the drawing: what does not match is dimmed
+    // rather than removed, so the shape of the network stays put.
+    function diagramFilter() {
+      var on = filtering();
+      document.querySelectorAll('#map-diagram [data-find]').forEach(function (el) {
+        var ok = !on || matches(el);
+        el.classList.toggle('dim', !ok);
+        el.classList.toggle('hit', on && ok && words().length > 0);
+      });
+    }
+
     // The tiles over the panel, recounted from what the page now shows.
     function tiles(tree) {
       function n(sel) { return tree ? tree.querySelectorAll(sel).length : 0; }
@@ -317,6 +392,7 @@
     function apply() {
       var tree = document.querySelector('.tree');
       tiles(tree);
+      diagramFilter();
       document.querySelectorAll('[data-mode]').forEach(function (b) {
         b.setAttribute('aria-pressed', b.getAttribute('data-mode') === mode ? 'true' : 'false');
       });
@@ -397,6 +473,96 @@
     }, true);
     document.addEventListener('spark:live-updated', apply);
     apply();
+  })();
+
+  // The Diagram view: which view is showing (remembered in this browser),
+  // panning and zooming the drawing, and Find / Problems only on it. The
+  // drawing sits in #live and is replaced by every refresh, so the zoom is
+  // kept here and put back after each one.
+  (function () {
+    var VIEW = 'spark.map.view';
+    var card = document.querySelector('.map-card');
+    if (!card) return;
+    var view = 'list', box = null, drag = null;
+    try { view = localStorage.getItem(VIEW) || 'list'; } catch (e) { /* private window */ }
+
+    function svg() { return document.querySelector('#map-diagram .dia-svg'); }
+    function base(s) { return [0, 0, +s.getAttribute('data-w'), +s.getAttribute('data-h')]; }
+    function show() {
+      card.classList.toggle('view-diagram', view === 'diagram');
+      document.querySelectorAll('[data-view]').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-view') === view ? 'true' : 'false');
+      });
+      var s = svg();
+      if (s) s.setAttribute('viewBox', (box || base(s)).join(' '));
+    }
+    function zoom(factor, cx, cy) {
+      var s = svg(); if (!s) return;
+      var b = box || base(s), full = base(s);
+      var w = Math.min(full[2] * 1.5, Math.max(120, b[2] * factor));
+      var h = w * b[3] / b[2];
+      cx = cx === undefined ? b[0] + b[2] / 2 : cx;
+      cy = cy === undefined ? b[1] + b[3] / 2 : cy;
+      box = [cx - (cx - b[0]) * w / b[2], cy - (cy - b[1]) * h / b[3], w, h];
+      show();
+    }
+    // A point on the screen, in the drawing's own units.
+    function point(s, event) {
+      var r = s.getBoundingClientRect(), b = box || base(s);
+      var scale = Math.max(b[2] / r.width, b[3] / r.height);
+      var ox = (r.width - b[2] / scale) / 2, oy = (r.height - b[3] / scale) / 2;
+      return { x: b[0] + (event.clientX - r.left - ox) * scale,
+               y: b[1] + (event.clientY - r.top - oy) * scale, scale: scale };
+    }
+
+    document.addEventListener('click', function (event) {
+      var t = event.target.closest('[data-view]');
+      if (t) {
+        view = t.getAttribute('data-view');
+        try { localStorage.setItem(VIEW, view); } catch (e) { /* private window */ }
+        show();
+        return;
+      }
+      t = event.target.closest('[data-zoom]');
+      if (t) {
+        var how = t.getAttribute('data-zoom');
+        if (how === 'fit') { box = null; show(); } else zoom(how === 'in' ? 0.8 : 1.25);
+        return;
+      }
+      // A drag that ends on a device is a pan, not a click on it.
+      if (drag && drag.moved && event.target.closest('.dia-svg')) event.preventDefault();
+    }, true);
+    document.addEventListener('wheel', function (event) {
+      var s = event.target.closest && event.target.closest('.dia-svg');
+      if (!s || !(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      var p = point(s, event);
+      zoom(event.deltaY > 0 ? 1.15 : 0.87, p.x, p.y);
+    }, { passive: false });
+    document.addEventListener('pointerdown', function (event) {
+      var s = event.target.closest && event.target.closest('.dia-svg');
+      if (!s || event.button !== 0) return;
+      var p = point(s, event);
+      drag = { x: event.clientX, y: event.clientY, scale: p.scale, box: (box || base(s)).slice(), moved: false };
+    });
+    document.addEventListener('pointermove', function (event) {
+      if (!drag) return;
+      var dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      drag.moved = true;
+      box = [drag.box[0] - dx * drag.scale, drag.box[1] - dy * drag.scale, drag.box[2], drag.box[3]];
+      show();
+    });
+    document.addEventListener('pointerup', function () {
+      setTimeout(function () { drag = null; }, 0);
+    });
+    document.addEventListener('spark:live-updated', function () {
+      // A different-sized drawing (something was placed) starts from Fit.
+      var s = svg();
+      if (s && box && (+s.getAttribute('data-w') * 1.5 < box[2])) box = null;
+      show();
+    });
+    show();
   })();
 </script>
 {% endblock %}

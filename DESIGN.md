@@ -105,7 +105,7 @@ The Auvik signature. Only possible because you have managed switches.
 
 - **SNMP v2c/v3 collection** — interface table, bridge MAC-address table, LLDP/CDP neighbors, ARP table.
 - **Automatic parenting** — the bridge table says which switch port each MAC lives on, so hosts place themselves under the correct switch *and port* with no manual declaration. LLDP resolves switch↔switch and switch↔firewall uplinks.
-- **Graph map** — auto-laid-out topology diagram, colored by live health, over the same data as the Phase 1 tree.
+- **Graph map** — auto-laid-out topology diagram, colored by live health, over the same data as the Phase 1 tree. *Built (Oct 2026) as the map's Diagram view: laid out on the server (`diagram.py`), drawn as SVG, panned and zoomed by a small script.*
 - **Port faceplate view** — per-switch: what's plugged into each port, link speed, error counters, PoE draw.
 
 ### Phase 4 — Traffic
@@ -163,7 +163,7 @@ Switch config backup with diffs · syslog/trap receiver · PoE control and port 
 | SNMP *(Ph. 3)* | `pysnmp` | v3 support, pure Python |
 | Storage | SQLite in WAL mode | Handles this write volume easily; revisit only if proven necessary |
 | Frontend | Jinja templates, one hand-written stylesheet, small inline scripts | No build step, no npm, no separate SPA deploy, nothing from a CDN. Live updates over Server-Sent Events (`/events`). *(Planned as HTMX + Alpine + Tailwind over WebSocket; the plain version turned out to need none of them.)* |
-| Graph map *(Ph. 3)* | Cytoscape.js | Only heavyweight JS dependency, loaded on one page |
+| Graph map *(Ph. 3)* | Server-side layout (`diagram.py`) + SVG | *(Planned as Cytoscape.js; a home network's map is a tree, and a tidy-tree layout in Python plus a pan/zoom script needed no library.)* |
 | Packaging | Docker image + compose file | |
 
 **Deliberate rejections:** React/Next (build toolchain overhead for a single-user LAN tool), Postgres (nothing here needs it), Prometheus+Grafana as the backend (great stack, but then you've built a config generator, not an app), microservices (no).

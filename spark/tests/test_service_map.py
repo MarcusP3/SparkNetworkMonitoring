@@ -414,6 +414,33 @@ class TestPages:
         assert 'class="map-icon role-gateway"' in page and 'class="map-icon role-switch"' in page
         assert "querySelectorAll('[data-tile]')" in page
 
+    def test_the_diagram_view(self, site):
+        """The map drawn: a box per carrier, the server under the switch, the
+        same Find text on each, and the List / Diagram switch in the panel's
+        header, outside the live region so a refresh never resets it."""
+        page = " ".join(site.get("/map").text.split())
+        assert page.index('data-view="diagram"') < page.index('<div id="live">')
+        assert '<button type="button" data-view="list" aria-pressed="true">List</button>' in page
+        dia = page[page.index('<div class="dia" id="map-diagram">'):]
+        dia = dia[:dia.index('<div class="dia-legend"')]
+        assert re.search(r'<a href="/devices/1" class="dia-node" data-find="gateway [^"]*" transform="translate\(\d+ \d+\)">', dia)
+        assert re.search(r'<a href="/devices/2" class="dia-node" data-find="core-switch ', dia)
+        assert re.search(r'<a href="/devices/3" class="dia-node" data-find="nas [^"]*plex 32400"', dia), \
+            "a lone server is a box, and Find matches its ports here too"
+        assert dia.count('class="dia-edge"') == 2 and "laptop" not in dia, "not placed stays off the drawing"
+        assert "'spark.map.view'" in page and "querySelectorAll('#map-diagram [data-find]')" in page
+
+    def test_the_diagram_lights_the_path_to_trouble(self, site):
+        async def down():
+            async with D.session_scope() as s:
+                target = (await s.execute(select(Target).where(Target.device_id == 3))).scalar_one()
+                target.status = "down"
+        run(down())
+        page = " ".join(site.get("/map").text.split())
+        dia = page[page.index('<div class="dia" id="map-diagram">'):]
+        assert dia.count('class="dia-edge is-bad"') == 2, "gateway to switch, switch to the nas"
+        assert re.search(r'<a href="/devices/3" class="dia-node is-bad" data-find="nas [^"]*" data-problem', dia)
+
     def test_the_targets_filter_chips_leave_the_map_tiles_alone(self):
         """The Targets page's status chips were styled as a bare .chip, which
         is also the map's device tile: it turned the map's grid of tiles into
