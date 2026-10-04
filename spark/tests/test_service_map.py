@@ -428,6 +428,10 @@ class TestPages:
         assert re.search(r'<a href="/devices/3" class="dia-node" data-find="nas [^"]*plex 32400"', dia), \
             "a lone server is a box, and Find matches its ports here too"
         assert dia.count('class="dia-edge"') == 2 and "laptop" not in dia, "not placed stays off the drawing"
+        inner = re.findall(r"<svg [^>]*>", dia)[1:]
+        assert inner and all('width="18" height="18"' in tag for tag in inner), \
+            "an icon inside the drawing carries its own size: without it, a browser that " \
+            "does not size a nested <svg> from CSS draws it as big as the whole map"
         assert "'spark.map.view'" in page and "querySelectorAll('#map-diagram [data-find]')" in page
 
     def test_the_diagram_lights_the_path_to_trouble(self, site):

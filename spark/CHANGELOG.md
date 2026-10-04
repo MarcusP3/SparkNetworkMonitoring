@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Diagram icons the right size everywhere (2026-10-04)
+
+### Fixed
+
+- **Giant icons over the network Diagram** in some browsers. Each device
+  box's icon is an `<svg>` inside the drawing's `<svg>`, sized only by the
+  stylesheet. Chrome applies that; a browser that does not falls back to
+  the SVG default, the full width of the drawing, so each icon was drawn
+  hundreds of pixels wide from its box. The icons now carry
+  `width="18" height="18"` themselves, which every browser honours.
+
 ## Unreleased — Network overview line meets the ring (2026-10-04)
 
 ### Fixed

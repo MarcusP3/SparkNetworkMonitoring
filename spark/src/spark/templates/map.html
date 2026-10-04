@@ -1,6 +1,9 @@
 {% extends "base.html" %}
-{% macro role_icon(role) -%}
-<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{#- `size` gives the icon its own width and height: inside the Diagram's SVG
+    an <svg> without them is as big as the whole drawing in a browser that
+    does not size it from the stylesheet (Chrome does; not every browser). -#}
+{% macro role_icon(role, size=none) -%}
+<svg class="icon" viewBox="0 0 24 24"{% if size %} width="{{ size }}" height="{{ size }}"{% endif %} fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if role == 'gateway' -%}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
 {%- elif role == 'switch' -%}<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h.01"/>
 {%- elif role == 'access_point' -%}<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/>
@@ -247,7 +250,7 @@
           <rect class="dia-box" width="{{ it.w }}" height="{{ it.h }}" rx="6"/>
           <rect class="dia-bar is-{{ n.state.kind }}" x="0" y="8" width="3" height="{{ it.h - 16 }}" rx="1.5"/>
           <rect class="dia-icon-box" x="12" y="13" width="28" height="28" rx="6"/>
-          <g class="dia-icon" transform="translate(17 18)">{{ role_icon(n.device.role) }}</g>
+          <g class="dia-icon" transform="translate(17 18)">{{ role_icon(n.device.role, 18) }}</g>
           <text class="dia-name" x="50" y="24">{{ short(n.device.display_name, box_chars) }}</text>
           <text class="dia-sub" x="50" y="41">{{ n.device.primary_ip or n.role }}</text>
           <circle class="dia-dot is-{{ n.state.kind }}" cx="{{ it.w - 13 }}" cy="13" r="4.5"/>
