@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — SPARK 2, the smaller pages (2026-10-04)
+
+### Changed
+
+- **A device's page, the target form, Preferences, and the merge and wipe
+  previews** carry the same header as the main pages: a small label over a
+  big title (the trail back, such as *Devices /*, is the label where a page
+  has one), and no page icon.
+
 ## Unreleased — the network map as a diagram (2026-10-04)
 
 ### Added

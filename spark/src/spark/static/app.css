@@ -2565,3 +2565,16 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 .dia-zoom button[data-zoom="fit"] { font-size: 11.5px; }
 .dia-zoom button:hover { border-color: var(--accent); color: var(--accent); }
 .dia-help { position: absolute; left: 12px; bottom: 8px; margin: 0; pointer-events: none; }
+
+/* ---------- SPARK 2: the smaller pages ---------- */
+/* A device's page, the target form, Preferences, the merge and wipe
+   previews: the page tag over a big title, like the main pages. */
+.shell .page-tag + h1 { font-size: 46px; line-height: 1.05; margin: 0; overflow-wrap: anywhere; }
+.shell .page-tag ~ .page-sub { margin-top: 10px; font-size: 15px; }
+/* Where a page has a trail back (a device, a merge), the trail is its tag. */
+.shell .crumb.page-tag { margin: 4px 0 10px; font-size: 13px; }
+.shell .page-tag a { color: inherit; text-decoration: none; }
+.shell .page-tag a:hover { color: var(--accent); }
+@media (max-width: 860px) {
+  .shell .page-tag + h1 { font-size: 34px; }
+}
