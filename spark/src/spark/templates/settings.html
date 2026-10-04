@@ -1,26 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page">
+<div class="page page-settings">
   <div class="page-head">
-    <div class="page-title">
-      <span class="page-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4 14H3.8a2 2 0 1 1 0-4H4a1.6 1.6 0 0 0 1.1-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 4.6V4.4a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.6 1.6 0 0 0 20 10h.2a2 2 0 1 1 0 4H20a1.6 1.6 0 0 0-1.5 1Z"/></svg></span>
-      <div>
-        <h1>Settings</h1>
-        <p class="page-sub">What SPARK sweeps, and what it looks for once it gets there.</p>
-      </div>
+    <div>
+      <p class="page-tag">Configuration</p>
+      <h1>Settings</h1>
+      <p class="page-sub">What SPARK sweeps, and what it looks for once it gets there.</p>
     </div>
   </div>
 
+  {# How much is set up, on every Settings page. #}
+  <section class="stat-row">
+    <a class="stat s-svc" href="/settings"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/></svg></span><span class="stat-name">Subnets</span></span><span class="stat-value">{{ tiles.subnets }}</span></a>
+    <a class="stat s-svc" href="/settings/snmp"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18v-3M8 18v-6M12 18V9M16 18V6M20 18V4"/></svg></span><span class="stat-name">SNMP profiles</span></span><span class="stat-value">{{ tiles.profiles }}</span></a>
+    <a class="stat s-svc" href="/settings/snmp"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span class="stat-name">Polled devices</span></span><span class="stat-value">{{ tiles.polled }}</span></a>
+    <a class="stat s-svc" href="/settings/alerts"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span><span class="stat-name">Alert rules on</span></span><span class="stat-value">{{ tiles.rules_on }}<span class="stat-of"> of {{ tiles.rules }}</span></span></a>
+    <a class="stat s-svc" href="/settings/credentials"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg></span><span class="stat-name">Credentials</span></span><span class="stat-value">{{ tiles.credentials }}</span></a>
+    <a class="stat {{ 's-down is-bad' if tiles.backup == 'failed' else 's-svc' }}" href="/settings/backup"><span class="stat-head"><span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4zM4 7l2-4h12l2 4M10 11h4"/></svg></span><span class="stat-name">Last backup</span></span><span class="stat-value">{% if tiles.backup == 'failed' %}failed{% elif tiles.backup %}{{ tiles.backup | local('%H:%M') }}{% else %}—{% endif %}</span></a>
+  </section>
+
   {# The Settings pages, one per kind of thing. A column on a wide screen,
      a row of tabs that scrolls sideways on a narrow one. Each is a real URL,
-     so a form posts back to the page it was on and a page can be bookmarked. #}
+     so a form posts back to the page it was on and a page can be bookmarked.
+     The label and its hint stay side by side in the markup; the icon and the
+     line under them are placed by the grid. #}
+  {% set about = {
+    'subnets': 'What the sweep covers',
+    'ports': 'The ports the scan tries',
+    'snmp': 'Profiles and polled devices',
+    'alerts': 'Discord, rules, muted',
+    'credentials': 'TrueNAS, Proxmox, UniFi APIs',
+    'suppressions': 'Quiet one rule on one device',
+    'backup': 'Nightly copies and restore',
+  } %}
   <div class="settings-layout">
   <nav class="subnav" aria-label="Settings sections">
     {% for m in menu %}
       <a href="{{ m.url }}" class="{% if m.slug == section %}active{% endif %}"
          {% if m.slug == section %}aria-current="page"{% endif %}>
+        <span class="subnav-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          {%- if m.slug == 'subnets' %}<rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>
+          {%- elif m.slug == 'ports' %}<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+          {%- elif m.slug == 'snmp' %}<path d="M4 18v-3M8 18v-6M12 18V9M16 18V6M20 18V4"/>
+          {%- elif m.slug == 'alerts' %}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/>
+          {%- elif m.slug == 'credentials' %}<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/>
+          {%- elif m.slug == 'suppressions' %}<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>
+          {%- else %}<path d="M4 7h16v13H4zM4 7l2-4h12l2 4M10 11h4"/>{% endif -%}
+        </svg></span>
         <span>{{ m.label }}</span>
         <span class="subnav-hint{% if m.hint == 'no webhook' %} warn{% endif %}">{{ m.hint }}</span>
+        <small class="subnav-about">{{ about[m.slug] }}</small>
       </a>
     {% endfor %}
   </nav>

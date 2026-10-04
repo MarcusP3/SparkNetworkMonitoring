@@ -2460,3 +2460,47 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .page-services .service-search .search, .page-services .service-search .search input { width: 100%; }
   .svc-count { margin-left: 0; flex-basis: 100%; }
 }
+
+/* ---------- SPARK 2: Settings ---------- */
+.page-settings .page-head h1 { font-size: 46px; line-height: 1.05; margin: 0; }
+.page-settings .page-sub { margin-top: 10px; font-size: 15px; }
+.page-settings .stat-row { margin-bottom: 22px; }
+.page-settings .stat-of { font-size: .55em; font-weight: 600; color: #c3d0df; }
+.page-settings .stat.is-bad .stat-value { color: var(--c); font-size: 1.6rem; }
+.page-settings .settings-layout { grid-template-columns: 15.5rem minmax(0, 1fr); gap: 20px; }
+
+/* The menu: a framed panel; each entry an icon, its name and state, and a
+   line saying what is in it. */
+.page-settings .subnav {
+  top: 1rem; gap: 4px; padding: 10px;
+  border: 1px solid rgba(34, 211, 238, .22); border-radius: 6px; background: var(--panel);
+}
+.page-settings .subnav a {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-rows: auto auto;
+  column-gap: 12px; row-gap: 1px; align-items: center; padding: 10px 12px; white-space: normal;
+  border: 0; border-left: 3px solid transparent; border-radius: 4px; color: #e3ebf5;
+}
+.page-settings .subnav a:hover { background: rgba(34, 211, 238, .06); }
+.page-settings .subnav a.active {
+  background: linear-gradient(90deg, rgba(34, 211, 238, .22), rgba(34, 211, 238, .05)); border-left-color: var(--accent);
+  color: #fff;
+}
+.subnav-icon { grid-row: 1 / 3; color: #9fb2c8; display: grid; place-items: center; }
+.subnav-icon .icon { width: 18px; height: 18px; }
+.page-settings .subnav a.active .subnav-icon { color: var(--accent); }
+.page-settings .subnav a > span:nth-child(2) { font-weight: 600; }
+.subnav-about { grid-column: 2 / 4; font-size: 12px; font-weight: 400; color: var(--text-faint); line-height: 1.35; }
+
+@media (max-width: 62rem) {
+  .page-settings .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .page-settings .subnav { flex-direction: row; flex-wrap: wrap; padding: 6px; }
+  .page-settings .subnav a { grid-template-columns: 18px auto auto; column-gap: 8px; padding: 8px 10px; }
+  .page-settings .subnav-about { display: none; }
+  .page-settings .subnav-icon { grid-row: 1; }
+}
+@media (max-width: 860px) {
+  .page-settings .page-head h1 { font-size: 34px; }
+}
+@media (max-width: 640px) {
+  .page-settings .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

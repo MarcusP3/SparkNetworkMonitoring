@@ -8,6 +8,8 @@ rule and device alone, and start the rule afresh when saved or removed.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -156,7 +158,9 @@ def flat(html: str) -> str:
 class TestPage:
     def test_the_tab_and_prefill(self, site):
         page = flat(site.get("/settings/suppressions?device=1&rule=memory").text)
-        assert '<a href="/settings/suppressions" class="active" aria-current="page"> <span>Suppressions</span>' in page
+        # The menu entry is current; an icon sits between the link and its name.
+        assert re.search(r'<a href="/settings/suppressions" class="active" aria-current="page"> '
+                         r'<span class="subnav-icon">.*?</span> <span>Suppressions</span>', page)
         assert "Nothing suppressed." in page
         assert '<option value="1" selected>core-switch — 10.0.0.2</option>' in page
         assert '<option value="memory" selected>Memory (everywhere: 90%)</option>' in page

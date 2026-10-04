@@ -344,6 +344,27 @@ async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
             for slug, label, url in SECTIONS]
 
 
+async def _tiles(session: AsyncSession, subnet_count: int) -> dict:
+    """The six tiles over every Settings page: how much is set up, at a glance."""
+    rules = await snmp_alerts.load(session)
+    switches = [v for v in rules.values() if isinstance(v, bool)]
+    backup = await get_setting(session, "backup_state")
+    try:
+        backed_up = datetime.fromisoformat(backup["at"]) if backup.get("ok") else None
+    except (KeyError, TypeError, ValueError):
+        backed_up = None
+    return {
+        "subnets": subnet_count,
+        "profiles": len(await snmp_config.list_profiles(session)),
+        "polled": await session.scalar(select(func.count(SnmpDevice.id))) or 0,
+        "rules_on": sum(switches),
+        "rules": len(switches),
+        "credentials": await session.scalar(select(func.count(ApiCredential.id))) or 0,
+        # When the last nightly backup was made; "failed" or None otherwise.
+        "backup": backed_up or ("failed" if backup else None),
+    }
+
+
 def _backup_hint(state: dict) -> str:
     if not state:
         return "none yet"
@@ -403,6 +424,7 @@ async def _render(
             "title": f"Settings · {dict((s, l) for s, l, _ in SECTIONS)[section]}",
             "section": section,
             "menu": await _menu(session, len(rows)),
+            "tiles": await _tiles(session, len(rows)),
             "subnets": [
                 {
                     "subnet": subnet,

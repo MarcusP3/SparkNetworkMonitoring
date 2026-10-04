@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — SPARK 2, the Settings pages (2026-10-03)
+
+### Added
+
+- **Six tiles over every Settings page**: Subnets, SNMP profiles, Polled
+  devices, Alert rules on (as "9 of 13"), Credentials, and Last backup (the
+  time of the last nightly backup, or *failed* in red). Each opens its page.
+
+### Changed
+
+- **The Settings menu is a framed panel**: each entry has an icon, its name
+  and state as before, and a line saying what is on that page. On a narrow
+  screen it wraps as a row of tabs without the extra line.
+
 ## Unreleased — SPARK 2, the Services page (2026-10-03)
 
 ### Added

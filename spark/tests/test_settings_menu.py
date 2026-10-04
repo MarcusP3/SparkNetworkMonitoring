@@ -90,6 +90,39 @@ def test_the_menu_says_what_is_set_up(client):
     assert 'subnav-hint warn">no webhook<' in menu
 
 
+def test_the_tiles_on_every_settings_page(client):
+    """SPARK 2's tiles: how much is set up, the same on every Settings page."""
+    for path in ("/settings", "/settings/backup"):
+        page = " ".join(client.get(path).text.split())
+        tiles = dict(re.findall(r'<span class="stat-name">([^<]+)</span></span>'
+                                r'<span class="stat-value">(.*?)</span></a>', page))
+        assert tiles["Subnets"] == "1" and tiles["SNMP profiles"] == "0"
+        assert tiles["Polled devices"] == "0" and tiles["Credentials"] == "0"
+        assert tiles["Last backup"] == "—", "no nightly backup has run"
+        on, of = re.fullmatch(r'(\d+)<span class="stat-of"> of (\d+)</span>', tiles["Alert rules on"]).groups()
+        assert 0 < int(on) <= int(of), "the rules count what is switched on"
+    page = " ".join(client.get("/settings").text.split())
+    assert '<small class="subnav-about">Discord, rules, muted</small>' in page
+
+
+def test_the_last_backup_tile(client):
+    import asyncio
+    from spark import db as D
+    from spark.db import save_setting
+
+    async def record(state):  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            await save_setting(s, "backup_state", state)
+
+    asyncio.run(record({"at": "2026-10-03T04:00:00+00:00", "ok": True}))
+    page = " ".join(client.get("/settings").text.split())
+    assert re.search(r'Last backup</span></span><span class="stat-value">\d\d:\d\d</span>', page)
+    asyncio.run(record({"at": "2026-10-03T04:00:00+00:00", "ok": False, "error": "disk full"}))
+    page = " ".join(client.get("/settings").text.split())
+    assert 'class="stat s-down is-bad" href="/settings/backup"' in page
+    assert 'Last backup</span></span><span class="stat-value">failed</span>' in page
+
+
 def test_old_single_page_links_are_forwarded(client):
     page = client.get("/settings").text
     assert "'#snmp': '/settings/snmp'" in page and "'#alerts': '/settings/alerts'" in page

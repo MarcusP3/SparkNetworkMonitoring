@@ -8,6 +8,8 @@ person has trusted the certificate, and never to a different one.
 
 from __future__ import annotations
 
+import re
+
 import asyncio
 import datetime as dt
 import json
@@ -331,7 +333,9 @@ def flat(html: str) -> str:
 class TestPage:
     def test_the_tab(self, site):
         page = flat(site.get("/settings/credentials").text)
-        assert '<a href="/settings/credentials" class="active" aria-current="page"> <span>Credentials</span>' in page
+        # The menu entry is current; an icon sits between the link and its name.
+        assert re.search(r'<a href="/settings/credentials" class="active" aria-current="page"> '
+                         r'<span class="subnav-icon">.*?</span> <span>Credentials</span>', page)
         assert '<summary class="sub-title">Add a credential</summary>' in page
         assert 'name="api_key" maxlength="1024" required autocomplete="new-password"' in page
 
