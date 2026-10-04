@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — the map Diagram on touch screens (2026-10-04)
+
+### Fixed
+
+- **Dragging the Diagram on an iPad moved the whole page with it.** The
+  drawing asks the browser not to scroll under it (`touch-action: none`),
+  which iPad and iPhone Safari ignore. A touch moving the drawing now holds
+  back its own default, so only the map moves. A cancelled touch is also
+  let go of, so the map no longer stays "grabbed".
+
+### Added
+
+- **Pinch to zoom the Diagram** with two fingers, about the point between
+  them; lifting one finger carries on panning from there without a jump.
+  Safari's own page pinch is held back while on the drawing. A tap on a
+  device still opens it.
+
 ## Unreleased — stat tiles' lit edge reaches the corner (2026-10-04)
 
 ### Fixed

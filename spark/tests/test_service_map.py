@@ -433,6 +433,13 @@ class TestPages:
             "an icon inside the drawing carries its own size: without it, a browser that " \
             "does not size a nested <svg> from CSS draws it as big as the whole map"
         assert "'spark.map.view'" in page and "querySelectorAll('#map-diagram [data-find]')" in page
+        # Touch: the page must not scroll under a finger moving the drawing
+        # (iPad Safari ignores touch-action: none), two fingers pinch-zoom,
+        # and a cancelled pointer is let go of like a lifted one.
+        assert "document.addEventListener('touchmove'" in page and "{ passive: false }" in page
+        assert "document.addEventListener('gesturestart'" in page
+        assert "document.addEventListener('pointercancel', lift)" in page
+        assert "pinch, or Ctrl or ⌘ and scroll, to zoom" in page
 
     def test_the_diagram_lights_the_path_to_trouble(self, site):
         async def down():

@@ -283,7 +283,7 @@
         <button type="button" data-zoom="out" aria-label="Zoom out">−</button>
         <button type="button" data-zoom="fit" aria-label="Fit the whole map">Fit</button>
       </div>
-      <p class="dia-help muted small">Drag to pan; Ctrl or ⌘ and scroll to zoom. Click a device to open it.</p>
+      <p class="dia-help muted small">Drag to pan; pinch, or Ctrl or ⌘ and scroll, to zoom. Click or tap a device to open it.</p>
     </div>
     {% else %}
     <div class="empty-state">
@@ -474,6 +474,148 @@
       var d = event.target;
       if (d.matches && d.matches('details[data-strip]')) strips[d.getAttribute('data-strip')] = d.open;
     }, true);
+    document.addEventListener('spark:live-updated', apply);
+    apply();
+  })();
+
+  // The Diagram view: which view is showing (remembered in this browser),
+  // panning and zooming the drawing, and Find / Problems only on it. The
+  // drawing sits in #live and is replaced by every refresh, so the zoom is
+  // kept here and put back after each one.
+  (function () {
+    var VIEW = 'spark.map.view';
+    var card = document.querySelector('.map-card');
+    if (!card) return;
+    var view = 'list', box = null, drag = null;
+    try { view = localStorage.getItem(VIEW) || 'list'; } catch (e) { /* private window */ }
+
+    function svg() { return document.querySelector('#map-diagram .dia-svg'); }
+    function base(s) { return [0, 0, +s.getAttribute('data-w'), +s.getAttribute('data-h')]; }
+    function show() {
+      card.classList.toggle('view-diagram', view === 'diagram');
+      document.querySelectorAll('[data-view]').forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-view') === view ? 'true' : 'false');
+      });
+      var s = svg();
+      if (s) s.setAttribute('viewBox', (box || base(s)).join(' '));
+    }
+    function zoom(factor, cx, cy) {
+      var s = svg(); if (!s) return;
+      var b = box || base(s), full = base(s);
+      var w = Math.min(full[2] * 1.5, Math.max(120, b[2] * factor));
+      var h = w * b[3] / b[2];
+      cx = cx === undefined ? b[0] + b[2] / 2 : cx;
+      cy = cy === undefined ? b[1] + b[3] / 2 : cy;
+      box = [cx - (cx - b[0]) * w / b[2], cy - (cy - b[1]) * h / b[3], w, h];
+      show();
+    }
+    // A point on the screen, in the drawing's own units.
+    function point(s, event) {
+      var r = s.getBoundingClientRect(), b = box || base(s);
+      var scale = Math.max(b[2] / r.width, b[3] / r.height);
+      var ox = (r.width - b[2] / scale) / 2, oy = (r.height - b[3] / scale) / 2;
+      return { x: b[0] + (event.clientX - r.left - ox) * scale,
+               y: b[1] + (event.clientY - r.top - oy) * scale, scale: scale };
+    }
+
+    document.addEventListener('click', function (event) {
+      var t = event.target.closest('[data-view]');
+      if (t) {
+        view = t.getAttribute('data-view');
+        try { localStorage.setItem(VIEW, view); } catch (e) { /* private window */ }
+        show();
+        return;
+      }
+      t = event.target.closest('[data-zoom]');
+      if (t) {
+        var how = t.getAttribute('data-zoom');
+        if (how === 'fit') { box = null; show(); } else zoom(how === 'in' ? 0.8 : 1.25);
+        return;
+      }
+      // A drag that ends on a device is a pan, not a click on it.
+      if (drag && drag.moved && event.target.closest('.dia-svg')) event.preventDefault();
+    }, true);
+    document.addEventListener('wheel', function (event) {
+      var s = event.target.closest && event.target.closest('.dia-svg');
+      if (!s || !(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      var p = point(s, event);
+      zoom(event.deltaY > 0 ? 1.15 : 0.87, p.x, p.y);
+    }, { passive: false });
+    // Drag to pan with a mouse or one finger; pinch with two to zoom.
+    // Every pointer down on the drawing is followed by id, so a second finger
+    // turns a pan into a pinch and lifting one goes back to panning from
+    // where it is, without a jump.
+    var down = {}, pinch = null;
+    function ids() { return Object.keys(down); }
+    function startDrag(s, x, y, moved) {
+      drag = { x: x, y: y, scale: point(s, { clientX: x, clientY: y }).scale,
+               box: (box || base(s)).slice(), moved: moved };
+    }
+    // The viewBox of width `w` that keeps drawing point `at` under screen
+    // point (x, y) -- the same arithmetic as point(), solved for the box.
+    function boxAt(s, at, x, y, w) {
+      var r = s.getBoundingClientRect(), b = box || base(s);
+      var h = w * b[3] / b[2], scale = Math.max(w / r.width, h / r.height);
+      var ox = (r.width - w / scale) / 2, oy = (r.height - h / scale) / 2;
+      return [at.x - (x - r.left - ox) * scale, at.y - (y - r.top - oy) * scale, w, h];
+    }
+    function pair() {
+      var a = down[ids()[0]], b = down[ids()[1]];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+    }
+    document.addEventListener('pointerdown', function (event) {
+      var s = event.target.closest && event.target.closest('.dia-svg');
+      if (!s || event.button !== 0) return;
+      down[event.pointerId] = { x: event.clientX, y: event.clientY };
+      if (ids().length === 1) {
+        startDrag(s, event.clientX, event.clientY, false);
+      } else if (ids().length === 2) {
+        var m = pair(), at = point(s, { clientX: m.x, clientY: m.y });
+        pinch = { d: m.d, w: (box || base(s))[2], at: { x: at.x, y: at.y } };
+        if (drag) drag.moved = true;      // the lift is not a tap on a device
+      }
+    });
+    document.addEventListener('pointermove', function (event) {
+      if (!(event.pointerId in down)) return;
+      down[event.pointerId] = { x: event.clientX, y: event.clientY };
+      var s = svg(); if (!s) return;
+      if (pinch && ids().length >= 2) {
+        var m = pair(), full = base(s);
+        var w = Math.min(full[2] * 1.5, Math.max(120, pinch.w * pinch.d / m.d));
+        box = boxAt(s, pinch.at, m.x, m.y, w);
+        show();
+        return;
+      }
+      if (!drag) return;
+      var dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      drag.moved = true;
+      box = [drag.box[0] - dx * drag.scale, drag.box[1] - dy * drag.scale, drag.box[2], drag.box[3]];
+      show();
+    });
+    function lift(event) {
+      if (!(event.pointerId in down)) return;
+      delete down[event.pointerId];
+      var left = ids(), s = svg();
+      if (left.length < 2) pinch = null;
+      if (left.length === 1 && s) {
+        startDrag(s, down[left[0]].x, down[left[0]].y, true);
+      } else if (!left.length) {
+        setTimeout(function () { if (!ids().length) drag = null; }, 0);
+      }
+    }
+    document.addEventListener('pointerup', lift);
+    document.addEventListener('pointercancel', lift);
+    // iPad and iPhone Safari ignore touch-action: none, so the page scrolled
+    // (and pinch-zoomed) under a finger that was moving the drawing. Holding
+    // back the touch's own default while it is on the drawing stops that.
+    document.addEventListener('touchmove', function (event) {
+      if (ids().length && event.target.closest && event.target.closest('.dia-svg')) event.preventDefault();
+    }, { passive: false });
+    document.addEventListener('gesturestart', function (event) {
+      if (event.target.closest && event.target.closest('.dia-svg')) event.preventDefault();
+    });
     document.addEventListener('spark:live-updated', apply);
     apply();
   })();
