@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Network overview line meets the ring (2026-10-04)
+
+### Fixed
+
+- **The line from SPARK to the subnets met the hub below the ring's
+  centre** (by about 13px): it is drawn at the middle of the hub, and the
+  hub was the ring and its label. An empty row above the ring, as tall as
+  the label below it, now puts the ring's centre on the line, whatever
+  the number of subnets. Phones, which draw no line, are unchanged.
+
 ## Unreleased — SPARK 2, the smaller pages (2026-10-04)
 
 ### Changed

@@ -2063,7 +2063,11 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 /* Network overview: SPARK, a line to each subnet. The lines are borders on
    the list items, so the drawing grows with the list. */
 .net { position: relative; display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; margin-top: 6px; }
-.net-hub { display: grid; justify-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: .04em; position: relative; z-index: 1; }
+/* The ring, not the ring and its label, is what the line meets: an empty
+   row above the ring as tall as the label below it puts the ring's centre at
+   the hub's centre, which the grid puts level with the line (top: 50%). */
+.net-hub { display: grid; grid-template-rows: 1fr auto 1fr; justify-items: center; gap: 6px; color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: .04em; position: relative; z-index: 1; }
+.net-hub::before { content: ""; }
 .hub-ring {
   width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
   border: 1.5px solid rgba(34, 211, 238, .7); background: radial-gradient(circle, rgba(34, 211, 238, .16), rgba(34, 211, 238, 0) 70%);
@@ -2119,7 +2123,8 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 @media (max-width: 860px) {
   .net { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .net::before, .subnet::before, .subnet::after { display: none; }
-  .net-hub { justify-self: start; grid-auto-flow: column; align-items: center; }
+  .net-hub { justify-self: start; grid-auto-flow: column; grid-template-rows: none; align-items: center; }
+  .net-hub::before { display: none; }
   .hub-ring { width: 44px; height: 44px; }
   .hub-ring .brand-mark { width: 18px; height: 22px; }
   .subnets { padding-left: 0; }
