@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — stat tiles' lit edge reaches the corner (2026-10-04)
+
+### Fixed
+
+- **The coloured edge of the stat tiles was cut off at the bottom.** It was
+  a bar skewed at a fixed angle, right only for a tile 96px tall; the tiles
+  are taller, so the bar ran out past the slanted side near the bottom and
+  was clipped. It is now drawn with a gradient whose line lies on the
+  slanted side itself, so it runs corner to corner at any height, on
+  phones too.
+
 ## Unreleased — Diagram icons the right size everywhere (2026-10-04)
 
 ### Fixed

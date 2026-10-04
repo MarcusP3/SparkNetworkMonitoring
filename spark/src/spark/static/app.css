@@ -1981,9 +1981,19 @@ body:has(> .shell) { display: block; }
   clip-path: polygon(var(--skew) 0, 100% 0, calc(100% - var(--skew)) 100%, 0 100%);
   background: linear-gradient(180deg, rgba(148, 178, 214, .10), rgba(148, 178, 214, 0) 1px), linear-gradient(160deg, rgba(14, 24, 42, .92), rgba(6, 12, 24, .92));
 }
+/* The lit edge follows the slanted side at any height. A skewed bar has a
+   fixed angle, right only for one height: on a taller tile it ran past the
+   corner and the bottom was clipped off. Instead, a box twice the slant wide
+   and twice the tile tall, starting a tile's height above it, has a diagonal
+   that lies exactly on the slanted side -- and a gradient "to bottom right"
+   puts its 50% line on that diagonal (CSS Images, the "magic corners"), so
+   the line and its glow are drawn just inside the edge whatever the height.
+   The part above the tile is clipped away with the rest of it. */
 .stat::before {
-  content: ""; position: absolute; left: calc(var(--skew) / 2 - 1px); top: 0; bottom: 0; width: 3px;
-  background: var(--c); box-shadow: 0 0 10px var(--c); transform: skewX(-10.6deg);
+  content: ""; position: absolute; left: 0; top: -100%; height: 200%; width: calc(2 * var(--skew));
+  pointer-events: none;
+  background: linear-gradient(to bottom right, transparent 50%, var(--c) 50%, var(--c) calc(50% + 3px),
+    color-mix(in srgb, var(--c) 35%, transparent) calc(50% + 3px), transparent calc(50% + 12px));
 }
 .stat::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 18%, transparent), transparent 55%); opacity: .5; }
 .stat > * { position: relative; z-index: 1; }
@@ -2022,7 +2032,6 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .shell .nav { order: 3; }
   .topline .who { display: none; }
   .stat { --skew: 12px; min-height: 84px; padding: 14px 12px 12px calc(var(--skew) + 16px); }
-  .stat::before { transform: skewX(-8.1deg); }
 }
 
 /* ---------- SPARK 2: the dashboard ---------- */
