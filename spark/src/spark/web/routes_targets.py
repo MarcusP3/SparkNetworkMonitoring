@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import charts, limits
+from .. import charts, limits, proxmox_health
 from .. import events
 from .. import scheduler as scheduler_module
 from ..config import Config
@@ -313,6 +313,9 @@ async def list_targets(
             "open_counts": open_counts,
             # Each target's device, to link its name to the device's page.
             "device_of": await devices_for(session, targets),
+            # VMs and containers watched on a Proxmox card: alerted on too,
+            # so listed here with the rest of what SPARK watches.
+            "pve_guests": await proxmox_health.watched_guests(session),
         },
     )
 

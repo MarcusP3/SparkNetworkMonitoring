@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — watched Proxmox guests on Targets (2026-10-05)
+
+### Added
+
+- **Targets lists the watched Proxmox VMs and containers** in a *Proxmox
+  guests* card under the targets, noted as coming from the Proxmox
+  integration (API) rather than being targets: running, stopped or no
+  longer listed, the host and node, uptime, and a link to the host's
+  Proxmox card. **Watched** there unwatches it, as on the card. If the
+  host's API stopped answering, the row says when it was last read.
+
 ## Unreleased — device page controls off the picture (2026-10-05)
 
 ### Changed

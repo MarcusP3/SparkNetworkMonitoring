@@ -741,6 +741,34 @@ class TestPages:
         page = flat(site.get("/devices/1").text)
         assert '<td class="num">101</td> <td>web</td> <td colspan="5"><span class="pill bad">not listed</span>' in page
 
+    def test_watched_guests_are_on_the_targets_page(self, site, db, fake):
+        """Watched guests alert, so Targets lists them with the rest of what
+        SPARK watches -- marked as coming from the Proxmox integration, linked
+        to the host's card, and with Unwatch working from there too."""
+        ident = run(_trusted(db, fake.host))
+        assert 'id="pve-guests"' not in site.get("/targets").text, "nothing watched, no card"
+        watch(ident, 101)
+        watch(ident, 103)
+        watch(ident, 555)
+        page = flat(site.get("/targets").text)
+        assert '<section class="card pve-watch-card" id="pve-guests">' in page
+        assert "Watched through the <strong>Proxmox integration</strong> (API)" in page
+        assert (f'<a class="target-link" href="/devices/1#guests-{ident}" title="Open its host\'s '
+                'Proxmox card"><strong>web</strong></a> <small class="muted">101</small>') in page
+        assert '<span class="pill ok dot">running</span>' in page
+        assert '<span class="pill bad dot">stopped</span>' in page and ">sandbox<" in page
+        assert '<span class="pill bad dot">not listed</span>' in page, "watched, then gone"
+        assert page.count('name="back" value="/targets"') == 3
+        response = site.post(f"/settings/credentials/{ident}/watch",
+                             data={"vmid": "103", "on": "0", "back": "/targets"})
+        assert response.headers["location"] == "/targets#pve-guests"
+        page = flat(site.get("/targets").text)
+        assert ">sandbox<" not in page and ">web<" in page
+        fake.use("impostor")
+        check(db, ident)
+        page = flat(site.get("/targets").text)
+        assert "last read" in page, "the host stopped answering: the state shown is the last read"
+
     def test_bad_watch_posts_do_nothing(self, site, db, fake):
         ident = run(_trusted(db, fake.host))
         for vmid in ("", "x", "-1", "0"):

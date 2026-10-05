@@ -693,6 +693,9 @@ page does, which wakes a drive that has spun down.
   on the device page; not running on two checks in a row (so a restart is
   not news), or no longer listed; again once it runs. A stopped test VM
   nobody is watching is not a problem.
+  Watched guests are also listed on the **Targets** page, under
+  *Proxmox guests*, marked as coming from the Proxmox integration, with
+  their state and an Unwatch button.
 - **A pool is not ONLINE** — a ZFS pool not ONLINE, or an enabled storage
   that is not active (an NFS share gone); again when it is back.
 - **A pool is … full** — a storage at or over the line on two reads, until

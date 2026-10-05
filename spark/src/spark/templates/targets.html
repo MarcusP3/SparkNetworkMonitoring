@@ -173,6 +173,59 @@
     </div>
     {% endif %}
   </section>
+
+  {# Proxmox VMs and containers that alert when they stop. They are not
+     targets -- SPARK reads them from the Proxmox API, and they are watched
+     or not on the host's Proxmox card -- but they are watched all the same,
+     so they are listed here too. Unwatch works from here as well. #}
+  {% if pve_guests %}
+  <section class="card pve-watch-card" id="pve-guests">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg></span>
+      <div>
+        <h2>Proxmox guests</h2>
+        <p class="card-sub">
+          Watched through the <strong>Proxmox integration</strong> (API), not as targets: SPARK
+          reads each host's VMs and containers every 5 minutes and alerts when a watched one is
+          not running on two reads in a row. Watch more from the host's Proxmox card.
+        </p>
+      </div>
+    </div>
+    <div class="table-scroll">
+    <table class="table pve-table">
+      <thead><tr><th>Status</th><th>Name</th><th>Type</th><th>Host</th><th class="num">Up</th><th class="actions-head"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {% for g in pve_guests %}
+        <tr>
+          <td>
+            {% if not g.read %}<span class="pill neutral">not read yet</span>
+            {% elif g.running %}<span class="pill ok dot">running</span>
+            {% else %}<span class="pill bad dot">{{ g.status }}</span>{% endif %}
+          </td>
+          <td>
+            {% if g.device_id %}<a class="target-link" href="/devices/{{ g.device_id }}#guests-{{ g.cred_id }}" title="Open its host's Proxmox card"><strong>{{ g.name }}</strong></a>
+            {% else %}<strong>{{ g.name }}</strong>{% endif %}
+            <small class="muted">{{ g.vmid }}</small>
+          </td>
+          <td class="muted small">{{ g.kind }}</td>
+          <td class="small">{{ g.host }}{% if g.node %} <span class="muted">· {{ g.node }}</span>{% endif %}
+            {% if g.stale %}<small class="muted" title="The last read of this host failed; this is the state read before that">last read {{ g.read_at | local('%b %-d, %H:%M') if g.read_at else 'never' }}</small>{% endif %}</td>
+          <td class="num muted">{{ g.up }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/credentials/{{ g.cred_id }}/watch">
+              <input type="hidden" name="vmid" value="{{ g.vmid }}">
+              <input type="hidden" name="on" value="0">
+              <input type="hidden" name="back" value="/targets">
+              <button type="submit" class="btn-quiet is-watched is-toggle" title="Alerts when it stops. Press to stop watching.">Watched</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
   </div>
 </div>
 

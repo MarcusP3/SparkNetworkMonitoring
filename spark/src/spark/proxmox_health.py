@@ -244,6 +244,52 @@ async def _gone(session: AsyncSession, start: str, seen: set[str], nodes: list[s
 
 
 # --------------------------------------------------------------------------
+# The Targets page: every watched guest, from every Proxmox credential
+# --------------------------------------------------------------------------
+
+
+async def watched_guests(session: AsyncSession) -> list[dict]:
+    """Each watched VM or container, as last read, for the Targets page.
+
+    Watching is done on the host's Proxmox card; this only lists them, so
+    the Targets page shows everything SPARK alerts on in one place. `stale`
+    is set when the host's last check failed: the state shown is then the
+    last one read, not the current one."""
+    rows = (await session.execute(
+        select(ApiCredential).where(ApiCredential.kind == "proxmox").order_by(ApiCredential.name)
+    )).scalars()
+    out = []
+    for row in rows:
+        wanted = watched(row)
+        if not wanted:
+            continue
+        readings = row.readings or {}
+        guests = readings.get("guests")
+        listed = {g["vmid"]: g for g in guests or []}
+        labels = (row.options or {}).get("labels") or {}
+        device = await session.get(Device, row.device_id) if row.device_id else None
+        read_at = _date(readings.get("read_at"))
+        for vmid in wanted:
+            g = listed.get(vmid)
+            kind, name = (labels.get(str(vmid)) or [None, None])[:2]
+            if g:
+                kind, name = g.get("kind") or kind, g.get("name") or name
+            running = bool(g) and g.get("status") == RUNNING
+            out.append({
+                "cred_id": row.id, "vmid": vmid, "name": name or str(vmid),
+                "kind": kind or "guest", "node": g.get("node") if g else None,
+                "host": device.display_name if device else row.name,
+                "device_id": device.id if device else None,
+                "read": guests is not None,
+                "listed": g is not None, "running": running,
+                "status": (g.get("status") or "unknown") if g else "not listed",
+                "up": uptime(g.get("uptime")) if running else "—",
+                "stale": bool(row.last_error), "read_at": read_at,
+            })
+    return out
+
+
+# --------------------------------------------------------------------------
 # The device page
 # --------------------------------------------------------------------------
 

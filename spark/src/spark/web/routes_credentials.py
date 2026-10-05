@@ -82,12 +82,15 @@ async def edit_credential(
 
 
 def _back(back: str, cred_id: int, anchor: str = "api") -> str:
-    """Back to the device page Test was pressed on, or to this list."""
+    """Back to the device page Test was pressed on, to Targets for a guest
+    unwatched there, or to this list."""
     from .routes_auth import _safe_next
 
     target = _safe_next(back) if back else ""
     if target.startswith("/devices/"):
         return f"{target}#{anchor}-{cred_id}"
+    if target == "/targets":
+        return "/targets#pve-guests"
     return f"{PAGE}#cred-{cred_id}"
 
 
