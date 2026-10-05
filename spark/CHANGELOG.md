@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — device page controls off the picture (2026-10-05)
+
+### Changed
+
+- **Mute alerts and the 1h / 24h / 7d / 30d range left the header
+  picture**, where they covered it and 1h / 7d / 30d were hard to read on
+  a bright sky. Mute alerts is a small solid button under the device's
+  title line; the time range sits in the Health card's header, beside the
+  charts it changes (under the title on a phone).
+
 ## Unreleased — the map Diagram on touch screens (2026-10-04)
 
 ### Fixed

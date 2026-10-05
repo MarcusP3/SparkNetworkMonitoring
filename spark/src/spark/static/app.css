@@ -1644,8 +1644,17 @@ code.fingerprint.small { display: inline; }
 /* Cyan: a star is something you click, and this one is set. */
 .star.on { color: var(--accent); }
 .star.on svg { fill: currentColor; }
-.device-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
-@media (max-width: 40rem) { .device-actions { margin-left: 0; justify-content: flex-start; } }
+/* Mute alerts, under the device's title line: solid, so it reads over the
+   header picture. */
+.mute-form { margin: .6rem 0 0; }
+.mute-form .btn-quiet { background: rgba(6, 12, 24, .85); }
+/* The Health card carries the charts' time range in its header; on a phone
+   it goes under the title rather than squeezing it. */
+@media (max-width: 640px) {
+  .health-card .card-head { flex-wrap: wrap; }
+  .health-card .card-head > div:not(.head-actions) { flex: 1 1 0; min-width: 0; }
+  .health-card .card-head .head-actions { flex-basis: 100%; margin-left: calc(40px + .85rem); }
+}
 .alert-list a { color: var(--accent); }
 .rules-form { display: flex; flex-direction: column; gap: .6rem; }
 .rule-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }

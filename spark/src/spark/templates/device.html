@@ -328,26 +328,17 @@
           {% if suggested %} · <a href="#suggested">{{ suggested | length }} possible duplicate{{ 's' if suggested | length != 1 }}</a>{% endif %}
           {% if muted %} · <span class="pill neutral" title="On the mute list: checked and shown as usual, but no alerts are sent for it">alerts muted</span>{% endif %}
         </p>
+        {# Under the title rather than over the picture on the right, where it
+           was hard to read against the image. #}
+        <form method="post" action="/devices/{{ device.id }}/mute" class="mute-form">
+          <input type="hidden" name="muted" value="{{ '0' if muted else '1' }}">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="btn-quiet"
+                  title="{{ 'Send alerts for this device again' if muted else 'Stop every alert for this device: targets, SNMP, ports. It is still checked and shown.' }}">
+            {{ 'Unmute alerts' if muted else 'Mute alerts' }}
+          </button>
+        </form>
       </div>
-    </div>
-    <div class="head-actions device-actions">
-      <form method="post" action="/devices/{{ device.id }}/mute">
-        <input type="hidden" name="muted" value="{{ '0' if muted else '1' }}">
-        <input type="hidden" name="back" value="{{ back }}">
-        <button type="submit" class="btn-quiet"
-                title="{{ 'Send alerts for this device again' if muted else 'Stop every alert for this device: targets, SNMP, ports. It is still checked and shown.' }}">
-          {{ 'Unmute alerts' if muted else 'Mute alerts' }}
-        </button>
-      </form>
-      {% if snmp %}
-      <nav class="range-picker" aria-label="Time range">
-        {% for key, label in ranges %}
-          <a href="/devices/{{ device.id }}?range={{ key }}{% if port %}&amp;port={{ port }}{% endif %}"
-             class="{% if key == range %}active{% endif %}"
-             {% if key == range %}aria-current="true"{% endif %}>{{ key }}</a>
-        {% endfor %}
-      </nav>
-      {% endif %}
     </div>
   </div>
 
@@ -408,7 +399,7 @@
 
   {% if snmp %}
   {% set poll = snmp.poll %}
-  <section class="card">
+  <section class="card health-card">
     <div class="card-head">
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
       <div>
@@ -430,6 +421,17 @@
             · answered {{ '%.1f' | format(snmp.answered * 100) }}% of polls in this range
           {% endif %}
         </p>
+      </div>
+      {# The charts' time range: here, by the charts it changes, rather than
+         over the picture at the top of the page. #}
+      <div class="head-actions">
+        <nav class="range-picker" aria-label="Time range">
+          {% for key, label in ranges %}
+            <a href="/devices/{{ device.id }}?range={{ key }}{% if port %}&amp;port={{ port }}{% endif %}"
+               class="{% if key == range %}active{% endif %}"
+               {% if key == range %}aria-current="true"{% endif %}>{{ key }}</a>
+          {% endfor %}
+        </nav>
       </div>
     </div>
     {% if poll and poll.last_error %}
