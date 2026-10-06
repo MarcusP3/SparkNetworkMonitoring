@@ -1653,6 +1653,9 @@ code.fingerprint.small { display: inline; }
 .remove-confirm > summary::-webkit-details-marker { display: none; }
 .remove-confirm[open] > summary { margin-bottom: .75rem; }
 .remove-confirm .alert { margin: 0; }
+/* The merge page's "or it moved" alternative. */
+.move-note { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.move-note p { margin: 0 0 .25rem; }
 .remove-confirm ul { margin: .5rem 0 .9rem; padding-left: 1.2rem; }
 .btn-danger { background: var(--bad); color: #fff; border: 1px solid var(--bad); border-radius: var(--radius-sm);
   padding: .5rem .9rem; font-weight: 600; cursor: pointer; }

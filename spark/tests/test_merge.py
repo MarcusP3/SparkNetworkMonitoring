@@ -273,3 +273,63 @@ def test_migration_10_from_a_version_9_database():
 
     assert run(shape(True)) == run(shape(False))
     assert run(shape(False))[1] == D.CURRENT_VERSION >= 10
+
+
+# --------------------------------------------------------------------------
+# A move: the device changed address
+# --------------------------------------------------------------------------
+
+
+class TestMoved:
+    @pytest.mark.parametrize("address, want", [
+        ("172.16.20.1", "172.16.30.1"),
+        ("172.16.20.1:443", "172.16.30.1:443"),
+        ("https://172.16.20.1:9700/healthz", "https://172.16.30.1:9700/healthz"),
+        ("http://172.16.20.1/", "http://172.16.30.1/"),
+        ("https://user@172.16.20.1", "https://user@172.16.30.1"),
+        ("172.16.20.10", "172.16.20.10"),          # a different host: untouched
+        ("nas.lan:445", "nas.lan:445"),
+    ])
+    def test_readdress(self, address, want):
+        assert merge.readdress(address, "172.16.20.1", "172.16.30.1") == want
+
+    def test_the_device_kept_takes_the_new_address_and_lets_the_old_go(self, db):
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return await merge.apply(s, 2, 3, moved=True)
+        done = run(go())
+        assert done.can_move and (done.old_ip, done.new_ip) == ("172.16.20.1", "172.16.30.1")
+        kept = run(_get(Device, 2))
+        assert kept.primary_ip == "172.16.30.1" and kept.friendly_name == "iot gw"
+        assert run(_get(Device, 3)) is None
+        assert run(_all(DeviceAddress)) == [], "the old address is let go, not kept as an extra"
+        assert sorted(t.address for t in run(_all(Target))) == ["172.16.30.1", "172.16.30.1:443"]
+        assert len(run(_all(Incident))) == 1, "history stays with the device"
+
+    def test_no_move_without_a_new_address(self, db):
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                (await s.get(Device, 3)).primary_ip = None
+            async with D.session_scope() as s:
+                await merge.apply(s, 2, 3, moved=True)
+        with pytest.raises(merge.MergeError, match="no new address"):
+            run(go())
+
+    def test_the_page_offers_it(self, site):
+        page = " ".join(site.get("/devices/2/merge?other=3").text.split())
+        assert ('<input type="hidden" name="moved" value="1"> <button type="submit" class="btn-quiet" '
+                'title="172.16.20.1 moved from 172.16.20.1 to 172.16.30.1">Moved</button>') in page
+        assert page.index(">Merge</button>") < page.index(">Moved</button>") < page.index(">Cancel</a>")
+        assert "<code>172.16.20.1</code> is let go, not kept as an extra address" in page
+        assert ("2 targets checking <code>172.16.20.1</code> (vlan20 gw ping, vlan20 https) "
+                "are pointed at <code>172.16.30.1</code>") in page
+        response = site.post("/devices/2/merge", data={"other_id": "3", "moved": "1"})
+        assert response.headers["location"] == "/devices/2"
+        assert run(_get(Device, 2)).primary_ip == "172.16.30.1" and run(_all(DeviceAddress)) == []
+
+    def test_no_move_offered_without_two_addresses(self, site):
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                (await s.get(Device, 3)).primary_ip = None
+        run(go())
+        assert 'name="moved"' not in site.get("/devices/2/merge?other=3").text

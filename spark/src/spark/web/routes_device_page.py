@@ -544,19 +544,23 @@ async def merge_preview(
 async def merge_devices(
     device_id: ItemId,
     other_id: str = Form("", max_length=limits.SHORT),
+    moved: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
-    """Fold another device into this one. See merge.py for what moves."""
+    """Fold another device into this one. See merge.py for what moves.
+    `moved=1`: this device moved to the other's address."""
     other = limits.as_id(other_id)
     if other is None:
         return redirect(f"/devices/{device_id}")
     try:
-        done = await merge.apply(session, device_id, other)
+        done = await merge.apply(session, device_id, other, moved=moved == "1")
     except merge.MergeError:
         # The preview said why; a stale form resubmitted changes nothing.
         return redirect(f"/devices/{device_id}")
     await session.commit()
+    if moved == "1":
+        return redirect(f"/devices/{device_id}")
     return redirect(f"/devices/{device_id}?merged={len(done.addresses)}#addresses")
 
 

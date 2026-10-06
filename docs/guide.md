@@ -131,6 +131,13 @@ infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be
 connected to itself or to anything below it.
 
+**A device that moved** (a new DHCP lease, a changed static IP) shows up as
+a new device at its new address, often with a merge suggestion. On the
+merge page, **Moved** keeps the original device -- name, history,
+targets, SNMP -- at the new address and lets the old address go, and
+points its targets at the new one; **Merge** would instead keep the old
+address as an extra one.
+
 **Removing a device** is the last card on its page: **Remove** and then the
 confirm. It takes everything SPARK keeps only for that device (its targets
 and their history, SNMP polling and charts, ports, extra addresses).

@@ -53,11 +53,36 @@
       To undo it later, remove the address from {{ k.display_name }}'s page; the next sweep
       finds it again as a device of its own (without the moved targets).
     </p>
+    {% if plan.can_move %}
+    <div class="move-note">
+      <p><strong>Or, if {{ k.display_name }} moved</strong> from <code>{{ plan.old_ip }}</code>
+        to <code>{{ plan.new_ip }}</code>, press <strong>Moved</strong> instead:</p>
+      <ul class="merge-plan">
+        <li>{{ k.display_name }} — its name, history, targets and SNMP — is kept at
+          <code>{{ plan.new_ip }}</code>, and {{ o.display_name }} is removed.</li>
+        <li><code>{{ plan.old_ip }}</code> is let go, not kept as an extra address: whatever
+          turns up there next is a device of its own.</li>
+        {% if plan.retarget %}
+        <li>{{ plan.retarget | length }} target{{ 's' if plan.retarget | length != 1 }} checking
+          <code>{{ plan.old_ip }}</code> ({{ plan.retarget | map(attribute='name') | join(', ') }})
+          {{ 'are' if plan.retarget | length != 1 else 'is' }} pointed at <code>{{ plan.new_ip }}</code>.</li>
+        {% endif %}
+        <li>Its services, below-device connections, MAC and name fill in as for a merge.</li>
+      </ul>
+    </div>
+    {% endif %}
     <div class="form-actions">
       <form method="post" action="/devices/{{ k.id }}/merge">
         <input type="hidden" name="other_id" value="{{ o.id }}">
         <button type="submit" class="btn-primary">Merge</button>
       </form>
+      {% if plan.can_move %}
+      <form method="post" action="/devices/{{ k.id }}/merge">
+        <input type="hidden" name="other_id" value="{{ o.id }}">
+        <input type="hidden" name="moved" value="1">
+        <button type="submit" class="btn-quiet" title="{{ k.display_name }} moved from {{ plan.old_ip }} to {{ plan.new_ip }}">Moved</button>
+      </form>
+      {% endif %}
       <a href="/devices/{{ k.id }}" class="btn-quiet">Cancel</a>
       {% if reason %}
       <form method="post" action="/devices/{{ k.id }}/merge/dismiss">

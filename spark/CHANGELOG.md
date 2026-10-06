@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — "Moved" on the merge page (2026-10-06)
+
+### Added
+
+- **Moved**, beside Merge, for a device that changed address rather than
+  one seen twice: the device kept takes the other's address as its own
+  and keeps its name, history, targets and SNMP; its old address is let
+  go instead of becoming an extra address, so whatever turns up there
+  next is a device of its own; targets that checked the old address
+  (a bare address, host:port or a URL) are pointed at the new one. The
+  merge page says all of this before anything changes. Offered when both
+  devices have an address and they differ.
+
 ## Unreleased — remove a device (2026-10-06)
 
 ### Added
