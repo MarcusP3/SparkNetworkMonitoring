@@ -455,30 +455,34 @@
             {% else %}—{% endif %}
           </td>
           <td>
-            {% if row.snmp %}
-              <a href="/devices/{{ device.id }}" class="pill {{ row.snmp.kind }}{% if row.snmp.kind != 'neutral' %} dot{% endif %}"
-                 title="SNMP polling — open this device's charts">{{ row.snmp.label }}</a>
-            {% elif row.snmp_found %}
-              {% set f = row.snmp_found %}
-              <form method="post" action="/devices/{{ device.id }}/snmp" class="snmp-add">
-                <input type="hidden" name="profile_id" value="{{ f.profile_id }}">
-                <input type="hidden" name="back" value="{{ here }}">
-                <button type="submit" class="btn-quiet"
-                        title="Answered Find SNMP{% if f.sys_name %} as {{ f.sys_name }}{% endif %} with profile {{ f.profile }}. Add it to the SNMP list to poll it.">Add</button>
-                <span class="muted small">answers · {{ f.profile }}</span>
-              </form>
-            {% elif row.snmp_refused %}
-              <span class="muted small"
-                    title="Answered SNMP but refused every profile's credentials ({{ row.snmp_refused.profiles | join(', ') }}). Add a profile with the right SNMPv3 user in Settings → SNMP.">refused</span>
-            {% elif not row.apis %}
-              <span class="muted small">—</span>
-            {% endif %}
-            {# API credentials beside the SNMP state: both are how SPARK reads
-               the device, rather than whether it answers. #}
-            {% for a in row.apis %}
-              <a class="pill neutral api-pill" href="/devices/{{ device.id }}#api-{{ a.id }}"
-                 title="{{ a.label }} API — open its card">{{ a.label }}</a>
-            {% endfor %}
+            {# One stack, so a polling state and an API pill sit one under the
+               other, left-aligned, with room between them. #}
+            <div class="read-by">
+              {% if row.snmp %}
+                <a href="/devices/{{ device.id }}" class="pill {{ row.snmp.kind }}{% if row.snmp.kind != 'neutral' %} dot{% endif %}"
+                   title="SNMP polling — open this device's charts">{{ row.snmp.label }}</a>
+              {% elif row.snmp_found %}
+                {% set f = row.snmp_found %}
+                <form method="post" action="/devices/{{ device.id }}/snmp" class="snmp-add">
+                  <input type="hidden" name="profile_id" value="{{ f.profile_id }}">
+                  <input type="hidden" name="back" value="{{ here }}">
+                  <button type="submit" class="btn-quiet"
+                          title="Answered Find SNMP{% if f.sys_name %} as {{ f.sys_name }}{% endif %} with profile {{ f.profile }}. Add it to the SNMP list to poll it.">Add</button>
+                  <span class="muted small">answers · {{ f.profile }}</span>
+                </form>
+              {% elif row.snmp_refused %}
+                <span class="muted small"
+                      title="Answered SNMP but refused every profile's credentials ({{ row.snmp_refused.profiles | join(', ') }}). Add a profile with the right SNMPv3 user in Settings → SNMP.">refused</span>
+              {% elif not row.apis %}
+                <span class="muted small">—</span>
+              {% endif %}
+              {# API credentials beside the SNMP state: both are how SPARK reads
+                 the device, rather than whether it answers. #}
+              {% for a in row.apis %}
+                <a class="pill neutral api-pill" href="/devices/{{ device.id }}#api-{{ a.id }}"
+                   title="{{ a.label }} API — open its card">{{ a.label }}</a>
+              {% endfor %}
+            </div>
           </td>
           <td class="services">
             {% if row.services %}

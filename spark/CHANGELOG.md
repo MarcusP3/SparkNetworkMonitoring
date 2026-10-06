@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — the Devices SNMP column, tidied (2026-10-07)
+
+### Fixed
+
+- **A device's SNMP state and its API pill (TrueNAS, Proxmox, UniFi) sat
+  crooked and touching** when both were in the SNMP column: the API pill
+  wrapped under the state with a left margin meant for sitting beside it.
+  They now stack, left-aligned, with a gap between them.
+
 ## Unreleased — the Internet card (2026-10-06)
 
 ### Added

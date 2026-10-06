@@ -2327,7 +2327,9 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 /* Watched: a green pill with a lit dot, the same box as its neighbours. */
 .page-devices .btn-quiet.is-watched { display: inline-flex; align-items: center; gap: 7px; }
 .page-devices .btn-quiet.is-watched::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
-.page-devices .api-pill { margin-left: 4px; }
+/* The SNMP column: the polling state and any API pills, stacked. */
+.read-by { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.read-by .snmp-add { margin: 0; }
 
 @media (max-width: 62rem) {
   .dev-grid.has-dupes { grid-template-columns: minmax(0, 1fr); }
