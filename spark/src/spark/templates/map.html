@@ -7,6 +7,7 @@
 {%- if role == 'gateway' -%}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
 {%- elif role == 'switch' -%}<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h.01M11 12h.01M15 12h.01"/>
 {%- elif role == 'access_point' -%}<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01"/>
+{%- elif role == 'hypervisor' -%}<rect x="3" y="14" width="18" height="7" rx="2"/><rect x="4.5" y="3" width="6.5" height="6.5" rx="1.2"/><rect x="13" y="3" width="6.5" height="6.5" rx="1.2"/><path d="M7.75 9.5V14M16.25 9.5V14M7 17.5h.01"/>
 {%- elif role == 'host' -%}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>
 {%- elif role == 'nas' -%}<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M8 6h.01M8 12h.01M8 18h.01"/>
 {%- elif role == 'ups' -%}<rect x="3" y="7" width="16" height="10" rx="2"/><path d="M22 11v2M12 9l-2 3.5h3L11 15"/>
@@ -378,7 +379,7 @@
       var counts = {
         placed: n('.map-node, .chip'),
         gear: n('.role-gateway, .role-switch, .role-access_point'),
-        servers: n('.role-host, .role-nas'),
+        servers: n('.role-host, .role-nas, .role-hypervisor'),
         problems: n('.map-node[data-problem], .chip[data-problem]'),
         unplaced: document.querySelectorAll('details.unplaced .chip').length,
         hints: document.querySelectorAll('#suggested .suggest-list > li').length

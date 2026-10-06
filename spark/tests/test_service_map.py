@@ -402,6 +402,27 @@ class TestPages:
         assert '<span class="muted small">NAS</span>' in tree and '<span class="muted small">UPS</span>' in tree
         assert tree.index('data-branch="3"') < tree.index('data-branch="6"'), "NAS before UPS"
 
+    def test_hypervisor(self, site):
+        """A hypervisor role: offered between Access point and Server, saved,
+        a row with its own icon on the map, and counted with the servers."""
+        page = " ".join(site.get("/devices/3").text.split())
+        assert re.search(r'<option value="access_point" ?>Access point</option> '
+                         r'<option value="hypervisor" ?>Hypervisor</option> '
+                         r'<option value="host" ?(selected)?>Server</option>', page)
+        response = site.post("/devices/3/place", data={"role": "hypervisor", "parent_id": "2",
+                                                       "back": "/devices/3"})
+        assert response.status_code == 303 and _device(3).role == DeviceRole.HYPERVISOR
+        site.post("/devices/4/place", data={"role": "client", "parent_id": "3"})
+        page = " ".join(site.get("/map").text.split())
+        tree = page[page.index('<ul class="tree">'):]
+        assert re.search(r'<li data-branch="3"> <div class="map-node" data-find="nas [^"]* hypervisor', tree)
+        assert '<span class="map-icon role-hypervisor"><svg class="icon"' in tree
+        assert '<span class="muted small">Hypervisor</span>' in tree
+        assert re.search(r'data-branch="3".*<a href="/devices/4" class="chip"', tree), "its VM under it"
+        tiles = dict(re.findall(r'<span class="stat-value" data-tile="(\w+)">(\d+)</span>', page))
+        assert tiles["servers"] == "1", "a hypervisor counts with the servers"
+        assert "'.role-host, .role-nas, .role-hypervisor'" in page
+
     def test_the_tiles(self, site):
         """SPARK 2's tiles. Outside the live region, beside the toolbar, so the
         page script recounts them from the tree: the role classes it counts

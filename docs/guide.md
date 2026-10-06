@@ -124,8 +124,8 @@ flagged, and **Most common ports** lists the busiest ports, each a link to
 every device running it. **Scan ports** here returns to this page.
 
 **Placing a device** is done on its own page, in the **On the network map**
-card: a **Role** (gateway, switch, access point, server, NAS, UPS, client,
-camera) and
+card: a **Role** (gateway, switch, access point, hypervisor, server, NAS,
+UPS, client, camera) and
 **Connected to** (the device it is plugged into). Set it for your handful of
 infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be

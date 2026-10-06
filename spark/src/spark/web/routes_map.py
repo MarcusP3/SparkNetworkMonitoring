@@ -23,7 +23,7 @@ router = APIRouter()
 
 # What the map's tiles count as network gear and as servers, by role.
 GEAR = {"gateway", "switch", "access_point"}
-SERVERS = {"host", "nas"}
+SERVERS = {"host", "nas", "hypervisor"}
 
 
 @router.get("/map")

@@ -46,8 +46,9 @@ MARGIN = 24
 NAME_CHARS = 17      # a tile's name, cut with an ellipsis past this
 BOX_NAME_CHARS = 18
 
-# Drawn as a box even with nothing below it: the shape of the network.
-CARRIERS = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT}
+# Drawn as a box even with nothing below it: the shape of the network. A
+# hypervisor carries its VMs and containers, so it is one too.
+CARRIERS = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HYPERVISOR}
 
 
 def short(text: str, limit: int) -> str:

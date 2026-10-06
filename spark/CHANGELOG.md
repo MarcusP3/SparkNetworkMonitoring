@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — a Hypervisor role (2026-10-06)
+
+### Added
+
+- **Hypervisor** as a device role (Proxmox, ESXi, Hyper-V and the like), on
+  a device page's *On the network map* card between Access point and
+  Server. A hypervisor is a row on the map with its own icon, and its VMs
+  and containers hang off it like devices off a switch; in the Diagram it
+  is always its own box, never folded into the Servers group. It counts
+  with the servers in the map's tiles, and devices can be found behind it
+  on a switch port as behind a server. No migration: roles are stored as
+  text.
+
 ## Unreleased — watched Proxmox guests on Targets (2026-10-05)
 
 ### Added

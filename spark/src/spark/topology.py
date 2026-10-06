@@ -70,9 +70,10 @@ DISMISSED = "map_dismissed"
 MAX_DISMISSED = 1000
 
 # Devices that other devices can be behind on a switch port.
-# A NAS counts: its apps and VMs can sit behind it on one switch port.
+# A NAS counts: its apps and VMs can sit behind it on one switch port, as a
+# hypervisor's guests do behind it.
 INFRA_ROLES = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HOST,
-               DeviceRole.NAS}
+               DeviceRole.NAS, DeviceRole.HYPERVISOR}
 
 
 # --------------------------------------------------------------------------

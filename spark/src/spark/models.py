@@ -156,6 +156,8 @@ class DeviceRole(enum.StrEnum):
     NAS = "nas"
     UPS = "ups"
     CAMERA = "camera"
+    # Proxmox, ESXi, Hyper-V...: a host whose VMs and containers hang off it.
+    HYPERVISOR = "hypervisor"
 
 
 # How each role reads on a page, in the order the service map sorts siblings:
@@ -164,6 +166,7 @@ ROLE_LABELS: dict[DeviceRole, str] = {
     DeviceRole.GATEWAY: "Gateway / router",
     DeviceRole.SWITCH: "Switch",
     DeviceRole.ACCESS_POINT: "Access point",
+    DeviceRole.HYPERVISOR: "Hypervisor",
     DeviceRole.HOST: "Server",
     DeviceRole.NAS: "NAS",
     DeviceRole.UPS: "UPS",

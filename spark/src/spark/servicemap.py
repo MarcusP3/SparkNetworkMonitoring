@@ -37,7 +37,7 @@ _SEVERITY = [HealthStatus.DOWN, HealthStatus.DEGRADED, HealthStatus.UNKNOWN,
 # Rows on the map; every other role is a tile under its parent. A NAS and a
 # UPS are infrastructure; a camera is an end device like a phone.
 INFRA_ROLES = {DeviceRole.GATEWAY, DeviceRole.SWITCH, DeviceRole.ACCESS_POINT, DeviceRole.HOST,
-               DeviceRole.NAS, DeviceRole.UPS}
+               DeviceRole.NAS, DeviceRole.UPS, DeviceRole.HYPERVISOR}
 PROBLEM = {"bad", "warn"}
 
 # Status colours only for real statuses (brand spec): up, degraded, down.

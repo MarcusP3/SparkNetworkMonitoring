@@ -56,6 +56,14 @@ class TestShape:
         named = boxes(diagram.layout([switch]))
         assert "nas" in named and not any(k.startswith("Servers") for k in named)
 
+    def test_a_hypervisor_is_a_box_even_with_nothing_below_it(self):
+        """It carries its VMs and containers, like a switch its ports: never
+        folded into the Servers group, placed guests or not."""
+        bare = node("pve", DeviceRole.HYPERVISOR)
+        named = boxes(diagram.layout([node("sw", DeviceRole.SWITCH, children=[
+            bare, node("a", DeviceRole.HOST), node("b", DeviceRole.HOST)])]))
+        assert "pve" in named and "Servers · 2" in named
+
     def test_a_server_with_something_below_it_is_a_box(self):
         vm = node("vm", DeviceRole.CLIENT)
         host = node("hv", DeviceRole.HOST, children=[vm])
