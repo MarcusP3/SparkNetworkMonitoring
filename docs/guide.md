@@ -5,6 +5,7 @@ How each part of SPARK works, page by page. Deploying, upgrading and backing up 
 ## Contents
 
 - [Monitoring](#monitoring)
+- [Internet](#internet)
 - [Network map and Services](#network-map-and-services)
 - [Preferences](#preferences)
 - [Alerts](#alerts)
@@ -102,6 +103,37 @@ Point each host at the switch it sits behind, and the switch at the gateway.
 When the switch fails, the hosts' incidents are still recorded — you want the
 history — but flagged as symptoms, so alerting can send one message instead of
 thirty.
+
+---
+
+## Internet
+
+The Dashboard's **Internet** card checks your connection every minute with a
+few small checks rather than one ping, so it can say *what* is wrong:
+
+- **Reachability** — pings to three public resolvers from different
+  providers: Cloudflare `1.1.1.1`, Google `8.8.8.8` and Quad9 `9.9.9.9`.
+- **Quality** — latency, jitter and packet loss, from those that answered.
+- **DNS** — `example.com` looked up through your own resolver and through
+  `1.1.1.1`, so a dead DNS server reads differently from a dead line.
+- **Web** — an HTTPS fetch of `https://www.gstatic.com/generate_204`, a page
+  made for connectivity checks, which proves traffic really gets out.
+- **Your gateway** — pinged too, when a device has the Gateway / router role.
+
+It reads **Online**, **Degraded** (reachable, but with packet loss over 2%,
+DNS or the web check failing — the card says which) or **Down**: no
+resolver answers *and* the web check fails. One provider having a bad
+minute, or a network that drops ping, is not an outage.
+
+**The internet is down** (Settings → Alerts) alerts after two down checks
+in a row, a minute apart, and again when it is back, and each outage is an
+incident on the Dashboard. If a target already watches the gateway and it is
+down, that is the alert you get — not a second one about the internet.
+
+The card also shows uptime over 24 hours and 7 days, latency over the last
+24 hours, and recent outages — something to point at when talking to your
+ISP. Checks are kept 30 days. **Turn off** on the card stops them: SPARK
+then contacts none of those hosts. Speed tests are not part of it.
 
 ---
 

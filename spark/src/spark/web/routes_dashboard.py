@@ -11,18 +11,19 @@ from collections import Counter
 from datetime import datetime
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import subnets as subnet_service
 from .. import suppressions
+from .. import internet
 from ..config import Config
 from ..db import get_setting
 from ..engine.state import human_duration
 from ..models import (AlertIncident, CheckResult, Device, HealthStatus, Incident, Service, Target,
                       User)
-from .deps import get_config, get_session, require_user, templates
+from .deps import get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
@@ -35,6 +36,7 @@ SOURCES = {
     "port": "Port", "busy": "Port",
     "pool": "Storage", "space": "Storage", "drive": "Storage",
     "api": "API", "apidrive": "TrueNAS", "tnalert": "TrueNAS",
+    "internet": "Internet",
 }
 
 
@@ -259,6 +261,7 @@ async def dashboard(
             "device_counts": device_counts,
             "watched": watched,
             "incidents": incidents,
+            "internet": await internet.view(session),
             "greeting": _greeting(),
             # Local time, not UTC. Everything stored is UTC on purpose, but a
             # header that greets you by time of day and then prints a clock
@@ -266,3 +269,15 @@ async def dashboard(
             "now": datetime.now().astimezone(),
         },
     )
+
+
+@router.post("/internet/enabled")
+async def internet_enabled(
+    on: str = Form("", max_length=8),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Switch the Internet card's checks on or off (internet.py)."""
+    await internet.set_enabled(session, on == "1")
+    await session.commit()
+    return redirect("/#internet")

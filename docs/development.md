@@ -36,6 +36,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
+| Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 
 SPARK tells you when something goes down, in Discord, and when it comes back —
 see [Alerts](guide.md#alerts).
@@ -145,6 +146,7 @@ spark/
     storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
     truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
+    internet.py         the Internet card: resolvers, DNS, web, gateway every minute; the alert
     suppressions.py     one alert rule, for one device, off or with its own line
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
@@ -216,6 +218,7 @@ spark/
     test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts
     test_proxmox.py     the Proxmox client against a TLS fake: nothing sent before Trust; parsing; guest, storage and SMART alerts; the card
     test_unifi.py       the UniFi client against a TLS fake: nothing sent before Trust; paging; 9.x and 10.x answers read alike; the card
+    test_internet.py    the Internet card: up/degraded/down and why, the alert after two checks, gateway, off; no real network
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
     test_identity.py    SNMP address and ARP parsing, what is suggested and what never is, MACs filled in

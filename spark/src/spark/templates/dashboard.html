@@ -229,6 +229,74 @@
 
   </div>
 
+  {# The internet, checked every minute (internet.py): reachability by three
+     providers' resolvers, quality, DNS two ways, a web fetch, the gateway. #}
+  {% set net = internet %}
+  <section class="card inet-card" id="internet">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
+      <div>
+        <h2>Internet</h2>
+        <p class="card-sub">
+          {% if net.enabled %}Checked every minute: three public resolvers, DNS through yours and a public one, and a web fetch.{% if net.last %} Last at {{ net.last.ts | local('%H:%M') }}.{% endif %}
+          {% else %}Off: SPARK is not contacting any outside host for this.{% endif %}
+        </p>
+      </div>
+      <div class="head-actions">
+        <span class="pill {{ net.pill }}">{{ net.words }}</span>
+        <form method="post" action="/internet/enabled">
+          <input type="hidden" name="on" value="{{ '0' if net.enabled else '1' }}">
+          <button type="submit" class="btn-quiet" title="{{ 'Stop these checks: SPARK then contacts none of these hosts' if net.enabled else 'Check the internet every minute' }}">{{ 'Turn off' if net.enabled else 'Turn on' }}</button>
+        </form>
+      </div>
+    </div>
+    {% if net.enabled %}
+    {% set last = net.last %}
+    {% if last and last.detail %}<p class="small inet-why {{ 'is-bad-text' if last.state == 'down' else 'warn-text' }}">{{ last.detail }}.</p>{% endif %}
+    {% if net.stale %}<p class="muted small">No check for a few minutes: SPARK may be restarting.</p>{% endif %}
+    <div class="inet-metrics">
+      <div><span class="muted small">Latency</span><strong>{{ '%.0f ms' | format(last.latency_ms) if last and last.latency_ms is not none else '—' }}</strong></div>
+      <div><span class="muted small">Jitter</span><strong>{{ '%.1f ms' | format(last.jitter_ms) if last and last.jitter_ms is not none else '—' }}</strong></div>
+      <div><span class="muted small">Packet loss</span><strong>{{ '%.0f%%' | format(last.loss_percent) if last and last.loss_percent is not none else '—' }}</strong></div>
+      <div><span class="muted small">Up, 24 hours</span><strong>{{ '%.2f%%' | format(net.uptime_day) if net.uptime_day is not none else '—' }}</strong></div>
+      <div><span class="muted small">Up, 7 days</span><strong>{{ '%.2f%%' | format(net.uptime_week) if net.uptime_week is not none else '—' }}</strong></div>
+    </div>
+    {% if net.trend %}
+    <div class="inet-trend" title="Latency over the last 24 hours">{{ net.trend }}<span class="muted small">Latency, last 24 hours</span></div>
+    {% endif %}
+    {% if last %}
+    <ul class="inet-checks">
+      {% for name, address, ms in net.resolvers %}
+      <li><span class="status-dot {{ 'ok' if ms is not none else 'bad' }}" aria-hidden="true"></span>{{ name }} <code>{{ address }}</code>
+        <span class="muted">{{ '%.0f ms' | format(ms) if ms is not none else 'no reply' }}</span></li>
+      {% endfor %}
+      <li><span class="status-dot {{ 'ok' if last.dns_local_ok else 'bad' }}" aria-hidden="true"></span>DNS, your resolver
+        <span class="muted">{{ 'answers' if last.dns_local_ok else 'not answering' }}</span></li>
+      <li><span class="status-dot {{ 'ok' if last.dns_public_ok else 'bad' }}" aria-hidden="true"></span>DNS, public <code>{{ net.public_dns }}</code>
+        <span class="muted">{{ 'answers' if last.dns_public_ok else 'not answering' }}</span></li>
+      <li><span class="status-dot {{ 'ok' if last.web_ok else 'bad' }}" aria-hidden="true"></span>Web <code title="{{ net.web_url }}">HTTPS</code>
+        <span class="muted">{{ '%.0f ms' | format(last.web_ms) if last.web_ok and last.web_ms is not none else ('ok' if last.web_ok else 'failed') }}</span></li>
+      {% if last.gateway_ok is not none %}
+      <li><span class="status-dot {{ 'ok' if last.gateway_ok else 'bad' }}" aria-hidden="true"></span>Your gateway
+        <span class="muted">{{ 'answers' if last.gateway_ok else 'not answering' }}</span></li>
+      {% endif %}
+    </ul>
+    {% else %}
+    <p class="muted small">The first check runs within a minute of SPARK starting.</p>
+    {% endif %}
+    {% if net.outages %}
+    <h3 class="sub-title">Outages</h3>
+    <ul class="inet-outages small">
+      {% for o in net.outages %}
+      <li>{% if not o.closed_at %}<span class="pill bad dot">ongoing</span>{% endif %}
+        {{ o.opened_at | local('%b %-d, %H:%M') }}{% if o.closed_at %} – {{ o.closed_at | local('%H:%M') }}{% endif %}
+        <span class="muted">· {{ o.took }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </section>
+
   {% if watched %}
   <section class="card watched-card">
     <div class="card-head">

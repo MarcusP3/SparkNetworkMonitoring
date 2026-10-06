@@ -201,6 +201,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_identity(config)
         scheduler_module.schedule_storage(config)
         scheduler_module.schedule_credentials(config)
+        scheduler_module.schedule_internet(config)
         scheduler_module.schedule_backup(config)
 
         log.info(

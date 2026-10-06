@@ -595,6 +595,30 @@ class Incident(Base):
         return (self.closed_at - self.opened_at).total_seconds()
 
 
+class InternetSample(Base):
+    """One minute's look at the internet (internet.py): pings to public
+    resolvers, a DNS lookup through the network's own resolver and through
+    a public one, and an HTTPS fetch. Kept 30 days (retention.py)."""
+
+    __tablename__ = "internet_sample"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    state: Mapped[str] = mapped_column(String(16))          # up, degraded, down
+    latency_ms: Mapped[float | None] = mapped_column(Float)
+    jitter_ms: Mapped[float | None] = mapped_column(Float)
+    loss_percent: Mapped[float | None] = mapped_column(Float)
+    # Each resolver's average reply, or null when it did not answer:
+    # {"1.1.1.1": 12.3, "8.8.8.8": null, ...}.
+    pings: Mapped[dict | None] = mapped_column(JSON)
+    dns_local_ok: Mapped[bool | None] = mapped_column(Boolean)
+    dns_public_ok: Mapped[bool | None] = mapped_column(Boolean)
+    web_ok: Mapped[bool | None] = mapped_column(Boolean)
+    web_ms: Mapped[float | None] = mapped_column(Float)
+    gateway_ok: Mapped[bool | None] = mapped_column(Boolean)   # null: no gateway known
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
 class SpeedtestResult(Base):
     __tablename__ = "speedtest_result"
 
@@ -1320,6 +1344,12 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         # Over the Proxmox API (proxmox_health.py): a watched VM or container
         # not running on two checks in a row.
         "guest_down": True,
+        # The internet (internet.py): down on two checks in a row.
+        "internet_down": True,
+    },
+    # The Internet card's checks (internet.py): on unless switched off there.
+    "internet": {
+        "enabled": True,
     },
     "snmp": {
         "poll_interval_seconds": 60,

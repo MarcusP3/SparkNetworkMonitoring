@@ -292,6 +292,10 @@ async def run_retention() -> dict:
                 session, raw_cutoff, five_cutoff, hourly_cutoff
             )
 
+            # The Internet card's checks: a row a minute, kept 30 days.
+            from .internet import prune
+            summary["internet_deleted"] = await prune(session, started)
+
             # Expired sessions and old login attempts used to be cleared only
             # at startup, so an instance that stayed up never cleared them.
             await purge_expired(session, timedelta(minutes=await prefs.get_idle_minutes(session)))

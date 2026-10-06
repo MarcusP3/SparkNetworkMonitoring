@@ -1053,6 +1053,12 @@
           <span>A watched VM or container stops</span></label>
         <span class="muted small rule-scope">Proxmox: not running on two checks in a row, or no longer listed. Watch guests on the device page.</span>
       </div>
+      <h3 class="sub-title">Internet</h3>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="internet_down" value="1" {% if r.internet_down %}checked{% endif %}>
+          <span>The internet is down</span></label>
+        <span class="muted small rule-scope">No public resolver answers and the web check fails, on two checks a minute apart; again when it is back. Not sent when a target watching the gateway is already down. See the Internet card on the <a href="/">Dashboard</a>.</span>
+      </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">Save alert rules</button>
       </div>

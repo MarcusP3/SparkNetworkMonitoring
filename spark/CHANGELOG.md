@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — the Internet card (2026-10-06)
+
+### Added
+
+- **An Internet card on the Dashboard**, checked every minute: pings to
+  Cloudflare, Google and Quad9's resolvers (latency, jitter, packet loss),
+  `example.com` looked up through your DNS and through `1.1.1.1`, an
+  HTTPS fetch of a connectivity-check page, and your gateway when a device
+  has the Gateway / router role. Online, Degraded (and why) or Down; down
+  only when no resolver answers and the web check fails. Uptime over 24
+  hours and 7 days, latency over 24 hours, recent outages. Checks kept 30
+  days. **Turn off** on the card stops every outside contact it makes.
+- **Alert: "The internet is down"** (Settings → Alerts, on by default):
+  after two down checks in a row, and again when it is back; an incident
+  on the Dashboard. Not sent when a target watching the gateway is already
+  down — that alert covers it.
+- Migration 21: the `internet_sample` table.
+
 ## Unreleased — no more ".localdomain" on device names (2026-10-06)
 
 ### Changed

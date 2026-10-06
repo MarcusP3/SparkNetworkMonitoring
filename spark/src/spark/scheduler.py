@@ -515,6 +515,29 @@ def schedule_credentials(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_internet(config) -> bool:  # type: ignore[no-untyped-def]
+    """The internet, every minute (internet.py). The job runs whether the
+    checks are on or off; switched off, it returns at once."""
+    from .internet import FIRST_RUN_SECONDS, INTERVAL_SECONDS, JOB_ID, run
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run,
+        "interval",
+        seconds=INTERVAL_SECONDS,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_RUN_SECONDS),
+        name="Check the internet",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

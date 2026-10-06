@@ -27,6 +27,7 @@ from .models import (
     AlertMute,
     ApiCredential,
     AlertIncident,
+    InternetSample,
     AlertState,
     AlertSuppression,
     Base,
@@ -371,7 +372,13 @@ async def _single_admin_index(session: AsyncSession) -> None:
     await connection.run_sync(index.create, checkfirst=True)
 
 
-CURRENT_VERSION = 20
+@migration(21, "The internet, checked every minute (the Internet card)")
+async def _add_internet_sample(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(InternetSample.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 21
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:
