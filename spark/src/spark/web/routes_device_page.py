@@ -15,12 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
 from .. import proxmox_health, suppressions, truenas_health, unifi
-from .. import charts
+from .. import charts, events
+from .. import scheduler as scheduler_module
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
     ROLE_LABELS,
+    AlertIncident,
     AlertMute,
     Device,
     DeviceAddress,
@@ -332,6 +334,9 @@ async def device_page(
             "placement": placement,
             "addresses": addresses,
             "merge_choices": merge_choices,
+            # For the Remove card: what goes with it, and what is left behind.
+            "below": await session.scalar(
+                select(func.count(Device.id)).where(Device.parent_device_id == device.id)) or 0,
             "merged": merged if merged.isdigit() else "",
             # SNMP says these are this device (merge them in), or that this
             # device is part of another (merge it there).
@@ -589,3 +594,46 @@ async def remove_address(
         await session.delete(row)
         await session.commit()
     return redirect(f"/devices/{device_id}#addresses")
+
+
+@router.post("/devices/{device_id}/remove")
+async def remove_device(
+    device_id: ItemId,
+    confirm: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    _user: User = Depends(require_user),
+):
+    """Remove a device and everything SPARK holds only for it, after the
+    confirm on its page (`confirm` must be the device's id, so a stray post
+    removes nothing).
+
+    The database takes most of it (ON DELETE CASCADE): its targets with
+    their results and incidents, its SNMP polling and history, services,
+    extra addresses, mutes and suppressions. Devices connected to it lose
+    their parent and show as not placed; an API credential on it stays,
+    with no device. Here: the targets' and SNMP jobs stop, and alert
+    incidents open for it close as no longer watched rather than stay open
+    with no device. A device still on the network is found again by the
+    next sweep, as new; Ignore on the Devices list is for keeping it off.
+    """
+    device = await session.get(Device, device_id)
+    if device is None or confirm.strip() != str(device_id):
+        return redirect(f"/devices/{device_id}" if device is not None else "/devices")
+    target_ids = list((await session.execute(
+        select(Target.id).where(Target.device_id == device_id))).scalars())
+    polled = await session.scalar(select(SnmpDevice.id).where(SnmpDevice.device_id == device_id))
+    now = utcnow()
+    for incident in (await session.execute(select(AlertIncident).where(
+            AlertIncident.device_id == device_id, AlertIncident.closed_at.is_(None)))).scalars():
+        incident.closed_at, incident.resolution = now, snmp_alerts.GONE
+    await session.delete(device)
+    await session.commit()
+    for target_id in target_ids:
+        scheduler_module.unschedule_target(target_id)
+        events.publish({"kind": "deleted", "target_id": target_id})
+    if polled is not None:
+        from .routes_settings import apply_snmp_schedule
+        await apply_snmp_schedule(session, config)
+    events.publish({"kind": "device-removed", "device_id": device_id})
+    return redirect("/devices")

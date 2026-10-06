@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — remove a device (2026-10-06)
+
+### Added
+
+- **Remove this device**, at the foot of its page, behind a confirm that
+  lists what goes with it: its targets and their history, SNMP polling
+  and charts, ports and extra addresses. Devices connected to it are left
+  not placed; an API credential on it stays, with no device; alerts open
+  for it close as no longer watched. The page says plainly that a device
+  still on the network is found again by the next sweep, and points to
+  **Ignore** for keeping it off the list.
+
 ## Unreleased — a Hypervisor role (2026-10-06)
 
 ### Added

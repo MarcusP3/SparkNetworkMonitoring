@@ -445,3 +445,54 @@ def test_mac_and_vendor_are_small_lines_on_the_list_and_in_full_on_the_page(site
     assert "aa:bb:cc:00:00:01" in page
     # 0xaa has the locally-administered bit set: a randomised address.
     assert "random MAC" in page
+
+
+class TestRemove:
+    """Remove, at the foot of the device page, behind a confirm."""
+
+    def test_the_card_says_what_goes(self, site):
+        page = " ".join(site.get("/devices/1").text.split())
+        assert '<section class="card remove-card" id="remove">' in page
+        assert page.index('id="remove"') > page.index("<h2>On the network</h2>"), "last on the page"
+        assert '<summary class="btn-quiet danger">Remove dev1…</summary>' in page
+        assert "SNMP polling stops" in page and "This cannot be undone." in page
+        assert ('<form method="post" action="/devices/1/remove"> '
+                '<input type="hidden" name="confirm" value="1">') in page
+
+    def test_nothing_without_the_confirm(self, site):
+        for data in ({}, {"confirm": ""}, {"confirm": "2"}, {"confirm": "yes"}):
+            response = site.post("/devices/1/remove", data=data)
+            assert response.status_code == 303 and response.headers["location"] == "/devices/1"
+        assert site.get("/devices/1").status_code == 200
+        assert site.post("/devices/999/remove", data={"confirm": "999"}).headers["location"] == "/devices"
+
+    def test_removing_takes_what_is_only_its(self, site):
+        from sqlalchemy import select
+
+        from spark.models import AlertIncident, CheckType, Target
+
+        async def seed():
+            async with D.session_scope() as s:
+                s.add(Target(name="dev1", address="10.0.0.1", check_type=CheckType.PING, device_id=1))
+                (await s.get(Device, 2)).parent_device_id = 1
+                s.add(AlertIncident(key="snmpdown:1", device_id=1, title="dev1 down", opened_at=utcnow()))
+        _run(seed())
+        page = " ".join(site.get("/devices/1").text.split())
+        assert "1 target and its history go with it." in page
+        assert "1 device connected to it is left not placed on the map." in page
+
+        response = site.post("/devices/1/remove", data={"confirm": "1"})
+        assert response.status_code == 303 and response.headers["location"] == "/devices"
+
+        async def after():
+            async with D.session_scope() as s:
+                return (await s.get(Device, 1), list((await s.execute(select(Target))).scalars()),
+                        list((await s.execute(select(SnmpDevice))).scalars()),
+                        list((await s.execute(select(SnmpHealthSample))).scalars()),
+                        (await s.get(Device, 2)).parent_device_id,
+                        (await s.execute(select(AlertIncident))).scalar_one())
+        gone, targets, polled, samples, parent, incident = _run(after())
+        assert gone is None and targets == [] and polled == [] and samples == []
+        assert parent is None, "what was connected to it is left, not placed"
+        assert incident.closed_at is not None and incident.resolution == "no longer watched"
+        assert "dev1" not in site.get("/devices").text

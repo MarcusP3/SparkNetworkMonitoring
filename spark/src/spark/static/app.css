@@ -1648,6 +1648,15 @@ code.fingerprint.small { display: inline; }
    header picture. */
 .mute-form { margin: .6rem 0 0; }
 .mute-form .btn-quiet { background: rgba(6, 12, 24, .85); }
+/* Remove, at the foot of the device page: the confirm opens below. */
+.remove-confirm > summary { display: inline-flex; list-style: none; cursor: pointer; }
+.remove-confirm > summary::-webkit-details-marker { display: none; }
+.remove-confirm[open] > summary { margin-bottom: .75rem; }
+.remove-confirm .alert { margin: 0; }
+.remove-confirm ul { margin: .5rem 0 .9rem; padding-left: 1.2rem; }
+.btn-danger { background: var(--bad); color: #fff; border: 1px solid var(--bad); border-radius: var(--radius-sm);
+  padding: .5rem .9rem; font-weight: 600; cursor: pointer; }
+.btn-danger:hover { filter: brightness(1.1); }
 /* The Health card carries the charts' time range in its header; on a phone
    it goes under the title rather than squeezing it. */
 @media (max-width: 640px) {

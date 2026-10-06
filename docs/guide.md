@@ -131,6 +131,13 @@ infrastructure; everything else can hang off its switch or stay in **Not
 placed yet**, which the map lists rather than hides. A device cannot be
 connected to itself or to anything below it.
 
+**Removing a device** is the last card on its page: **Remove** and then the
+confirm. It takes everything SPARK keeps only for that device (its targets
+and their history, SNMP polling and charts, ports, extra addresses).
+Anything connected to it is left not placed. A device still on the network
+comes back at the next sweep as a new one; to keep it off the list, use
+**Ignore** on the Devices page instead.
+
 **Found by SNMP.** With your switches on the SNMP list, SPARK reads their MAC
 tables (BRIDGE-MIB and Q-BRIDGE-MIB) and any LLDP neighbours every 15
 minutes, and works out which switch port each device is on. The map page

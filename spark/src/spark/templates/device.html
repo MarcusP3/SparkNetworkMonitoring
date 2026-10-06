@@ -763,6 +763,38 @@
       <p class="muted small">No open services found by the port scan.</p>
     {% endif %}
   </section>
+
+  {# Remove, last on the page, behind a second button. #}
+  <section class="card remove-card" id="remove">
+    <div class="card-head">
+      <div>
+        <h2>Remove this device</h2>
+        <p class="card-sub">
+          Takes it off SPARK with everything kept for it: its targets and their history,
+          SNMP polling and charts, ports and extra addresses. If it is still on the network,
+          the next sweep finds it again as a new device — to keep it off the list, use
+          <strong>Ignore</strong> on the <a href="/devices">Devices</a> page instead.
+        </p>
+      </div>
+    </div>
+    <details class="remove-confirm">
+      <summary class="btn-quiet danger">Remove {{ device.display_name }}…</summary>
+      <div class="alert warn">
+        <p><strong>Remove {{ device.display_name }}?</strong> This cannot be undone.</p>
+        <ul class="small">
+          {% if watched %}<li>{{ watched }} target{{ 's' if watched != 1 }} and {{ 'their' if watched != 1 else 'its' }} history go with it.</li>{% endif %}
+          {% if snmp %}<li>SNMP polling stops, and its charts and interface history go.</li>{% endif %}
+          {% if below %}<li>{{ below }} device{{ 's' if below != 1 }} connected to it {{ 'are' if below != 1 else 'is' }} left not placed on the map.</li>{% endif %}
+          {% if apis %}<li>Its API credential{{ 's' if apis | length != 1 }} stay{{ '' if apis | length != 1 else 's' }} under Settings → Credentials, with no device.</li>{% endif %}
+          <li>Open alerts for it close.</li>
+        </ul>
+        <form method="post" action="/devices/{{ device.id }}/remove">
+          <input type="hidden" name="confirm" value="{{ device.id }}">
+          <button type="submit" class="btn-danger">Yes, remove {{ device.display_name }}</button>
+        </form>
+      </div>
+    </details>
+  </section>
 </div>
 
 <script src="/static/charts.js?v={{ asset_version }}" defer></script>
