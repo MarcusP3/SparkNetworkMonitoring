@@ -11,6 +11,9 @@ Merging says "that address is this device":
   * its services move across, except a port the kept device already has;
   * devices connected below it on the service map are connected to the one
     kept instead;
+  * the API credentials (Settings -> Credentials) and Docker hosts tied to
+    it are tied to the one kept -- left behind, they would lose their device
+    and its API card when the duplicate row is deleted;
   * its name, MAC and role fill in only what the kept device lacks;
   * the duplicate row is then deleted, and with it its own mute entry --
     muting the duplicate was about the duplicate.
@@ -36,7 +39,8 @@ from dataclasses import dataclass, field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Device, DeviceAddress, DeviceRole, MapAuto, Service, SnmpDevice, Target
+from .models import (ApiCredential, Device, DeviceAddress, DeviceRole, DockerHost, MapAuto, Service,
+                     SnmpDevice, Target)
 
 
 def host_of(address: str) -> str:
@@ -82,6 +86,8 @@ class Plan:
     services: list[Service] = field(default_factory=list)       # move across
     services_dropped: list[Service] = field(default_factory=list)  # keep has the port
     children: int = 0
+    credentials: list[ApiCredential] = field(default_factory=list)  # move across
+    docker_hosts: list[DockerHost] = field(default_factory=list)    # move across
     takes_mac: bool = False
     takes_name: bool = False
     takes_snmp: bool = False
@@ -90,6 +96,12 @@ class Plan:
     old_ip: str | None = None
     new_ip: str | None = None
     retarget: list[Target] = field(default_factory=list)
+
+    @property
+    def credential_labels(self) -> list[tuple[str, str]]:
+        """(kind as shown, name) of each credential that moves across."""
+        from .credentials import KINDS
+        return [(KINDS.get(c.kind, c.kind), c.name) for c in self.credentials]
 
     @property
     def can_move(self) -> bool:
@@ -141,6 +153,13 @@ async def plan(session: AsyncSession, keep_id: int, other_id: int) -> Plan:
         children=len((await session.execute(
             select(Device.id).where(Device.parent_device_id == other_id)
         )).all()),
+        credentials=list((await session.execute(
+            select(ApiCredential).where(ApiCredential.device_id == other_id)
+            .order_by(ApiCredential.name)
+        )).scalars()),
+        docker_hosts=list((await session.execute(
+            select(DockerHost).where(DockerHost.device_id == other_id).order_by(DockerHost.name)
+        )).scalars()),
         old_ip=keep.primary_ip, new_ip=other.primary_ip,
         retarget=[t for t in both_targets
                   if keep.primary_ip and host_of(t.address) == keep.primary_ip.lower()],
@@ -179,6 +198,11 @@ async def apply(session: AsyncSession, keep_id: int, other_id: int, *,
     # What automatic mode placed under the duplicate is still automatic's.
     await session.execute(update(MapAuto).where(MapAuto.parent_device_id == other_id)
                           .values(parent_device_id=keep_id))
+    # Without this the database's SET NULL would leave them on no device.
+    await session.execute(update(ApiCredential).where(ApiCredential.device_id == other_id)
+                          .values(device_id=keep_id))
+    await session.execute(update(DockerHost).where(DockerHost.device_id == other_id)
+                          .values(device_id=keep_id))
     if p.takes_snmp:
         await session.execute(update(SnmpDevice).where(SnmpDevice.device_id == other_id)
                               .values(device_id=keep_id))

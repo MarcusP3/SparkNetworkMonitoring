@@ -333,3 +333,57 @@ class TestMoved:
                 (await s.get(Device, 3)).primary_ip = None
         run(go())
         assert 'name="moved"' not in site.get("/devices/2/merge?other=3").text
+
+
+# --------------------------------------------------------------------------
+# API credentials and Docker hosts follow the device
+# --------------------------------------------------------------------------
+
+
+class TestCredentialsMove:
+    """The UniFi gateway merged into its by-IP twin: its credential was left
+    on no device (the database's SET NULL), so its card, its API pill and
+    the API filter on the Devices list all lost it."""
+
+    @pytest.fixture
+    def tied(self, db):  # type: ignore[no-untyped-def]
+        from spark.models import ApiCredential, DockerHost
+
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                s.add(ApiCredential(kind="unifi", name="console", device_id=2,
+                                    host="172.16.20.1", key_sealed="x"))
+                s.add(ApiCredential(kind="truenas", name="nas", device_id=5,
+                                    host="172.16.10.9", key_sealed="x"))
+                s.add(DockerHost(name="docker", device_id=2, uri="ssh://spark@172.16.20.1"))
+        run(go())
+        return db
+
+    def test_they_move_to_the_device_kept(self, tied):
+        from spark.models import ApiCredential, DockerHost
+        done = do_merge(1, 2)
+        assert [c.name for c in done.credentials] == ["console"]
+        assert done.credential_labels == [("UniFi", "console")]
+        assert {c.name: c.device_id for c in run(_all(ApiCredential))} == {"console": 1, "nas": 5}
+        assert [h.device_id for h in run(_all(DockerHost))] == [1]
+
+    def test_and_with_a_move(self, tied):
+        from spark.models import ApiCredential
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                await merge.apply(s, 3, 2, moved=True)
+        run(go())
+        assert {c.name: c.device_id for c in run(_all(ApiCredential))}["console"] == 3
+
+    def test_the_preview_says_so_and_the_list_still_shows_it(self, tied):
+        with TestClient(create_app(tied), follow_redirects=False) as site:
+            site.post("/setup", data={"setup_code": site.app.state.setup_code, "username": "admin",
+                                      "password": PASSWORD, "password_confirm": PASSWORD,
+                                      "timezone": "UTC"})
+            preview = " ".join(site.get("/devices/1/merge?other=2").text.split())
+            assert "Its UniFi API credential, “console”, moves across, with its card." in preview
+            assert "Its Docker host, “docker”, moves across." in preview
+            assert "Its TrueNAS" not in preview, "only the duplicate's own"
+            site.post("/devices/1/merge", data={"other_id": "2"})
+            page = " ".join(site.get("/devices?api=unifi").text.split())
+            assert 'href="/devices/1#api-1"' in page

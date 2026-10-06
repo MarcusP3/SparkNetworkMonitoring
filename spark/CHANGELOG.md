@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — merging keeps a device's API credential (2026-10-07)
+
+### Fixed
+
+- **Merging could lose a device's UniFi, TrueNAS or Proxmox credential.**
+  When the device merged away was the one the credential was tied to, the
+  credential was left on no device: its API card, its pill on the Devices
+  list and the API filter all stopped finding it. Merges (and moves) now
+  carry the duplicate's API credentials and Docker hosts across to the
+  device kept, and the merge preview lists them.
+
 ## Unreleased — the Devices SNMP column, tidied (2026-10-07)
 
 ### Fixed

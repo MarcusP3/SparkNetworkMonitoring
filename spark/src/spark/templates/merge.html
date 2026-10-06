@@ -45,6 +45,12 @@
       <li>{{ plan.children }} device{{ 's' if plan.children != 1 }} connected below it on the map
         will be connected to {{ k.display_name }}.</li>
       {% endif %}
+      {% for label, name in plan.credential_labels %}
+      <li>Its {{ label }} API credential, “{{ name }}”, moves across, with its card.</li>
+      {% endfor %}
+      {% for h in plan.docker_hosts %}
+      <li>Its Docker host, “{{ h.name }}”, moves across.</li>
+      {% endfor %}
       {% if plan.takes_snmp %}<li>Its SNMP polling, with its history, moves across.</li>{% endif %}
       {% if plan.takes_mac %}<li>{{ k.display_name }} takes its MAC address, {{ o.mac }}.</li>{% endif %}
       {% if plan.takes_name %}<li>{{ k.display_name }} takes its name, “{{ o.friendly_name }}”.</li>{% endif %}
@@ -67,7 +73,7 @@
           <code>{{ plan.old_ip }}</code> ({{ plan.retarget | map(attribute='name') | join(', ') }})
           {{ 'are' if plan.retarget | length != 1 else 'is' }} pointed at <code>{{ plan.new_ip }}</code>.</li>
         {% endif %}
-        <li>Its services, below-device connections, MAC and name fill in as for a merge.</li>
+        <li>Its services, below-device connections, API credentials, MAC and name fill in as for a merge.</li>
       </ul>
     </div>
     {% endif %}

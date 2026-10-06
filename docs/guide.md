@@ -226,8 +226,8 @@ once per address: across a router SPARK sees no MAC, so each address looks
 like a device of its own. On the real device's page, **Addresses → Same
 device as this one** merges a duplicate in. A preview says exactly what will
 happen first. Its address becomes an extra address of the device, its
-targets (with their history), services and anything connected below it move
-across, and later sweeps count that address as the same device. Removing
+targets (with their history), services, anything connected below it, and
+any API credential or Docker host tied to it move across, and later sweeps count that address as the same device. Removing
 the address undoes it: the next sweep finds it as a device of its own. Two
 devices with different MACs, or both polled over SNMP, are not merged.
 
