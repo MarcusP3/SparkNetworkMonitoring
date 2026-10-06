@@ -423,7 +423,7 @@
                 <input type="text" name="friendly_name" maxlength="64"
                        value="{{ device.friendly_name or '' }}"
                        data-original="{{ device.friendly_name or '' }}"
-                       placeholder="{{ device.hostname or device.primary_ip }}"
+                       placeholder="{{ device.short_hostname or device.primary_ip }}"
                        aria-label="Friendly name">
                 <svg class="name-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>
                 <button type="submit" class="btn-quiet save-name">Save</button>

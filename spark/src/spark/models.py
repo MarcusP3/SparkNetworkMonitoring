@@ -281,6 +281,11 @@ class Subnet(Base, TimestampMixin):
             return False
 
 
+# Domains a resolver puts on every name when none is set: dropped when a
+# name is shown (Device.short_hostname).
+PLACEHOLDER_DOMAINS = (".localdomain",)
+
+
 class Device(Base, TimestampMixin):
     __tablename__ = "device"
 
@@ -322,8 +327,20 @@ class Device(Base, TimestampMixin):
     )
 
     @property
+    def short_hostname(self) -> str | None:
+        """The DNS name without a placeholder domain. UniFi's DNS (and dnsmasq
+        by default) answers every reverse lookup as NAME.localdomain, which
+        says nothing and doubles the length of every name on the page. Only
+        for showing: the full name is kept, and Find still matches it."""
+        name = (self.hostname or "").rstrip(".")
+        for suffix in PLACEHOLDER_DOMAINS:
+            if name.lower().endswith(suffix) and len(name) > len(suffix):
+                return name[: -len(suffix)]
+        return name or None
+
+    @property
     def display_name(self) -> str:
-        return self.friendly_name or self.hostname or self.primary_ip or self.mac or "unknown"
+        return self.friendly_name or self.short_hostname or self.primary_ip or self.mac or "unknown"
 
 
 class DeviceAddress(Base):

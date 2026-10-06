@@ -496,3 +496,28 @@ class TestRemove:
         assert parent is None, "what was connected to it is left, not placed"
         assert incident.closed_at is not None and incident.resolution == "no longer watched"
         assert "dev1" not in site.get("/devices").text
+
+
+@pytest.mark.parametrize("hostname, shown", [
+    ("SPRK-MDF-SW01.localdomain", "SPRK-MDF-SW01"),
+    ("ap.LocalDomain.", "ap"),
+    ("nas.home", "nas.home"),                # a real domain stays
+    ("localdomain", "localdomain"),          # nothing left to show otherwise
+    (None, "10.0.0.9"),
+])
+def test_the_placeholder_domain_is_not_shown(hostname, shown):
+    device = Device(hostname=hostname, primary_ip="10.0.0.9")
+    assert device.display_name == shown
+    assert device.hostname == hostname, "kept in full: Find still matches it"
+
+
+def test_a_localdomain_name_reads_short_on_the_pages(site):
+    async def name():
+        async with D.session_scope() as s:
+            (await s.get(Device, 2)).hostname = "office-switch.localdomain"
+            (await s.get(Device, 2)).friendly_name = None
+    _run(name())
+    page = site.get("/devices/2").text
+    assert "<h1>office-switch</h1>" in page and "office-switch.localdomain" not in page
+    devices = site.get("/devices").text
+    assert 'placeholder="office-switch"' in devices

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — no more ".localdomain" on device names (2026-10-06)
+
+### Changed
+
+- **Device names drop ".localdomain".** UniFi's DNS (and dnsmasq by
+  default) answers every reverse lookup as NAME.localdomain, which made
+  every name twice as long: SPRK-style switch names now read as just the
+  name, everywhere a device's name is shown. Only for showing: the full
+  DNS name is kept, and Find still matches it. A real domain (".home",
+  ".lan") is left alone, and a name you typed yourself is never changed.
+  Targets already created keep the name they were given; edit them to
+  shorten it.
+
 ## Unreleased — "Moved" on the merge page (2026-10-06)
 
 ### Added
