@@ -1593,6 +1593,9 @@ a.pill:hover { filter: brightness(1.12); }
 .cred-actions { display: flex; gap: .4rem; }
 .cred-actions form { margin: 0; }
 .cred-state { margin: .5rem 0; }
+.cred-untied { margin: .5rem 0; }
+.cred-untied .pill, .filter-note .pill { margin-right: .35rem; }
+.filter-bar .filter-note { margin: .6rem 0 0; }
 .cert-trust p { margin: 0 0 .4rem; }
 .cert-trust form { margin: .5rem 0 0; }
 .fingerprint { display: block; overflow-wrap: anywhere; font-size: .8125rem; }

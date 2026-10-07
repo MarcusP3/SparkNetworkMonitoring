@@ -1281,6 +1281,15 @@
           {{ r.last_error }}
         {% endif %}
       </p>
+      {% if not c.device %}
+      {# Connected says the API works; this says nobody can see it. A merge
+         once left a credential here without anyone noticing. #}
+      <p class="small cred-untied">
+        <span class="pill warn">No device</span>
+        Its card shows on no device page, and the Devices list's API filter cannot find it.
+        Choose its device under <strong>Edit {{ r.name }}</strong>.
+      </p>
+      {% endif %}
       {% if r.pending_sha256 %}
       <div class="alert {{ 'warn' if r.cert_sha256 else 'info' }} cert-trust">
         <p>{{ 'A different certificate' if r.cert_sha256 else 'The certificate' }} {{ r.host }} presents, SHA-256:</p>

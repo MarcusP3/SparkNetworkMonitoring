@@ -620,3 +620,35 @@ def test_paging_keeps_the_api_filter():
     from spark.web.routes_devices import _query
     assert _query("", 25, 2, "", "unifi") == "?api=unifi&per_page=25&page=2"
     assert _query("", 25, 2, "on", "nonsense") == "?snmp=on&per_page=25&page=2"
+
+
+class TestNoDevice:
+    """Connected, and seen nowhere: a credential on no device (left by a
+    merge before merges carried credentials) has no card and no pill. Its
+    row says so, and so does the API filter, rather than it looking gone."""
+
+    def add(self, site, fake, device_id):  # type: ignore[no-untyped-def]
+        site.post("/settings/credentials", data={
+            "kind": "unifi", "name": "unifi", "device_id": device_id, "host": fake.host,
+            "api_key": KEY})
+
+    def test_the_credentials_row_says_so(self, site, fake):
+        self.add(site, fake, "")
+        page = flat(site.get("/settings/credentials").text)
+        assert '<span class="pill warn">No device</span>' in page
+        assert "Its card shows on no device page" in page
+        assert "Choose its device under <strong>Edit unifi</strong>." in page
+
+    def test_not_when_it_has_one(self, site, fake):
+        self.add(site, fake, "1")
+        assert "No device</span>" not in site.get("/settings/credentials").text
+        assert "filter-note" not in site.get("/devices?api=unifi").text
+
+    def test_the_api_filter_says_what_it_leaves_out(self, site, fake):
+        self.add(site, fake, "")
+        page = flat(site.get("/devices?api=unifi").text)
+        assert "1 UniFi credential is on no device, so not listed here." in page
+        assert 'Choose its device in <a href="/settings/credentials">' in page
+        assert "1 UniFi credential is on no device" in flat(site.get("/devices?api=any").text)
+        assert "filter-note" not in site.get("/devices?api=truenas").text, "another kind"
+        assert "filter-note" not in site.get("/devices").text, "only when filtering by API"

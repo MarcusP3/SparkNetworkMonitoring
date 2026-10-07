@@ -354,6 +354,15 @@ async def list_devices(
         apis.setdefault(device_id, []).append(
             {"id": cred_id, "kind": kind, "label": credentials.KINDS.get(kind, kind)})
     any_api = bool(await session.scalar(select(ApiCredential.id).limit(1)))
+    # Credentials on no device: the API filter cannot list them, so it says
+    # how many it is leaving out rather than looking as if they were gone.
+    untied: list[str] = []
+    if api in API_FILTERS:
+        loose = select(ApiCredential.kind).where(ApiCredential.device_id.is_(None))
+        if api in credentials.KINDS:
+            loose = loose.where(ApiCredential.kind == api)
+        untied = [credentials.KINDS.get(kind, kind)
+                  for kind in (await session.scalars(loose.order_by(ApiCredential.id)))]
 
     # Extra addresses merged into each device (merge.py), for the Address cell.
     extra_ips: dict[int, list[str]] = {}
@@ -502,6 +511,7 @@ async def list_devices(
                 "label": API_FILTERS.get(api),
                 "choices": API_FILTERS,
                 "offer": any_api or bool(api),
+                "untied": untied,
             },
             "snmp_find": await _find_summary(session, find_state, found, refused, now),
             # Merges SNMP points to, waiting for a yes or no (identity.py).

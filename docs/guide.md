@@ -625,7 +625,11 @@ On the Devices list, a device with a credential carries a pill with its kind
 (TrueNAS, Proxmox, UniFi) by its name, which opens its card, and the **API**
 filter narrows the list to devices with any credential or one kind — the
 quick way to find the UniFi console or a Proxmox host. A credential only
-shows there once it is given a device.
+shows there once it is given a device. One without a device still connects
+and is checked, but its card shows on no device page: its row under
+Settings → Credentials carries a **No device** note, and the API filter
+says how many it is leaving out. Choose the device under **Edit** on the
+credential.
 
 ### TrueNAS
 

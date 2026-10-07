@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — a credential on no device says so (2026-10-07)
+
+### Added
+
+- **"No device" on a credential that has none.** It still connects and is
+  checked, so its pill says connected, but its card shows on no device
+  page. Its row under Settings → Credentials now says so and where to
+  choose one, and the Devices list's API filter says how many credentials
+  it is leaving out for the same reason, rather than looking as if they
+  were gone.
+
 ## Unreleased — merging keeps a device's API credential (2026-10-07)
 
 ### Fixed

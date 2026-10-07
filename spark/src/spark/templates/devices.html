@@ -374,6 +374,15 @@
         {%- endif %}
       </span>
     </form>
+    {% if api_filter.untied %}
+    <p class="small filter-note">
+      <span class="pill warn">No device</span>
+      {% set n = api_filter.untied | length %}
+      {{ n }} {{ api_filter.untied | unique | join(', ') if api_filter.value == 'any' else api_filter.label }}
+      credential{{ 's are' if n != 1 else ' is' }} on no device, so not listed here.
+      Choose {{ 'their' if n != 1 else 'its' }} device in <a href="/settings/credentials">Settings → Credentials</a>.
+    </p>
+    {% endif %}
   </section>
   {% endif %}
 
