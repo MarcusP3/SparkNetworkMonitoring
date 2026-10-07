@@ -35,6 +35,15 @@ a device is watched. All of them go in the URL, so a filtered view can be
 bookmarked. The automatic-scan schedule is at the foot of the Last sweep
 panel and applies as soon as you change it.
 
+**Excluded addresses** (Settings → Subnets, under the subnet list) are never
+touched by the automatic scans: not pinged by the sweep (so never looked up
+or recorded), not port-scanned or used as a port-scan control address, and
+not tried by **Find SNMP**. Enter one address (`10.0.0.25`) or a start–end
+range (`10.0.0.100-10.0.0.150`), with an optional note. What you set up by
+hand still runs — a target, SNMP polling of a listed device, an API
+credential. A scan already running finishes as it started; the next one
+leaves them out, and the Last sweep panel says how many it left out.
+
 The chips over the list show only the targets in one state, the search box
 matches a name or address, and the check filter one kind of check; click a
 column heading to sort by it. Each row's trend is its latency over its last

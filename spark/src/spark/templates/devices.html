@@ -154,6 +154,10 @@
       <div><dt>With a MAC</dt><dd>{{ sweep.with_mac or 0 }}</dd></div>
       <div><dt>New</dt><dd>{{ sweep.new or 0 }}</dd></div>
     </dl>
+    {% if sweep.excluded %}
+    <p class="muted small">{{ sweep.excluded }} address{{ 'es' if sweep.excluded != 1 }} left out, as
+      <a href="/settings#exclusions">excluded</a>.</p>
+    {% endif %}
 
     {% if sweep.subnets %}
     <div class="table-scroll">

@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from . import events
+from . import events, exclusions
 from .collectors import AuthFailed, SnmpCollector
 from .collectors import oids as O
 from .db import get_setting, save_setting, session_scope
@@ -159,13 +159,15 @@ async def _run(config, started: datetime) -> dict:  # type: ignore[no-untyped-de
     # ---- read, then let go of the database for the whole sweep ----
     async with session_scope() as session:
         listed = set((await session.execute(select(SnmpDevice.device_id))).scalars())
+        # Excluded addresses (Settings -> Subnets) are never probed.
+        excluded = await exclusions.load(session)
         devices = [
             (d.id, d.primary_ip)
             for d in (await session.execute(
                 select(Device).where(Device.ignored.is_(False), Device.primary_ip.isnot(None))
                 .order_by(Device.id)
             )).scalars()
-            if d.id not in listed
+            if d.id not in listed and d.primary_ip not in excluded
         ]
         profiles = list(
             (await session.execute(select(SnmpProfile).order_by(SnmpProfile.name))).scalars()

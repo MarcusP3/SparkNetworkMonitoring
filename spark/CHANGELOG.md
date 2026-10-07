@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — excluded addresses (2026-10-07)
+
+### Added
+
+- **Excluded addresses** under Settings → Subnets: one address or a
+  start–end range, with a note. The sweep never pings them, the port scan
+  never scans them or uses them as control addresses, and Find SNMP never
+  tries them. Targets, SNMP polling and API credentials set up by hand
+  still run. The Devices page's Last sweep panel says how many were left
+  out.
+
 ## Unreleased — the Alerts page (2026-10-07)
 
 ### Added

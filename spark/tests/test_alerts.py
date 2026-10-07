@@ -398,7 +398,7 @@ def sweep(monkeypatch, config, *ips: str) -> None:
     from spark.discovery import runner
     from spark.discovery.sweep import Observation, SubnetResult, SweepReport
 
-    async def fake(plan):  # type: ignore[no-untyped-def]
+    async def fake(plan, excluded=None):  # type: ignore[no-untyped-def]
         report = SweepReport(finished_at=utcnow())
         result = SubnetResult(name="LAN", cidr="10.0.0.0/24", attached=True,
                               probed=254, answered=len(ips))

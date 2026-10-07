@@ -59,6 +59,7 @@ class SubnetResult:
     probed: int = 0
     answered: int = 0
     with_mac: int = 0
+    excluded: int = 0          # addresses left out (Settings -> Excluded addresses)
     skipped: str | None = None
     observations: list["Observation"] = field(default_factory=list)
 
@@ -89,6 +90,10 @@ class SweepReport:
     def with_mac(self) -> int:
         return sum(s.with_mac for s in self.subnets)
 
+    @property
+    def excluded(self) -> int:
+        return sum(s.excluded for s in self.subnets)
+
     def as_dict(self) -> dict:
         """A JSON-safe summary, for storage and for the page."""
         return {
@@ -97,6 +102,7 @@ class SweepReport:
             "probed": self.probed,
             "answered": self.answered,
             "with_mac": self.with_mac,
+            "excluded": self.excluded,
             "icmp_available": self.icmp_available,
             "error": self.error,
             "subnets": [
@@ -107,6 +113,7 @@ class SweepReport:
                     "probed": s.probed,
                     "answered": s.answered,
                     "with_mac": s.with_mac,
+                    "excluded": s.excluded,
                     "skipped": s.skipped,
                 }
                 for s in self.subnets
@@ -237,8 +244,10 @@ async def sweep_subnet(
     attached: bool = True,
     timeout: float = 1.0,
     resolve_names: bool = True,
+    excluded=None,  # type: ignore[no-untyped-def]
 ) -> SubnetResult:
-    """Sweep one subnet and report what happened."""
+    """Sweep one subnet and report what happened. `excluded`
+    (exclusions.Excluded) is never pinged, so never looked up or recorded."""
     result = SubnetResult(name=name or cidr, cidr=cidr, attached=attached)
 
     addresses = hosts_in(cidr)
@@ -248,6 +257,12 @@ async def sweep_subnet(
             "Split it into smaller ranges."
         )
         return result
+    if excluded:
+        kept = excluded.keep(addresses)
+        result.excluded = len(addresses) - len(kept)
+        addresses = kept
+        if not addresses:
+            return result
     result.probed = len(addresses)
 
     alive, icmp_ok = await ping_sweep(addresses, timeout=timeout)
@@ -293,7 +308,7 @@ async def sweep_subnet(
     return result
 
 
-async def sweep_all(subnets) -> SweepReport:
+async def sweep_all(subnets, excluded=None) -> SweepReport:  # type: ignore[no-untyped-def]
     """Sweep every enabled subnet in the config, one after another.
 
     Sequential on purpose: these run on the same NIC, and overlapping sweeps
@@ -304,7 +319,7 @@ async def sweep_all(subnets) -> SweepReport:
         if not getattr(subnet, "enabled", True):
             continue
         result = await sweep_subnet(
-            subnet.cidr, name=subnet.label, attached=subnet.attached
+            subnet.cidr, name=subnet.label, attached=subnet.attached, excluded=excluded
         )
         report.subnets.append(result)
         if result.skipped:

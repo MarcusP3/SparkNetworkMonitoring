@@ -17,7 +17,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from .. import alerts, events
+from .. import alerts, events, exclusions
 from .. import port_catalogue
 from ..db import get_setting, save_setting, session_scope
 from ..models import Device, utcnow
@@ -90,8 +90,9 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
                 _SubnetPlan(cidr=s.cidr, label=s.label, attached=s.attached)
                 for s in subnets
             ]
+            excluded = await exclusions.load(session)
 
-        report = await sweep_all(plan)
+        report = await sweep_all(plan, excluded=excluded)
 
         async with session_scope() as session:
             # Before this sweep's summary replaces it: no earlier sweep means
@@ -174,7 +175,11 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
                     )
                 ).all()
             )
-            targets = [(int(device_id), str(ip)) for device_id, ip in rows]
+            # Excluded addresses (Settings -> Subnets) are never scanned, and
+            # never chosen as a control address either.
+            excluded = await exclusions.load(session)
+            targets = [(int(device_id), str(ip)) for device_id, ip in rows
+                       if str(ip) not in excluded]
 
             # Control addresses come from the same session: addresses in an
             # enabled subnet that discovery has never found anything at.
@@ -192,7 +197,7 @@ async def run_port_scan(_config=None) -> None:  # type: ignore[no-untyped-def]
                 if len(controls) >= 3:
                     break
                 controls.extend(
-                    pick_control_addresses(hosts_in(subnet.cidr), known | all_ips)
+                    pick_control_addresses(excluded.keep(hosts_in(subnet.cidr)), known | all_ips)
                 )
             controls = controls[:3]
 

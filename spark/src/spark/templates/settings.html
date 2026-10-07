@@ -213,6 +213,63 @@
       </dd>
     </dl>
   </section>
+
+  {# Excluded addresses: never pinged, port-scanned or SNMP-probed by the
+     automatic scans (exclusions.py). What was set up by hand still runs. #}
+  <section class="card" id="exclusions">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg></span>
+      <div>
+        <h2>Excluded addresses</h2>
+        <p class="card-sub">
+          Never pinged by the sweep, port-scanned (nor used as a port-scan control), or tried
+          by Find SNMP. Targets, SNMP polling and API credentials you set up yourself still run.
+          A scan already running finishes as it started; the next one leaves these out.
+        </p>
+      </div>
+    </div>
+
+    {% if exclusion_error %}<div class="alert error">{{ exclusion_error }}</div>{% endif %}
+
+    {% if exclusions %}
+    <div class="table-scroll">
+    <table class="table compact exclusion-table">
+      <thead><tr><th>Address or range</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+        {% for e in exclusions %}
+        <tr>
+          <td><code>{{ e.spec }}</code></td>
+          <td class="muted">{{ e.note or '—' }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/exclusions/delete">
+              <input type="hidden" name="spec" value="{{ e.spec }}">
+              <button type="submit" class="btn-quiet danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">Nothing excluded: every address in a swept subnet is scanned.</p>
+    {% endif %}
+
+    <form method="post" action="/settings/exclusions" class="row-form add-exclusion">
+      <label class="inline-field">
+        <span class="muted small">Address or range</span>
+        <input type="text" name="spec" maxlength="100" required class="mono"
+               value="{{ exclusion_form.spec or '' }}" placeholder="10.0.0.25 or 10.0.0.100-10.0.0.150"
+               autocomplete="off" spellcheck="false">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Note</span>
+        <input type="text" name="note" maxlength="80" value="{{ exclusion_form.note or '' }}"
+               placeholder="Why (optional)">
+      </label>
+      <button type="submit" class="btn-primary">Exclude</button>
+    </form>
+  </section>
   {% endif %}
 
   {% if section == 'ports' %}

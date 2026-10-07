@@ -960,13 +960,15 @@ input.narrow { max-width: 5.5rem; }
 .btn-quiet.danger { color: var(--bad); }
 .btn-quiet.danger:hover { border-color: var(--bad); }
 
-.add-subnet {
+.add-subnet, .add-exclusion {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
 
-.add-subnet .inline-field { flex-direction: column; align-items: flex-start; gap: .15rem; }
+.add-subnet .inline-field, .add-exclusion .inline-field { flex-direction: column; align-items: flex-start; gap: .15rem; }
+.add-exclusion input[name="spec"] { min-width: 22rem; }
+@media (max-width: 640px) { .add-exclusion input[name="spec"] { min-width: 0; width: 100%; } .add-exclusion .inline-field { width: 100%; } }
 
 /* ---- devices: subnet filter -------------------------------------------- */
 

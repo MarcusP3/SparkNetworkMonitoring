@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import limits
+from .. import exclusions, limits
 from .. import alerts as alert_service
 from .. import port_catalogue
 from .. import prefs
@@ -407,6 +407,8 @@ async def _render(
     supp_form: dict | None = None,
     supp_notice: str | None = None,
     backup_error: str | None = None,
+    exclusion_error: str | None = None,
+    exclusion_form: dict | None = None,
 ):
     section = _section_of(section, port_error=port_error, port_form=port_form,
                           snmp_error=snmp_error, snmp_form=snmp_form,
@@ -461,6 +463,9 @@ async def _render(
             "supp_notice": supp_notice,
             "backup": await _backup(session, config) if section == "backup" else None,
             "backup_error": backup_error,
+            "exclusions": await exclusions.entries(session) if section == "subnets" else [],
+            "exclusion_error": exclusion_error,
+            "exclusion_form": exclusion_form or {},
         },
         status_code=status_code,
     )
@@ -639,6 +644,37 @@ async def remove_subnet(
     await session.commit()
     await _apply_to_scheduler(session, config)
     return redirect("/settings")
+
+
+@router.post("/settings/exclusions")
+async def add_exclusion(
+    request: Request,
+    spec: str = Form("", max_length=limits.NAME + 36),
+    note: str = Form("", max_length=limits.NAME + 16),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Exclude an address or a start-end range from every automatic scan."""
+    try:
+        await exclusions.add(session, spec, note)
+    except exclusions.ExclusionError as exc:
+        return await _render(request, session, config, user, section="subnets",
+                             exclusion_error=str(exc),
+                             exclusion_form={"spec": spec, "note": note}, status_code=400)
+    await session.commit()
+    return redirect("/settings#exclusions")
+
+
+@router.post("/settings/exclusions/delete")
+async def remove_exclusion(
+    spec: str = Form("", max_length=limits.NAME + 36),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    await exclusions.remove(session, spec.strip())
+    await session.commit()
+    return redirect("/settings#exclusions")
 
 
 @router.post("/settings/port-scan")
