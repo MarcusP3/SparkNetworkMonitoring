@@ -330,6 +330,19 @@ one account.
 
 ## Alerts
 
+**The Alerts page** (Alerts in the menu) has everything about alerts in one
+place. **Activity** lists what is firing now — every open outage and alert,
+newest first — and the history of everything that has ended, suppressed ones
+included, 25 to a page. Narrow the history by source (Target, SNMP, Port,
+Storage, API, TrueNAS, Proxmox, Internet) or by device. **Messages** is every
+message SPARK decided to send and what became of it: sent, waiting, held for
+quiet hours, failed (with Discord's answer), or not sent because alerting was
+off or there was no webhook. The tiles count what is firing, what began in
+the last 24 hours and 7 days, and messages sent and failed in the last 7
+days. The rules themselves are still under Settings → Alerts and Settings →
+Suppressions, linked from the page's menu. The dashboard keeps the newest
+ten, with **All alerts →** to this page.
+
 **The dashboard's incidents** are every kind of problem, not only outages: a
 target down, and every alert rule that fired — SNMP thresholds, starred
 ports, storage, a device that stopped answering SNMP, an API credential that

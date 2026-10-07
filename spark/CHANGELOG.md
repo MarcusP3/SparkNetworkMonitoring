@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — the Alerts page (2026-10-07)
+
+### Added
+
+- **An Alerts page** (Alerts in the menu). **Activity**: what is firing now,
+  and the history of every outage and alert that ended, filtered by source
+  or device and paged. **Messages**: every message SPARK decided to send and
+  whether Discord took it — sent, waiting, held for quiet hours, failed with
+  Discord's answer, or not sent. Tiles for firing now, the last 24 hours and
+  7 days, and messages sent and failed. The rules stay under Settings for
+  now, linked from the page's menu.
+- **All alerts →** on the dashboard's Recent incidents card.
+- Proxmox alerts are labelled **Proxmox** in incident lists, not "Alert".
+
 ## Unreleased — a credential on no device says so (2026-10-07)
 
 ### Added

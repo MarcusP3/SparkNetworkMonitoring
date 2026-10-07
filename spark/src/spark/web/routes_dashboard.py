@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
@@ -17,10 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import subnets as subnet_service
 from .. import suppressions
+from . import incident_rows
 from .. import internet
 from ..config import Config
 from ..db import get_setting
-from ..engine.state import human_duration
 from ..models import (AlertIncident, CheckResult, Device, HealthStatus, Incident, Service, Target,
                       User)
 from .deps import get_config, get_session, redirect, require_user, templates
@@ -29,19 +28,8 @@ router = APIRouter()
 
 RECENT = 10
 
-# Where an alert incident came from, by its rule key's prefix (the keys
-# alert_state uses: snmp_alerts, storage, credentials, truenas_health).
-SOURCES = {
-    "cpu": "SNMP", "memory": "SNMP", "temperature": "SNMP", "snmpdown": "SNMP",
-    "port": "Port", "busy": "Port",
-    "pool": "Storage", "space": "Storage", "drive": "Storage",
-    "api": "API", "apidrive": "TrueNAS", "tnalert": "TrueNAS",
-    "internet": "Internet",
-}
-
-
-def source_of(key: str) -> str:
-    return SOURCES.get(key.split(":", 1)[0], "Alert")
+# Kept here too: older tests and code import them from the dashboard.
+SOURCES, source_of = incident_rows.SOURCES, incident_rows.source_of
 
 
 def _greeting() -> str:
@@ -149,27 +137,14 @@ async def dashboard(
         for t in targets
     ]
 
-    incident_rows = await session.execute(
+    recent_outages = await session.execute(
         select(Incident, Target.name)
         .join(Target, Target.id == Incident.target_id)
         .order_by(Incident.opened_at.desc())
         .limit(RECENT)
     )
-    incidents = [
-        {
-            "target_name": name,
-            "source": "Target",
-            "href": None,
-            "suppress": None,
-            "opened_at": incident.opened_at,
-            "closed_at": incident.closed_at,
-            "duration": human_duration(incident.duration_seconds),
-            "cause": incident.cause,
-            "resolution": incident.resolution,
-            "suppressed_by_dependency": incident.suppressed_by_dependency,
-        }
-        for incident, name in incident_rows.all()
-    ]
+    incidents = [incident_rows.target_row(incident, name)
+                 for incident, name in recent_outages.all()]
     # SNMP, storage and API alerts beside the outages, the newest ten of both.
     # Not what is suppressed: an alert closed by its suppression, or any from
     # a rule that is now off for its device -- that is expected, not news.
@@ -180,31 +155,11 @@ async def dashboard(
     )).scalars():
         if shown >= RECENT:
             break
-        rule = suppressions.rule_of(row.key)
-        klass = (await suppressions.klass_of(session, row.key, row.detail)
-                 if rule == "truenas_alerts" else None)
+        rule, klass = await incident_rows.rule_of(session, row)
         if hidden(row, rule, klass):
             continue
         shown += 1
-        closed = row.closed_at
-        suppress = None
-        if row.device_id and rule:
-            query = {"device": row.device_id, "rule": rule}
-            if klass:
-                query["detail"] = klass
-            suppress = f"/settings/suppressions?{urlencode(query)}#add"
-        incidents.append({
-            "target_name": row.title,
-            "source": source_of(row.key),
-            "href": f"/devices/{row.device_id}" if row.device_id else None,
-            "suppress": suppress,
-            "opened_at": row.opened_at,
-            "closed_at": closed,
-            "duration": human_duration((closed - row.opened_at).total_seconds()) if closed else None,
-            "cause": row.detail,
-            "resolution": row.resolution,
-            "suppressed_by_dependency": False,
-        })
+        incidents.append(incident_rows.alert_row(row, rule, klass))
     incidents.sort(key=lambda i: i["opened_at"], reverse=True)
     incidents = incidents[:RECENT]
 

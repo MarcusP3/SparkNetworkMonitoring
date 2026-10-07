@@ -1,0 +1,47 @@
+{# One list of incidents, as the dashboard and the Alerts page show them:
+   outages and alert-rule incidents side by side (web/incident_rows.py). #}
+{% macro timeline(incidents) -%}
+      <ul class="timeline">
+        {% for incident in incidents %}
+        <li>
+          <span class="tl-dot {% if not incident.closed_at %}bad{% elif incident.resolution == 'recovered' %}ok{% else %}warn{% endif %}"
+                aria-hidden="true"></span>
+          <span class="what">
+            <strong>{% if incident.href %}<a href="{{ incident.href }}">{{ incident.target_name }}</a>{% else %}{{ incident.target_name }}{% endif %}</strong>
+            <span class="detail">{{ incident.cause or 'No cause recorded' }}</span>
+            <span class="detail">
+              <span class="pill neutral">{{ incident.source }}</span>
+              {% if not incident.closed_at %}
+                <span class="pill bad dot">ongoing</span>
+              {% else %}
+                Lasted {{ incident.duration }}
+                {# A duration alone cannot say whether the outage ended or
+                   whether we simply stopped watching, and those read
+                   identically. #}
+                {% if incident.resolution == 'paused' %}
+                  · <span title="Monitoring was paused while this target was
+                        down, so the outage may have continued past this
+                        point">paused, not recovered</span>
+                {% elif incident.resolution == 'suppressed' %}
+                  · <span title="Suppressed for this device under Settings → Suppressions">suppressed</span>
+                {% elif incident.resolution == 'no longer watched' %}
+                  · <span title="What it was about stopped being watched (a port
+                        unstarred, a credential removed) while it stood">no longer watched</span>
+                {% elif incident.resolution == 'superseded' %}
+                  · <span title="Left open by an older bug and closed when the
+                        next incident opened">superseded</span>
+                {% endif %}
+              {% endif %}
+              {% if incident.suppressed_by_dependency %}
+                <span class="pill warn" title="A dependency was already down">symptom</span>
+              {% endif %}
+              {% if incident.suppress %}
+                · <a href="{{ incident.suppress }}" class="suppress-link" title="Switch this alert off for this device, or give it its own line">Suppress</a>
+              {% endif %}
+            </span>
+          </span>
+          <span class="when">{{ incident.opened_at | local }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+{%- endmacro %}

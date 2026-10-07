@@ -21,6 +21,7 @@ from .config import Config, load_config
 from .db import close_engine, init_db, init_engine, session_scope
 from .web.deps import RedirectException, templates
 from .web.hardening import Hardening
+from .web.routes_alerts import router as alerts_router
 from .web.routes_auth import router as auth_router
 from .web.routes_dashboard import router as dashboard_router
 from .web.routes_device_page import router as device_page_router
@@ -307,6 +308,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(dashboard_router)
+    app.include_router(alerts_router)
     app.include_router(targets_router)
     app.include_router(events_router)
     app.include_router(devices_router)

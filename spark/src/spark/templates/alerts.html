@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% from "_incidents.html" import timeline with context %}
+{% set ICON = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' | safe %}
+{% block content %}
+<div class="page page-settings page-alerts">
+  <div class="page-head">
+    <div>
+      <p class="page-tag">Monitoring</p>
+      <h1>Alerts</h1>
+      <p class="page-sub">What is firing now, everything that fired before, and what SPARK sent to Discord about it.</p>
+    </div>
+  </div>
+
+  <div id="live">
+
+  <section class="stat-row">
+    <a class="stat {{ 's-inc is-bad' if tiles.firing else 's-mon' }}" href="/alerts#firing"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span><span class="stat-name">Firing now</span></span><span class="stat-value">{{ tiles.firing }}</span></a>
+    <div class="stat s-svc" title="Outages and alerts that began in the last 24 hours"><span class="stat-head"><span class="stat-icon">{{ ICON }}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="stat-name">Last 24 hours</span></span><span class="stat-value">{{ tiles.day }}</span></div>
+    <div class="stat s-svc" title="Outages and alerts that began in the last 7 days"><span class="stat-head"><span class="stat-icon">{{ ICON }}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span class="stat-name">Last 7 days</span></span><span class="stat-value">{{ tiles.week }}</span></div>
+    <a class="stat s-svc" href="/alerts/messages?status=sent" title="Messages delivered to Discord in the last 7 days"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg></span><span class="stat-name">Sent, 7 days</span></span><span class="stat-value">{{ tiles.sent }}</span></a>
+    <a class="stat {{ 's-down is-bad' if tiles.failed else 's-svc' }}" href="/alerts/messages?status=failed" title="Messages Discord never took, in the last 7 days"><span class="stat-head"><span class="stat-icon">{{ ICON }}<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg></span><span class="stat-name">Failed, 7 days</span></span><span class="stat-value">{{ tiles.failed }}</span></a>
+  </section>
+
+  <div class="settings-layout">
+  <nav class="subnav" aria-label="Alerts sections">
+    {% for m in menu %}
+      <a href="{{ m.url }}" class="{% if m.slug == section %}active{% endif %}"
+         {% if m.slug == section %}aria-current="page"{% endif %}>
+        <span class="subnav-icon">{{ ICON }}
+          {%- if m.slug == 'activity' %}<path d="M3 12h4l3-8 4 16 3-8h4"/>
+          {%- elif m.slug == 'messages' %}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/>
+          {%- elif m.slug == 'rules' %}<path d="M4 6h16M4 12h10M4 18h6"/>
+          {%- else %}<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>{% endif -%}
+        </svg></span>
+        <span>{{ m.label }}</span>
+        <span class="subnav-hint{% if m.warn %} warn{% endif %}">{{ m.hint }}</span>
+        <small class="subnav-about">{{ m.about }}</small>
+      </a>
+    {% endfor %}
+  </nav>
+  <div class="settings-body">
+
+  {% if section == 'activity' %}
+  <section class="card {{ 'is-warn-edge' if firing }}" id="firing">
+    <div class="card-head">
+      <span class="card-icon{{ ' is-warn' if firing }}">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
+      <div>
+        <h2>Firing now</h2>
+        <p class="card-sub">Every outage and alert still open, newest first.</p>
+      </div>
+    </div>
+    {% if firing %}
+      {{ timeline(firing) }}
+    {% else %}
+      <p class="muted">Nothing is firing.</p>
+    {% endif %}
+    {% if left_out %}
+      <p class="muted small">{{ left_out }} more open from a rule switched off for its device,
+        left out here as on the dashboard (<a href="/settings/suppressions">Suppressions</a>).</p>
+    {% endif %}
+  </section>
+
+  <section class="card" id="history">
+    <div class="card-head">
+      <span class="card-icon">{{ ICON }}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <div>
+        <h2>History</h2>
+        <p class="card-sub">Every outage and alert that has ended, newest first, the suppressed included.</p>
+      </div>
+    </div>
+
+    <nav class="tbar-chips" aria-label="Source">
+      {% for s in [''] + filters.sources | list %}
+        <a class="chip" href="{{ filters.source_urls[s] }}#history"
+           {% if s == filters.source %}aria-current="true"{% endif %}>{{ s or 'All' }}</a>
+      {% endfor %}
+    </nav>
+    {% if filters.devices %}
+    <form method="get" action="/alerts#history" class="row-form alerts-device">
+      {% if filters.source %}<input type="hidden" name="source" value="{{ filters.source }}">{% endif %}
+      <label class="inline-field">
+        <span class="muted small">Device</span>
+        <select name="device" class="auto-submit">
+          <option value="">Every device</option>
+          {% for d in filters.devices %}
+            <option value="{{ d.id }}" {% if d.id == filters.device %}selected{% endif %}>{{ d.display_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <noscript><button type="submit" class="btn-quiet">Apply</button></noscript>
+      <span class="muted small">{{ total }} ended{% if filters.any %}, with these filters{% endif %}.</span>
+    </form>
+    {% endif %}
+
+    {% if history %}
+      {{ timeline(history) }}
+    {% elif filters.any %}
+      <p class="muted">Nothing has ended with these filters. <a href="/alerts#history">Show all</a>.</p>
+    {% else %}
+      <p class="muted">Nothing has ended yet.</p>
+    {% endif %}
+
+    {% if paging.pages > 1 %}
+    <nav class="pager" aria-label="History pages">
+      {% if paging.prev %}<a class="btn-quiet" href="{{ paging.prev }}#history" rel="prev">← Newer</a>
+      {% else %}<span class="btn-quiet disabled" aria-disabled="true">← Newer</span>{% endif %}
+      <span class="muted small">Page {{ paging.page }} of {{ paging.pages }}</span>
+      {% if paging.next %}<a class="btn-quiet" href="{{ paging.next }}#history" rel="next">Older →</a>
+      {% else %}<span class="btn-quiet disabled" aria-disabled="true">Older →</span>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+
+  {% elif section == 'messages' %}
+  <section class="card" id="messages">
+    <div class="card-head">
+      <span class="card-icon">{{ ICON }}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg></span>
+      <div>
+        <h2>Messages</h2>
+        <p class="card-sub">Every message SPARK decided to send, newest first, and whether Discord took it.
+          Held ones go out in the digest when quiet hours end; "not sent" means alerting was off,
+          or there was no webhook, when it was due.</p>
+      </div>
+    </div>
+    {% if not tiles.webhook %}
+      <div class="alert warn">No Discord webhook is set, so nothing can be sent.
+        Add one under <a href="/settings/alerts">Settings → Alerts</a>.</div>
+    {% endif %}
+
+    <nav class="tbar-chips" aria-label="Status">
+      {% for s, label in (('', 'All'), ('failed', 'Failed'), ('held', 'Held'), ('dropped', 'Not sent'), ('sent', 'Sent')) %}
+        <a class="chip{% if s == 'failed' %} k-warn{% endif %}" href="{{ status_urls[s] }}"
+           {% if s == status %}aria-current="true"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+
+    {% if messages %}
+    <ul class="msg-list">
+      {% for m in messages %}{% set n = m.row %}
+      <li>
+        <div class="msg-head">
+          <span class="pill {{ m.pill }}{% if m.pill != 'neutral' %} dot{% endif %}">{{ m.words }}</span>
+          <strong>{{ n.subject }}</strong>
+        </div>
+        <div class="muted small msg-meta">
+          {{ n.created_at | local }}
+          {% if n.sent_at %} · sent {{ n.sent_at | local('%H:%M') }}{% endif %}
+          {% if n.attempts > 1 %} · {{ n.attempts }} tries{% endif %}
+          · <code>{{ n.kind }}</code>
+        </div>
+        {% if n.error %}<div class="small msg-error">{{ n.error }}</div>{% endif %}
+        {% if n.body %}
+        <details class="msg-body">
+          <summary class="muted small">Message</summary>
+          <pre>{{ n.body }}</pre>
+        </details>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif status %}
+      <p class="muted">No messages like that. <a href="/alerts/messages">Show all</a>.</p>
+    {% else %}
+      <p class="muted">No messages yet.</p>
+    {% endif %}
+
+    {% if paging.pages > 1 %}
+    <nav class="pager" aria-label="Message pages">
+      {% if paging.prev %}<a class="btn-quiet" href="{{ paging.prev }}" rel="prev">← Newer</a>
+      {% else %}<span class="btn-quiet disabled" aria-disabled="true">← Newer</span>{% endif %}
+      <span class="muted small">Page {{ paging.page }} of {{ paging.pages }}</span>
+      {% if paging.next %}<a class="btn-quiet" href="{{ paging.next }}" rel="next">Older →</a>
+      {% else %}<span class="btn-quiet disabled" aria-disabled="true">Older →</span>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  </div>
+  </div>
+  </div>
+</div>
+{% endblock %}
