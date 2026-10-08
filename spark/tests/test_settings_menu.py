@@ -20,8 +20,7 @@ from spark.main import create_app
 PASSWORD = "correct horse battery"
 CARDS = {"subnets": "<h2>Subnets</h2>", "ports": "<h2>Port scanning</h2>",
          "snmp": "<h2>SNMP</h2>", "alerts": "<h2>Alerts</h2>"}
-URLS = {"subnets": "/settings", "ports": "/settings/ports",
-        "snmp": "/settings/snmp", "alerts": "/settings/alerts"}
+URLS = {"subnets": "/settings", "ports": "/settings/ports", "snmp": "/settings/snmp"}
 
 
 @pytest.fixture
@@ -66,7 +65,7 @@ def test_unknown_or_duplicate_pages_go_to_the_first_one(client):
     ("/settings/ports", {"port": "8112", "name": "deluge"}, "/settings/ports"),
     ("/settings/port-scan", {"enabled": "1", "interval_hours": "6"}, "/settings/ports"),
     ("/settings/snmp/polling", {"interval_seconds": "60"}, "/settings/snmp"),
-    ("/settings/alerts", {"enabled": "1"}, "/settings/alerts"),
+    ("/settings/alerts", {"enabled": "1"}, "/alerts/rules"),
     ("/settings/subnets", {"cidr": "10.9.9.0/24", "name": "Lab"}, "/settings"),
 ])
 def test_a_form_goes_back_to_its_own_page(client, path, data, back):
@@ -79,7 +78,7 @@ def test_an_error_is_shown_on_the_page_it_came_from(client):
     assert active(page) == "/settings/ports"
     assert CARDS["ports"] in page and CARDS["subnets"] not in page
     page = client.post("/settings/alerts", data={"quiet_start": "22:00"}).text
-    assert active(page) == "/settings/alerts" and "both a start and an end" in page
+    assert active(page) == "/alerts/rules" and "both a start and an end" in page
 
 
 def test_the_menu_says_what_is_set_up(client):
@@ -87,7 +86,7 @@ def test_the_menu_says_what_is_set_up(client):
     menu = page[page.index('class="subnav"'):page.index("</nav>", page.index('class="subnav"'))]
     assert re.search(r"Subnets</span>\s*<span class=\"subnav-hint\">1<", menu)
     assert re.search(r"SNMP</span>\s*<span class=\"subnav-hint\">0<", menu)
-    assert 'subnav-hint warn">no webhook<' in menu
+    assert "Alerts</span>" not in menu and "Suppressions</span>" not in menu, "moved to Alerts"
 
 
 def test_the_tiles_on_every_settings_page(client):
@@ -101,8 +100,7 @@ def test_the_tiles_on_every_settings_page(client):
         assert tiles["Last backup"] == "—", "no nightly backup has run"
         on, of = re.fullmatch(r'(\d+)<span class="stat-of"> of (\d+)</span>', tiles["Alert rules on"]).groups()
         assert 0 < int(on) <= int(of), "the rules count what is switched on"
-    page = " ".join(client.get("/settings").text.split())
-    assert '<small class="subnav-about">Discord, rules, muted</small>' in page
+        assert '<a class="stat s-svc" href="/alerts/rules">' in page, "the rules tile opens them"
 
 
 def test_the_last_backup_tile(client):
@@ -125,4 +123,26 @@ def test_the_last_backup_tile(client):
 
 def test_old_single_page_links_are_forwarded(client):
     page = client.get("/settings").text
-    assert "'#snmp': '/settings/snmp'" in page and "'#alerts': '/settings/alerts'" in page
+    assert "'#snmp': '/settings/snmp'" in page and "'#alerts': '/alerts/rules'" in page
+
+
+@pytest.mark.parametrize("old, new", [
+    ("/settings/alerts", "/alerts/rules"),
+    ("/settings/alerts?saved=rules", "/alerts/rules?saved=rules"),
+    ("/settings/suppressions", "/alerts/suppressions"),
+    ("/settings/suppressions?device=1&rule=cpu", "/alerts/suppressions?device=1&rule=cpu"),
+])
+def test_the_moved_pages_redirect(client, old, new):
+    response = client.get(old)
+    assert response.status_code in (302, 303) and response.headers["location"] == new
+
+
+def test_rules_and_suppressions_on_the_alerts_page(client):
+    page = client.get("/alerts/rules").text
+    assert "<h2>Discord</h2>" in page and "<h2>SNMP alerts</h2>" in page and "<h2>Muted</h2>" in page
+    assert active(page) == "/alerts/rules" and 'id="live"' not in page, "forms are not live-swapped"
+    assert 'Under <a href="/alerts/messages">Messages</a>' not in page
+    assert 'is under\n      <a href="/alerts/messages">Messages</a>' in page, "Recent moved to Messages"
+    page = client.get("/alerts/suppressions").text
+    assert "<h2>Suppressions</h2>" in page and active(page) == "/alerts/suppressions"
+    assert "<h2>Discord</h2>" not in page

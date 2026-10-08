@@ -400,7 +400,7 @@ class TestCard:
         assert 'id="storage"' not in site.get("/devices/1").text
 
     def test_the_rules_are_on_the_form(self, site):
-        page = flat(site.get("/settings/alerts").text)
+        page = flat(site.get("/alerts/rules").text)
         assert 'name="drive_errors" value="1" checked' in page
         assert 'name="truenas_alerts" value="1" checked' in page
 

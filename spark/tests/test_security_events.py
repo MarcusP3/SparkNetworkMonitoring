@@ -133,7 +133,7 @@ class TestSwitchedOff:
         app = create_app(config)
         with TestClient(app):
             c = _setup(app, "192.168.1.20")
-            page = c.get("/settings/alerts").text
+            page = c.get("/alerts/rules").text
             assert 'name="notify_on_security"' in page and "checked" in page.split('name="notify_on_security"')[1][:40]
             response = c.post("/settings/alerts", data={"enabled": "1", "notify_on_recovery": "1"})
             assert response.status_code == 303

@@ -780,7 +780,7 @@ class TestPages:
         assert "pve-card" not in site.get("/devices/1").text
 
     def test_the_rule_is_on_the_form(self, site):
-        page = flat(site.get("/settings/alerts").text)
+        page = flat(site.get("/alerts/rules").text)
         assert 'name="guest_down" value="1" checked' in page
         assert "<span>A drive is failing</span>" in page
 

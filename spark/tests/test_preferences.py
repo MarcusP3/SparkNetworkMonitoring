@@ -148,7 +148,7 @@ class TestUsing:
     def test_the_alerts_card_names_the_zone_and_links_to_change_it(self, site):
         client, _ = site
         client.post("/preferences", data={"timezone": "Asia/Tokyo"})
-        page = client.get("/settings/alerts").text
+        page = client.get("/alerts/rules").text
         assert "Asia/Tokyo (<a href=\"/preferences\">change</a>)" in page
         assert 'name="timezone"' not in page, "the card no longer sets the zone itself"
 

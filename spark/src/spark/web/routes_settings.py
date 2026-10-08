@@ -307,12 +307,13 @@ SECTIONS = (
     ("subnets", "Subnets", "/settings"),
     ("ports", "Port scanning", "/settings/ports"),
     ("snmp", "SNMP", "/settings/snmp"),
-    ("alerts", "Alerts", "/settings/alerts"),
     ("credentials", "Credentials", "/settings/credentials"),
-    ("suppressions", "Suppressions", "/settings/suppressions"),
     ("backup", "Backup", "/settings/backup"),
 )
 SECTION_URLS = {slug: url for slug, _, url in SECTIONS}
+# Alert rules and suppressions moved to the Alerts page. Their forms still
+# post here; the pages render there, and the old addresses redirect.
+MOVED = {"alerts": "/alerts/rules", "suppressions": "/alerts/suppressions"}
 PORTS_URL = SECTION_URLS["ports"]
 
 
@@ -413,6 +414,11 @@ async def _render(
     section = _section_of(section, port_error=port_error, port_form=port_form,
                           snmp_error=snmp_error, snmp_form=snmp_form,
                           alert_error=alert_error, alert_notice=alert_notice)
+    if section in MOVED:
+        return await _render_alerts_page(
+            request, session, config, user, section=section, status_code=status_code,
+            alert_error=alert_error, alert_notice=alert_notice, supp_error=supp_error,
+            supp_form=supp_form, supp_notice=supp_notice)
     rows = await subnet_service.list_subnets(session)
     discovery = await get_setting(session, "discovery")
     # Only the open page's data. Each of these is a handful of queries, and
@@ -466,6 +472,36 @@ async def _render(
             "exclusions": await exclusions.entries(session) if section == "subnets" else [],
             "exclusion_error": exclusion_error,
             "exclusion_form": exclusion_form or {},
+        },
+        status_code=status_code,
+    )
+
+
+async def _render_alerts_page(request: Request, session: AsyncSession, config: Config,
+                              user: User, *, section: str, status_code: int = 200,
+                              alert_error: str | None = None, alert_notice: str | None = None,
+                              supp_error: str | None = None, supp_form: dict | None = None,
+                              supp_notice: str | None = None):
+    """Alerts -> Rules or Alerts -> Suppressions: the Alerts page's layout,
+    with the cards that used to be Settings -> Alerts and -> Suppressions."""
+    from .routes_alerts import common as alerts_common
+    rules = section == "alerts"
+    return templates.TemplateResponse(
+        request,
+        "alerts.html",
+        {
+            "config": config,
+            "user": user,
+            "title": "Alerts · " + ("Rules" if rules else "Suppressions"),
+            "section": "rules" if rules else "suppressions",
+            **await alerts_common(session),
+            "alerts": await _alerts(session) if rules else None,
+            "alert_error": alert_error,
+            "alert_notice": alert_notice,
+            "supp": await _suppressions(session) if not rules else None,
+            "supp_error": supp_error,
+            "supp_form": supp_form or {},
+            "supp_notice": supp_notice,
         },
         status_code=status_code,
     )
@@ -561,17 +597,45 @@ async def settings_section(
 
     Suppressions takes ?device=&rule=&detail= to fill in its form, from the
     Suppress link beside an incident on the dashboard."""
+    if section in MOVED:
+        query = request.url.query
+        return redirect(MOVED[section] + (f"?{query}" if query else ""))
     if section not in SECTION_URLS or section == "subnets":
         return redirect("/settings")
-    notice = "Alert rules saved." if section == "alerts" and saved == "rules" else None
+    return await _render(request, session, config, user, section=section)
+
+
+@router.get("/alerts/rules")
+async def alert_rules_page(
+    request: Request,
+    saved: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Alerts -> Rules (was Settings -> Alerts)."""
+    return await _render(request, session, config, user, section="alerts",
+                         alert_notice="Alert rules saved." if saved == "rules" else None)
+
+
+@router.get("/alerts/suppressions")
+async def suppressions_page(
+    request: Request,
+    saved: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Alerts -> Suppressions (was Settings -> Suppressions). Takes
+    ?device=&rule=&detail= to fill in its form, from the Suppress link beside
+    an incident."""
     params = request.query_params
     prefill = {"device": params.get("device", "")[:20], "rule": params.get("rule", "")[:32],
-               "detail": params.get("detail", "")[:64], "mode": "off"} \
-        if section == "suppressions" else None
-    return await _render(request, session, config, user, section=section, alert_notice=notice,
+               "detail": params.get("detail", "")[:64], "mode": "off"}
+    return await _render(request, session, config, user, section="suppressions",
                          supp_form=prefill,
                          supp_notice="Saved. That alert starts afresh for this device."
-                         if section == "suppressions" and saved else None)
+                         if saved else None)
 
 
 @router.post("/settings/subnets")
@@ -1016,7 +1080,7 @@ async def add_found_snmp_devices(
     return redirect(SNMP_ANCHOR)
 
 
-ALERTS_ANCHOR = "/settings/alerts"
+ALERTS_ANCHOR = "/alerts/rules"
 
 
 @router.post("/settings/alerts/rules")

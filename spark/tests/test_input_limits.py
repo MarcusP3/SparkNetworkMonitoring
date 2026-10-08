@@ -182,7 +182,9 @@ class TestSize:
         ("/targets/new", "params", limits.PARAMS),
         ("/settings", "name", limits.NAME),
         ("/settings", "cidr", limits.NAME),
-        ("/settings/alerts", "webhook", limits.WEBHOOK),
+        ("/alerts/rules", "webhook", limits.WEBHOOK),
+        ("/settings", "spec", limits.NAME + 36),
+        ("/settings", "note", limits.NAME + 16),
     ])
     def test_the_page_stops_you_at_the_same_limit(self, client, page, field, limit):
         html = client.get(page).text

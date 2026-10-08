@@ -255,7 +255,7 @@ class TestCard:
         assert ">Turn off</button>" in site.get("/").text
 
     def test_the_rule_is_on_the_alerts_form(self, site):
-        page = flat(site.get("/settings/alerts").text)
+        page = flat(site.get("/alerts/rules").text)
         assert 'name="internet_down" value="1" checked' in page
         assert "<span>The internet is down</span>" in page
 

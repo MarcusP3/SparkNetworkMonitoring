@@ -9,7 +9,7 @@
         <p class="card-sub">
           Read every 5 minutes{% if st.read_at %}, last at {{ st.read_at | local('%H:%M %Z') }}{% endif %}{% if api %};
           drive health from the TrueNAS API{% if api.read_at %}, last at {{ api.read_at | local('%H:%M %Z') }}{% endif %}{% endif %}.
-          Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
+          Alerts, and the lines they use, are under <a href="/alerts/rules#rules">Alerts → Rules</a>.
         </p>
       </div>
     </div>
@@ -126,7 +126,7 @@
         <p class="card-sub">
           {% if pv.guests %}{{ pv.running }} of {{ pv.guests | length }} guest{{ 's' if pv.guests | length != 1 }} running ·{% endif %}
           read every 5 minutes{% if pv.read_at %}, last at {{ pv.read_at | local('%H:%M %Z') }}{% endif %}.
-          Watch a guest to be alerted when it stops. Alerts, and the lines they use, are under <a href="/settings/alerts#rules">Settings → Alerts</a>.
+          Watch a guest to be alerted when it stops. Alerts, and the lines they use, are under <a href="/alerts/rules#rules">Alerts → Rules</a>.
         </p>
       </div>
     </div>

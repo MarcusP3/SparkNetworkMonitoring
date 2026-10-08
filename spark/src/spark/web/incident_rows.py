@@ -78,7 +78,7 @@ def alert_row(row: AlertIncident, rule: str | None, klass: str | None) -> dict:
         query: dict = {"device": row.device_id, "rule": rule}
         if klass:
             query["detail"] = klass
-        suppress = f"/settings/suppressions?{urlencode(query)}#add"
+        suppress = f"/alerts/suppressions?{urlencode(query)}#add"
     return {
         "target_name": row.title,
         "source": source_of(row.key),

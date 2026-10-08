@@ -11,7 +11,9 @@
     </div>
   </div>
 
-  <div id="live">
+  {# Activity and Messages refresh themselves; the forms on Rules and
+     Suppressions must not be swapped out from under someone typing. #}
+  <div{% if section in ("activity", "messages") %} id="live"{% endif %}>
 
   <section class="stat-row">
     <a class="stat {{ 's-inc is-bad' if tiles.firing else 's-mon' }}" href="/alerts#firing"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span><span class="stat-name">Firing now</span></span><span class="stat-value">{{ tiles.firing }}</span></a>
@@ -56,7 +58,7 @@
     {% endif %}
     {% if left_out %}
       <p class="muted small">{{ left_out }} more open from a rule switched off for its device,
-        left out here as on the dashboard (<a href="/settings/suppressions">Suppressions</a>).</p>
+        left out here as on the dashboard (<a href="/alerts/suppressions">Suppressions</a>).</p>
     {% endif %}
   </section>
 
@@ -124,7 +126,7 @@
     </div>
     {% if not tiles.webhook %}
       <div class="alert warn">No Discord webhook is set, so nothing can be sent.
-        Add one under <a href="/settings/alerts">Settings → Alerts</a>.</div>
+        Add one under <a href="/alerts/rules">Rules</a>.</div>
     {% endif %}
 
     <nav class="tbar-chips" aria-label="Status">
@@ -174,6 +176,12 @@
     </nav>
     {% endif %}
   </section>
+
+  {% elif section == 'rules' %}
+  {% include "_alert_rules.html" %}
+
+  {% elif section == 'suppressions' %}
+  {% include "_suppressions.html" %}
   {% endif %}
 
   </div>

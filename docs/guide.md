@@ -134,7 +134,7 @@ DNS or the web check failing — the card says which) or **Down**: no
 resolver answers *and* the web check fails. One provider having a bad
 minute, or a network that drops ping, is not an outage.
 
-**The internet is down** (Settings → Alerts) alerts after two down checks
+**The internet is down** (Alerts → Rules) alerts after two down checks
 in a row, a minute apart, and again when it is back, and each outage is an
 incident on the Dashboard. If a target already watches the gateway and it is
 down, that is the alert you get — not a second one about the internet.
@@ -348,9 +348,10 @@ message SPARK decided to send and what became of it: sent, waiting, held for
 quiet hours, failed (with Discord's answer), or not sent because alerting was
 off or there was no webhook. The tiles count what is firing, what began in
 the last 24 hours and 7 days, and messages sent and failed in the last 7
-days. The rules themselves are still under Settings → Alerts and Settings →
-Suppressions, linked from the page's menu. The dashboard keeps the newest
-ten, with **All alerts →** to this page.
+days. **Rules** holds the Discord webhook, what is sent, quiet hours, every
+alert rule, starred ports and the mute list; **Suppressions** quiets one rule
+on one device. (Both used to be under Settings; old links still land.) The
+dashboard keeps the newest ten, with **All alerts →** to this page.
 
 **The dashboard's incidents** are every kind of problem, not only outages: a
 target down, and every alert rule that fired — SNMP thresholds, starred
@@ -361,7 +362,7 @@ device, and stays *ongoing* until the rule clears. **Open incidents** counts
 both kinds. They are recorded even for a muted device (the problem was real;
 only the message is held back), but not while a rule is switched off.
 
-**Suppressions** (Settings → Suppressions) are for a device that breaks a
+**Suppressions** (Alerts → Suppressions) are for a device that breaks a
 rule by design — ZFS keeps TrueNAS's memory nearly full on purpose. One
 rule, for one device: **off**, or **its own line** ("memory over 100%",
 "CPU over 98%"). Lines apply to CPU, memory, temperature, port traffic, pool
@@ -377,7 +378,7 @@ rule given its own line keeps its history. Each alert on the dashboard's Recent 
 has a **Suppress** link that fills the form in. (Muting is the other tool:
 the whole device, still recorded, only not sent.)
 
-**Settings → Alerts.** Paste a Discord webhook (in Discord: Server Settings →
+**Alerts → Rules.** Paste a Discord webhook (in Discord: Server Settings →
 Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and press
 **Send a test**. The URL is stored encrypted, like SNMP credentials, and never
 shown again; only Discord's own hosts over https are accepted.
@@ -533,7 +534,7 @@ or `no answer` with the reason — and when the next one is due.
   - **Anything running net-snmp** (Linux servers, Proxmox hosts): each real
     filesystem's size, use and free space. Memory, /run, snaps and
     container layers are left out, and a bind mount is shown once.
-  - Alerts, under **Settings → Alerts → Storage**: a pool not ONLINE (at
+  - Alerts, under **Alerts → Rules → Storage**: a pool not ONLINE (at
     once), a pool 85% full or more, a disk 90% full or more (both on two
     reads in a row), a drive at 50 °C or more for 10 minutes. Each ends 5
     under its line, and says so.
@@ -691,7 +692,7 @@ version and when it was last checked), *waiting for you* (a certificate to
 check first), or *not connected* with the reason, and a Test button. If a
 credential fails two checks in a row — a revoked key, a replaced
 certificate, TrueNAS down — SPARK alerts, and again when it works. The rule
-is under Settings → Alerts → APIs; the mute list applies.
+is under Alerts → Rules → APIs; the mute list applies.
 
 **Drive health and TrueNAS's own alerts.** The same 5-minute check reads,
 with query methods a Read-only Administrator may call (checked against a
@@ -700,7 +701,7 @@ topology, whose disks carry ZFS's read/write/checksum error counts),
 `disk.query` (model, size), `disk.temperatures`, and `alert.list`. The
 device's Storage card then shows a drive table — pool and vdev, state,
 errors, temperature — the last scrub beside each pool, and TrueNAS's
-current alerts. Settings → Alerts → APIs has two more rules, both on by
+current alerts. Alerts → Rules → APIs has two more rules, both on by
 default:
 
 - **A drive is failing** — not ONLINE in its pool, or any read, write or checksum
@@ -759,7 +760,7 @@ Templates are left out; serial numbers are not stored.
 `/disks/list` has Proxmox run `smartctl` on each drive, as its own Disks
 page does, which wakes a drive that has spun down.
 
-**Alerts** (Settings → Alerts; the mute list and suppressions apply):
+**Alerts** (Alerts → Rules; the mute list and suppressions apply):
 
 - **A watched VM or container stops** — only guests you press **Watch** on,
   on the device page; not running on two checks in a row (so a restart is

@@ -353,7 +353,7 @@ class TestPages:
         page = site.get("/devices/1").text
         assert 'class="star on"' in page
         # Unstar from the global list in Settings.
-        assert "port1" in site.get("/settings/alerts").text
+        assert "port1" in site.get("/alerts/rules").text
         site.post(f"/settings/alerts/ports/{iface.id}/unstar")
         assert not _iface(1).starred
 
@@ -381,14 +381,14 @@ class TestPages:
         assert _mutes() == []
 
     def test_the_global_mute_list(self, site):
-        page = site.get("/settings/alerts").text
+        page = site.get("/alerts/rules").text
         assert "Nothing is muted." in page and 'name="device_id"' in page and 'name="target_id"' in page
         site.post("/settings/alerts/mute", data={"device_id": "1"})
         site.post("/settings/alerts/mute", data={"target_id": "1"})
         site.post("/settings/alerts/mute", data={"target_id": "99999"})
         mutes = _mutes()
         assert {(m.device_id, m.target_id) for m in mutes} == {(1, None), (None, 1)}
-        page = site.get("/settings/alerts").text
+        page = site.get("/alerts/rules").text
         assert "core-switch" in page and "nas ping" in page and "Unmute" in page
         for m in mutes:
             site.post(f"/settings/alerts/mute/{m.id}/delete")
@@ -403,8 +403,8 @@ class TestPages:
                 "disk_space_percent": "95", "drive_temperature": "1", "drive_celsius": "48",
                 "drive_minutes": "15"}
         response = site.post("/settings/alerts/rules", data=form)
-        assert response.headers["location"] == "/settings/alerts?saved=rules"
-        assert "Alert rules saved." in site.get("/settings/alerts?saved=rules").text
+        assert response.headers["location"] == "/alerts/rules?saved=rules"
+        assert "Alert rules saved." in site.get("/alerts/rules?saved=rules").text
 
         async def saved():
             async with D.session_scope() as s:

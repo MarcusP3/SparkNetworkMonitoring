@@ -168,10 +168,10 @@ async def dashboard(
     if not alerting.get("discord_webhook_sealed"):
         warnings.append(
             "No Discord webhook configured yet, so nothing can alert you. "
-            "Add one under Settings → Alerts."
+            "Add one under Alerts → Rules."
         )
     elif not alerting.get("enabled", True):
-        warnings.append("Alerts are switched off in Settings, so nothing will reach Discord.")
+        warnings.append("Alerts are switched off under Alerts → Rules, so nothing will reach Discord.")
     # From the database, not the config: spark.yaml seeds subnets once and is
     # never read again, so reading it here showed the file's idea of the
     # network rather than the one the Settings page edits.

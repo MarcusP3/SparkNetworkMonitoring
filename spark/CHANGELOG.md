@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — the Alerts page, part 2: rules and suppressions (2026-10-07)
+
+### Changed
+
+- **Alert rules and suppressions moved to the Alerts page.** Alerts → Rules
+  has what was Settings → Alerts (the Discord webhook, what is sent, quiet
+  hours, every rule, starred ports, the mute list); Alerts → Suppressions
+  has what was Settings → Suppressions. The old addresses redirect, and the
+  Suppress links on incidents go to the new page. The card's heading is now
+  **Discord**, and its Recent table gave way to the Messages tab.
+- The Alerts menu says how many rules are on (or that there is no webhook)
+  and how many suppressions there are.
+
 ## Unreleased — excluded addresses (2026-10-07)
 
 ### Added

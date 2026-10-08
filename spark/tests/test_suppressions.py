@@ -157,9 +157,9 @@ def flat(html: str) -> str:
 
 class TestPage:
     def test_the_tab_and_prefill(self, site):
-        page = flat(site.get("/settings/suppressions?device=1&rule=memory").text)
+        page = flat(site.get("/alerts/suppressions?device=1&rule=memory").text)
         # The menu entry is current; an icon sits between the link and its name.
-        assert re.search(r'<a href="/settings/suppressions" class="active" aria-current="page"> '
+        assert re.search(r'<a href="/alerts/suppressions" class="active" aria-current="page"> '
                          r'<span class="subnav-icon">.*?</span> <span>Suppressions</span>', page)
         assert "Nothing suppressed." in page
         assert '<option value="1" selected>core-switch — 10.0.0.2</option>' in page
@@ -167,20 +167,20 @@ class TestPage:
         assert '<form method="post" action="/settings/suppressions" class="supp-form">' in page
         assert '<label class="stack-field supp-detail">' in page, "there with JS off; hidden by class"
         assert "document.documentElement.classList.add('js-supp')" in page
-        page = flat(site.get("/settings/suppressions?device=1&rule=truenas_alerts").text)
+        page = flat(site.get("/alerts/suppressions?device=1&rule=truenas_alerts").text)
         assert '<form method="post" action="/settings/suppressions" class="supp-form is-truenas">' in page
 
     def test_save_list_and_remove(self, site):
         response = site.post("/settings/suppressions", data={
             "device_id": "1", "rule": "memory", "mode": "line", "threshold": "100"})
         assert response.status_code == 303 and response.headers["location"].startswith(
-            "/settings/suppressions?saved=1#supp-")
+            "/alerts/suppressions?saved=1#supp-")
         page = flat(site.get(response.headers["location"].split("#")[0]).text)
         assert "Saved. That alert starts afresh for this device." in page
         assert '<td>Memory: alert over 100%</td>' in page
         assert '<span>Suppressions</span> <span class="subnav-hint">1</span>' in page
         site.post("/settings/suppressions/1/delete")
-        assert "Nothing suppressed." in site.get("/settings/suppressions").text
+        assert "Nothing suppressed." in site.get("/alerts/suppressions").text
 
     def test_a_refusal_keeps_what_was_chosen(self, site):
         response = site.post("/settings/suppressions", data={
@@ -192,7 +192,7 @@ class TestPage:
     def test_dashboard_incident_offers_suppress(self, site):
         memory(0, 12)
         page = flat(site.get("/").text)
-        assert ('<a href="/settings/suppressions?device=1&amp;rule=memory#add" class="suppress-link"'
+        assert ('<a href="/alerts/suppressions?device=1&amp;rule=memory#add" class="suppress-link"'
                 in page)
 
 
@@ -336,9 +336,9 @@ class TestTrueNAS:
         ident = self._setup(db, nas)
         self._check(db, ident)
         page = flat(site.get("/").text)
-        assert ('href="/settings/suppressions?device=1&amp;rule=truenas_alerts&amp;detail=PoolUSBDisks#add"'
+        assert ('href="/alerts/suppressions?device=1&amp;rule=truenas_alerts&amp;detail=PoolUSBDisks#add"'
                 in page)
-        page = flat(site.get("/settings/suppressions?device=1&rule=truenas_alerts&detail=PoolUSBDisks").text)
+        page = flat(site.get("/alerts/suppressions?device=1&rule=truenas_alerts&detail=PoolUSBDisks").text)
         assert 'value="PoolUSBDisks"' in page and '<option value="PoolUSBDisks">' in page
 
     def test_api_down_off(self, db, nas):

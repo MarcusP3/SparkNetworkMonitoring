@@ -524,7 +524,7 @@ class TestScheduled:
         rules = run(old())
         assert rules["api_down"] is True and rules["pool_health"] is True
         assert rules["cpu"] is False and rules["cpu_percent"] == 70
-        page = flat(site.get("/settings/alerts").text)
+        page = flat(site.get("/alerts/rules").text)
         assert 'name="api_down" value="1" checked' in page
         assert 'name="pool_health" value="1" checked' in page
 

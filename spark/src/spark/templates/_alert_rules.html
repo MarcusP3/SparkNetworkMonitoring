@@ -1,0 +1,304 @@
+{# Alerts -> Rules: the Discord webhook, what is sent, the SNMP, storage,
+   API and internet rules, starred ports and the mute list. Its forms post
+   to /settings/alerts/... (routes_settings.py). #}
+  <section class="card" id="alerts">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+      <div>
+        <h2>Discord</h2>
+        <p class="card-sub">
+          Messages to a Discord channel when something goes down, comes back,
+          or joins the network. Only changes are sent — never a reminder that
+          something is still down.
+        </p>
+      </div>
+    </div>
+
+    {% if alert_error %}<div class="alert error">{{ alert_error }}</div>{% endif %}
+    {% if alert_notice %}<div class="alert ok">{{ alert_notice }}</div>{% endif %}
+    {% set a = alerts.settings %}
+
+    <form method="post" action="/settings/alerts" class="alerts-form" id="alerts-form">
+
+      <label class="stack-field">
+        <span class="muted small">Discord webhook</span>
+        <input type="password" name="webhook" autocomplete="new-password" maxlength="512" spellcheck="false"
+               placeholder="{{ 'Saved — paste a new one to replace it' if alerts.has_webhook else 'https://discord.com/api/webhooks/…' }}">
+        <span class="muted small">
+          In Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL.
+          Stored encrypted, and never shown again.
+        </span>
+      </label>
+
+      <fieldset class="alert-toggles">
+        <label class="checkbox"><input type="checkbox" name="enabled" value="1" {% if a.enabled %}checked{% endif %}>
+          <span>Send alerts</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_recovery" value="1" {% if a.notify_on_recovery %}checked{% endif %}>
+          <span>When something comes back</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_snmp" value="1" {% if a.notify_on_snmp %}checked{% endif %}>
+          <span>When an SNMP device stops answering</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_new_device" value="1" {% if a.notify_on_new_device %}checked{% endif %}>
+          <span>When a new device joins the network</span></label>
+        <label class="checkbox"><input type="checkbox" name="notify_on_security" value="1" {% if a.notify_on_security %}checked{% endif %}>
+          <span>Sign-in events: a lockout, a sign-in from a new address, a password change, first-run setup</span></label>
+      </fieldset>
+
+      <div class="row-form quiet-hours">
+        <span class="muted small">Quiet hours</span>
+        <input type="time" name="quiet_start" value="{{ a.quiet_hours_start }}" aria-label="Quiet hours start">
+        <span class="muted small">to</span>
+        <input type="time" name="quiet_end" value="{{ a.quiet_hours_end }}" aria-label="Quiet hours end">
+        <span class="muted small">
+          {{ alerts.timezone }} (<a href="/preferences">change</a>){% if alerts.quiet_now %} · <strong>quiet now</strong>{% endif %}.
+          Leave both empty for none.
+        </span>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save alerts</button>
+      </div>
+    </form>
+
+    {% if alerts.has_webhook %}
+    <div class="row-form alert-webhook-actions">
+      <form method="post" action="/settings/alerts/test">
+        <button type="submit" class="btn-quiet">Send a test</button>
+      </form>
+      <form method="post" action="/settings/alerts/webhook/delete">
+        <button type="submit" class="btn-quiet danger">Remove webhook</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <p class="muted small">What was sent, and whether Discord took it, is under
+      <a href="/alerts/messages">Messages</a>.</p>
+
+    <dl class="legend">
+      <dt>What is sent</dt>
+      <dd>
+        A target going down (after its failure threshold) and coming back, with
+        how long it was down. An SNMP device silent for three polls (at least
+        three minutes) and answering again. The SNMP alerts below: starred
+        ports, CPU, memory and temperature. New devices found by a sweep, in
+        one message per sweep.
+      </dd>
+      <dt>What is not</dt>
+      <dd>
+        A target whose failure is explained by one it depends on being down —
+        the switch goes, you get one message, not thirty. Degraded, which is a
+        warning on the page rather than a page for you. SNMP silence on a device
+        a target already reports down. The devices from the very first sweep,
+        which are all new and none of them news. Anything on the mute list.
+      </dd>
+      <dt>Quiet hours</dt>
+      <dd>
+        Alerts that happen in the window are held, and arrive as one summary when
+        it ends. Times are in the time zone set under Preferences.
+      </dd>
+      <dt>If Discord is down</dt>
+      <dd>
+        Alerts wait and retry — after 30 seconds, 2, 10 and 30 minutes — and
+        are marked failed after that. A webhook Discord says does not exist is
+        marked failed straight away. A burst of four or more goes as one message.
+      </dd>
+    </dl>
+  </section>
+
+  {% set r = alerts.rules %}
+  <section class="card" id="rules">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+      <div>
+        <h2>SNMP alerts</h2>
+        <p class="card-sub">
+          From what SNMP polling sees. Each alerts once when it starts and once
+          when it ends, and a value has to stay over the line the whole time —
+          a single spike is not news.
+        </p>
+      </div>
+    </div>
+    <form method="post" action="/settings/alerts/rules" class="rules-form">
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_down" value="1" {% if r.port_down %}checked{% endif %}>
+          <span>A starred port goes down</span></label>
+        <span class="muted small rule-scope">Down on two polls in a row, so a quick reconnect stays quiet.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_busy" value="1" {% if r.port_busy %}checked{% endif %}>
+          <span>A starred port is over</span></label>
+        <input type="number" name="port_busy_percent" min="1" max="100" required value="{{ r.port_busy_percent }}" aria-label="Port traffic percent">
+        <span>% of its speed for</span>
+        <input type="number" name="port_busy_minutes" min="1" max="1440" required value="{{ r.port_busy_minutes }}" aria-label="Port traffic minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="cpu" value="1" {% if r.cpu %}checked{% endif %}>
+          <span>CPU is over</span></label>
+        <input type="number" name="cpu_percent" min="1" max="100" required value="{{ r.cpu_percent }}" aria-label="CPU percent">
+        <span>% for</span>
+        <input type="number" name="cpu_minutes" min="1" max="1440" required value="{{ r.cpu_minutes }}" aria-label="CPU minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="memory" value="1" {% if r.memory %}checked{% endif %}>
+          <span>Memory is over</span></label>
+        <input type="number" name="memory_percent" min="1" max="100" required value="{{ r.memory_percent }}" aria-label="Memory percent">
+        <span>% for</span>
+        <input type="number" name="memory_minutes" min="1" max="1440" required value="{{ r.memory_minutes }}" aria-label="Memory minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="temperature" value="1" {% if r.temperature %}checked{% endif %}>
+          <span>Temperature is over</span></label>
+        <input type="number" name="temperature_celsius" min="30" max="120" required value="{{ r.temperature_celsius }}" aria-label="Temperature in Celsius">
+        <span>°C for</span>
+        <input type="number" name="temperature_minutes" min="1" max="1440" required value="{{ r.temperature_minutes }}" aria-label="Temperature minutes">
+        <span>minutes</span>
+      </div>
+      <h3 class="sub-title">Storage</h3>
+      <p class="muted small">Read every 5 minutes: TrueNAS pools and drives, Proxmox storage and drives, and disk space on anything running net-snmp.</p>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="pool_health" value="1" {% if r.pool_health %}checked{% endif %}>
+          <span>A pool is not ONLINE</span></label>
+        <span class="muted small rule-scope">DEGRADED, FAULTED, UNAVAIL: straight away, and again when it is ONLINE. Proxmox: also a storage that is not available.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="pool_space" value="1" {% if r.pool_space %}checked{% endif %}>
+          <span>A pool is</span></label>
+        <input type="number" name="pool_space_percent" min="1" max="100" required value="{{ r.pool_space_percent }}" aria-label="Pool space percent">
+        <span>% full or more</span>
+        <span class="muted small rule-scope">TrueNAS pools, and Proxmox storage.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="disk_space" value="1" {% if r.disk_space %}checked{% endif %}>
+          <span>A disk is</span></label>
+        <input type="number" name="disk_space_percent" min="1" max="100" required value="{{ r.disk_space_percent }}" aria-label="Disk space percent">
+        <span>% full or more</span>
+        <span class="muted small rule-scope">Filesystems on Linux servers and appliances.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="drive_temperature" value="1" {% if r.drive_temperature %}checked{% endif %}>
+          <span>A drive is at</span></label>
+        <input type="number" name="drive_celsius" min="30" max="120" required value="{{ r.drive_celsius }}" aria-label="Drive temperature in Celsius">
+        <span>°C or more for</span>
+        <input type="number" name="drive_minutes" min="1" max="1440" required value="{{ r.drive_minutes }}" aria-label="Drive temperature minutes">
+        <span>minutes</span>
+      </div>
+      <h3 class="sub-title">APIs</h3>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="api_down" value="1" {% if r.api_down %}checked{% endif %}>
+          <span>An API credential stops working</span></label>
+        <span class="muted small rule-scope">Checked every 5 minutes once its certificate is trusted: two failed checks in a row, and again when it works. See <a href="/settings/credentials">Credentials</a>.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="drive_errors" value="1" {% if r.drive_errors %}checked{% endif %}>
+          <span>A drive is failing</span></label>
+        <span class="muted small rule-scope">TrueNAS: not ONLINE in its pool, or any read, write or checksum errors. Proxmox: SMART health is not PASSED. Again once it is healthy.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="truenas_alerts" value="1" {% if r.truenas_alerts %}checked{% endif %}>
+          <span>TrueNAS raises an alert</span></label>
+        <span class="muted small rule-scope">Warning and above, once each (SMART failures among them), and again when TrueNAS clears it. Info is shown on the device page only.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="guest_down" value="1" {% if r.guest_down %}checked{% endif %}>
+          <span>A watched VM or container stops</span></label>
+        <span class="muted small rule-scope">Proxmox: not running on two checks in a row, or no longer listed. Watch guests on the device page.</span>
+      </div>
+      <h3 class="sub-title">Internet</h3>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="internet_down" value="1" {% if r.internet_down %}checked{% endif %}>
+          <span>The internet is down</span></label>
+        <span class="muted small rule-scope">No public resolver answers and the web check fails, on two checks a minute apart; again when it is back. Not sent when a target watching the gateway is already down. See the Internet card on the <a href="/">Dashboard</a>.</span>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save alert rules</button>
+      </div>
+    </form>
+
+    <h3 class="sub-title" id="starred">Starred ports</h3>
+    {% if alerts.starred %}
+    <div class="table-scroll">
+    <table class="table compact alert-list">
+      <thead><tr><th>Device</th><th>Port</th><th>Now</th><th></th></tr></thead>
+      <tbody>
+        {% for p in alerts.starred %}
+        <tr>
+          <td><a href="/devices/{{ p.device.id }}">{{ p.device.display_name }}</a></td>
+          <td>{{ p.iface.label }}{% if p.iface.speed_mbps %} <span class="muted small">· {{ p.iface.speed_mbps }} Mbps</span>{% endif %}</td>
+          <td><span class="pill {{ 'ok' if p.up else 'bad' }}">{{ 'up' if p.up else (p.iface.oper_status or 'down') }}</span></td>
+          <td class="actions">
+            <form method="post" action="/settings/alerts/ports/{{ p.iface.id }}/unstar">
+              <button type="submit" class="btn-quiet">Unstar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">
+        No ports starred yet. Open a polled device from <a href="/devices">Devices</a>
+        and press the star beside the ports that matter — uplinks, the NAS, the
+        server links. Desk and Wi-Fi ports that come and go are best left alone.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="card" id="muted">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m23 9-6 6M17 9l6 6"/></svg></span>
+      <div>
+        <h2>Muted</h2>
+        <p class="card-sub">
+          Things that never alert. They are still checked, polled and shown;
+          only the Discord messages stop. Muting a device covers its targets,
+          its SNMP polling and its ports.
+        </p>
+      </div>
+    </div>
+    {% set m = alerts.mutes %}
+    {% if m.entries %}
+    <div class="table-scroll">
+    <table class="table compact alert-list">
+      <thead><tr><th>Muted</th><th>What</th><th></th></tr></thead>
+      <tbody>
+        {% for e in m.entries %}
+        <tr>
+          <td><a href="{{ e.href }}">{{ e.name }}</a>{% if e.detail %} <code class="small">{{ e.detail }}</code>{% endif %}</td>
+          <td class="muted small">{{ e.kind }}</td>
+          <td class="actions">
+            <form method="post" action="/settings/alerts/mute/{{ e.id }}/delete">
+              <button type="submit" class="btn-quiet">Unmute</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">Nothing is muted.</p>
+    {% endif %}
+    <div class="mute-add">
+      {% if m.devices %}
+      <form method="post" action="/settings/alerts/mute">
+        <select name="device_id" required aria-label="Device to mute">
+          <option value="">Mute a device…</option>
+          {% for d in m.devices %}<option value="{{ d.id }}">{{ d.display_name }}{% if d.primary_ip %} — {{ d.primary_ip }}{% endif %}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-quiet">Mute</button>
+      </form>
+      {% endif %}
+      {% if m.targets %}
+      <form method="post" action="/settings/alerts/mute">
+        <select name="target_id" required aria-label="Target to mute">
+          <option value="">Mute a target…</option>
+          {% for t in m.targets %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-quiet">Mute</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>

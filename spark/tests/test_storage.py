@@ -360,7 +360,7 @@ class TestPages:
         assert 'id="storage"' not in site.get("/devices/3").text, "nothing read, no card"
 
     def test_the_rules_are_in_settings(self, site):
-        page = site.get("/settings/alerts").text
+        page = site.get("/alerts/rules").text
         for field, value in (("pool_space_percent", 85), ("disk_space_percent", 90),
                              ("drive_celsius", 50), ("drive_minutes", 10)):
             assert f'name="{field}"' in page and f'value="{value}"' in page, field

@@ -1,4 +1,4 @@
-"""Settings -> Suppressions: one alert rule, for one device, off or with its
+"""Alerts -> Suppressions: one alert rule, for one device, off or with its
 own line (suppressions.py)."""
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from .routes_settings import _render
 
 router = APIRouter()
 
-PAGE = "/settings/suppressions"
+PAGE = "/alerts/suppressions"
 
 
 @router.post("/settings/suppressions")
