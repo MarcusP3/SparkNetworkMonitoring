@@ -1,0 +1,467 @@
+"""Hermes Agent, by its dashboard's /api/status (checks/hermes.py).
+
+The verdict: down when the gateway is not running, a platform failed for
+good, the Nous sign-in ended or the session database is corrupt; degraded
+for the rest Hermes counts against itself and critical pressure; up
+otherwise. Payloads are in the shape the dashboard's status router builds
+(hermes_cli/web_routers/status.py). Then a real local server, the
+readings the runner keeps, the alert, the card and the form.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
+import re
+import socket
+import threading
+from datetime import timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select, text
+
+from spark import db as D
+from spark.checks import hermes
+from spark.checks.base import CheckSpec
+from spark.checks.net import run_check
+from spark.engine import runner
+from spark.main import create_app
+from spark.models import CheckType, Device, HealthStatus, Notification, Target, utcnow
+
+from test_alerts import _config
+from test_credentials import flat
+
+PASSWORD = "correct horse battery"
+
+HEALTHY = {
+    "version": "0.21.3", "release_date": "2026-09-30", "config_version": 41,
+    "latest_config_version": 41, "can_update_hermes": True,
+    "gateway_running": True, "gateway_state": "running",
+    "gateway_platforms": {
+        "telegram": {"state": "connected", "error_code": None, "error_message": None,
+                     "updated_at": "2026-10-20T13:00:00Z"},
+        "discord": {"state": "connected"},
+    },
+    "gateway_exit_reason": None, "gateway_updated_at": "2026-10-20T13:00:00Z",
+    "gateway_heartbeat_stale_s": None, "gateway_shared_with": None, "active_agents": 0,
+    "gateway_busy": False, "gateway_drainable": True, "restart_drain_timeout": 60,
+    "active_sessions": 1, "auth_required": True, "auth_providers": ["password"],
+    "auth_flows": ["cookie"], "nous_session_valid": "unknown", "install_id": "abc",
+    "shared_profile_warning": False,
+    "components": {"gateway": {"status": "ok", "state": "running"}, "dashboard": {"status": "ok"},
+                   "storage": {"status": "ok"},
+                   "platforms": {"status": "ok", "configured": 2, "connected": 2}},
+    "overall": "ok",
+    "memory": {"pressure": "ok", "gateway_rss_mb": 310, "system_total_mb": 7900,
+               "system_available_mb": 5100},
+    "disk": {"pressure": "ok", "total_mb": 60000, "free_mb": 41000, "used_percent": 31.7},
+    "profiles": ["default"], "parked_profiles": [], "gateway_mode": "single",
+}
+
+
+def status(**over) -> dict:  # type: ignore[no-untyped-def]
+    s = copy.deepcopy(HEALTHY)
+    for key, value in over.items():
+        s[key] = value
+    return s
+
+
+def platform(name: str, state: str, message: str | None = None) -> dict:
+    s = copy.deepcopy(HEALTHY)
+    s["gateway_platforms"][name] = {"state": state, "error_code": "x" if message else None,
+                                    "error_message": message}
+    s["components"]["platforms"]["status"] = "degraded"
+    s["overall"] = "degraded"
+    return s
+
+
+def verdict(s: dict) -> tuple[str, str]:
+    o = hermes.judge(s)
+    return ("down" if not o.ok else "degraded" if o.degraded else "up"), o.detail or ""
+
+
+class TestAddress:
+    @pytest.mark.parametrize("address, url", [
+        ("10.0.0.5", "http://10.0.0.5:9119/api/status"),
+        ("agent.lan:9200", "http://agent.lan:9200/api/status"),
+        ("http://10.0.0.5:9119/", "http://10.0.0.5:9119/api/status"),
+        ("https://agent.example/hermes", "https://agent.example/hermes/api/status"),
+        ("http://10.0.0.5:9119/api/status", "http://10.0.0.5:9119/api/status"),
+        ("fd00::5", "http://[fd00::5]:9119/api/status"),
+        ("[fd00::5]:9300", "http://[fd00::5]:9300/api/status"),
+    ])
+    def test_status_url(self, address, url):
+        assert hermes.status_url(address) == url
+
+
+class TestVerdict:
+    def test_healthy(self):
+        assert verdict(HEALTHY) == (
+            "up", "Hermes 0.21.3: gateway running, 2 of 2 platforms connected, 1 active session")
+
+    def test_gateway_stopped(self):
+        s = status(gateway_running=False, gateway_state="stopped", gateway_platforms={})
+        assert verdict(s) == ("down", "the gateway is stopped")
+
+    def test_failed_to_start_with_the_platform_that_did_it(self):
+        s = status(gateway_running=False, gateway_state="startup_failed",
+                   gateway_exit_reason="telegram: token rejected",
+                   gateway_platforms={"telegram": {"state": "fatal",
+                                                   "error_message": "Unauthorized (401)"}})
+        assert verdict(s) == ("down", "the gateway failed to start: telegram: token rejected; "
+                                      "Telegram failed: Unauthorized (401)")
+
+    def test_a_platform_failed_for_good_is_down(self):
+        assert verdict(platform("discord", "fatal", "another gateway holds this bot")) == (
+            "down", "Discord failed: another gateway holds this bot")
+
+    @pytest.mark.parametrize("state", ["retrying", "disconnected", "connecting", "paused"])
+    def test_a_platform_finding_its_feet_is_degraded(self, state):
+        assert verdict(platform("slack", state)) == ("degraded", f"Slack is {state}")
+
+    def test_a_disabled_platform_is_not_a_problem(self):
+        s = status()
+        s["gateway_platforms"]["webhook"] = {"state": "disabled"}
+        assert verdict(s)[0] == "up" and "2 of 2 platforms" in verdict(s)[1]
+
+    def test_names_a_profile_and_a_platform_people_know(self):
+        s = status()
+        s["gateway_platforms"]["alpha:whatsapp"] = {"state": "retrying", "error_message": "QR expired"}
+        assert verdict(s) == ("degraded", "WhatsApp (alpha) is retrying: QR expired")
+
+    def test_the_nous_sign_in_ending_is_down(self):
+        assert verdict(status(nous_session_valid="terminal")) == (
+            "down", "its Nous sign-in has ended: every turn fails until it signs in again")
+
+    def test_storage(self):
+        corrupt = status()
+        corrupt["components"]["storage"] = {"status": "degraded", "reason": "corrupt"}
+        assert verdict(corrupt) == ("down", "its session database is corrupt")
+        slow = status()
+        slow["components"]["storage"] = {"status": "degraded"}
+        assert verdict(slow) == ("degraded", "its storage is unhealthy")
+
+    def test_a_wedged_gateway(self):
+        assert verdict(status(gateway_heartbeat_stale_s=340)) == (
+            "degraded", "the gateway has not checked in for 5m 40s")
+
+    def test_draining_or_starting(self):
+        assert verdict(status(gateway_state="draining")) == ("degraded", "the gateway is draining")
+
+    def test_pressure_alerts_only_at_critical(self):
+        s = status()
+        s["memory"]["pressure"], s["memory"]["system_available_mb"] = "critical", 180
+        s["disk"]["pressure"] = "elevated"
+        assert verdict(s) == ("degraded", "memory is critical (180 MB free)")
+
+    def test_degraded_for_a_reason_it_does_not_name(self):
+        s = status(overall="degraded")
+        s["components"]["dashboard"] = {"status": "ok"}
+        assert verdict(s) == ("degraded", "Hermes reports itself degraded")
+
+    def test_the_worst_decides_and_the_rest_follow(self):
+        s = platform("discord", "retrying")
+        s["nous_session_valid"] = "terminal"
+        assert verdict(s) == ("down", "its Nous sign-in has ended: every turn fails until it "
+                                      "signs in again; Discord is retrying")
+
+    def test_an_older_hermes_with_less_to_say(self):
+        assert verdict({"version": "0.9.0", "gateway_running": True, "gateway_state": "running"}) == (
+            "up", "Hermes 0.9.0: gateway running")
+
+    def test_nonsense_in_the_fields_does_not_break_it(self):
+        s = {"gateway_running": True, "gateway_platforms": ["telegram"], "components": "ok",
+             "memory": None, "disk": 7, "active_sessions": "many", "gateway_heartbeat_stale_s": True}
+        assert verdict(s) == ("up", "Hermes: gateway running")
+        hermes.summary(s)
+
+
+class TestSummary:
+    def test_keeps_only_what_the_card_shows(self):
+        s = status(hermes_home="/home/me/.hermes", config_path="/home/me/.hermes/config.yaml",
+                   gateway_pid=4242, gateways=[{"port": 8642}])
+        kept = json.dumps(hermes.summary(s))
+        for private in ("/home/me", "4242", "8642", "install_id", "abc"):
+            assert private not in kept
+
+    def test_cut_to_size(self):
+        s = status()
+        s["gateway_platforms"] = {f"p{n:02}": {"state": "retrying", "error_message": "e" * 5000}
+                                  for n in range(60)}
+        kept = hermes.summary(s)
+        assert len(kept["platforms"]) == hermes.MAX_PLATFORMS
+        assert len(kept["platforms"][0]["error"]) == hermes.MAX_TEXT
+        assert len(hermes.judge(s).detail) <= 500
+
+    def test_the_card(self):
+        s = platform("discord", "retrying", "gateway 1006")
+        s["config_version"] = 40
+        card = hermes.view(hermes.summary(s))
+        assert card["gateway_pill"] == "ok" and card["config_behind"]
+        assert [(p["label"], p["pill"]) for p in card["platforms"]] == [("Discord", "warn"), ("Telegram", "ok")]
+        assert card["warn"] == ["Discord is retrying: gateway 1006"]
+        assert hermes.view(None) is None
+
+
+# --------------------------------------------------------------------------
+# A real server
+# --------------------------------------------------------------------------
+
+
+ANSWER: dict = {}
+
+
+class _Hermes(BaseHTTPRequestHandler):
+    def log_message(self, *_args) -> None:  # type: ignore[no-untyped-def]
+        pass
+
+    def do_GET(self) -> None:  # noqa: N802 - http.server's name
+        ANSWER["path"] = self.path
+        code, body = ANSWER.get("code", 200), ANSWER.get("body", json.dumps(HEALTHY).encode())
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+@pytest.fixture(scope="module")
+def server():  # type: ignore[no-untyped-def]
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Hermes)
+    httpd.daemon_threads = True
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+@pytest.fixture
+def answer():  # type: ignore[no-untyped-def]
+    ANSWER.clear()
+    yield ANSWER
+    ANSWER.clear()
+
+
+def probe(address: str):  # type: ignore[no-untyped-def]
+    return asyncio.run(run_check("hermes", CheckSpec(address=address, timeout_seconds=5)))
+
+
+class TestOverHttp:
+    def test_reads_it(self, server, answer):
+        o = probe(server)
+        assert answer["path"] == "/api/status"
+        assert o.ok and not o.degraded and o.detail.startswith("Hermes 0.21.3")
+        assert o.readings["version"] == "0.21.3" and o.latency_ms is not None
+
+    def test_a_wrong_host_header_says_what_to_use(self, server, answer):
+        answer.update(code=400, body=b'{"detail": "Invalid Host header. Dashboard requests must use '
+                                     b'the bound hostname or the configured public hostname."}')
+        o = probe(server)
+        assert not o.ok and "listens on (its --host), or its dashboard.public_url" in o.detail
+
+    @pytest.mark.parametrize("code, body, why", [
+        (500, b"{}", "HTTP 500 from /api/status"),
+        (200, b"<html>a router</html>", "not a Hermes dashboard: the answer is not JSON"),
+        (200, b'{"status": "ok"}', "not a Hermes dashboard: there is no gateway in the answer"),
+        (200, b"[" + b"1," * 200_000 + b"1]", "not a Hermes dashboard: the answer is over 256 KB"),
+    ])
+    def test_not_hermes(self, server, answer, code, body, why):
+        answer.update(code=code, body=body)
+        o = probe(server)
+        assert not o.ok and o.detail == why and o.readings is None
+
+    def test_nothing_there(self):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        o = probe(f"127.0.0.1:{port}")
+        assert not o.ok and "ConnectError" in o.detail
+
+
+# --------------------------------------------------------------------------
+# In SPARK: the target, the alert, the card
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def site():  # type: ignore[no-untyped-def]
+    config = _config()
+    with TestClient(create_app(config), follow_redirects=False) as client:
+        client.post("/setup", data={"setup_code": client.app.state.setup_code, "username": "admin",
+                                    "password": PASSWORD, "password_confirm": PASSWORD,
+                                    "timezone": "UTC"})
+        yield client
+
+
+def run(coro):  # type: ignore[no-untyped-def]
+    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
+
+
+def add(client, address: str, name: str = "Hermes",  # type: ignore[no-untyped-def]
+        check_type: str = "hermes") -> int:
+    page = client.post("/targets/new", data={"name": name, "check_type": check_type,
+                                             "address": address, "params": ""})
+    assert page.status_code == 303, page.text
+
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return await s.scalar(select(Target.id).where(Target.name == name))
+    return run(go())
+
+
+def the_target(target_id: int) -> Target:
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            row = await s.get(Target, target_id)
+            s.expunge(row)
+            return row
+    return run(go())
+
+
+def check(target_id: int) -> None:
+    run(runner.run_target(target_id))
+
+
+def subjects() -> list[tuple[str, str]]:
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return [(n.subject, n.body or "") for n in (await s.execute(
+                select(Notification).where(Notification.kind.in_(("down", "recovered")))
+                .order_by(Notification.id))).scalars()]
+    return run(go())
+
+
+def device_at(ip: str) -> int:
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            d = Device(mac=f"aa:00:00:00:{ip.split('.')[-2]:0>2}:{ip.split('.')[-1]:0>2}"[-17:],
+                       primary_ip=ip, friendly_name="agent-vm", last_seen=utcnow())
+            s.add(d)
+            await s.flush()
+            return d.id
+    return run(go())
+
+
+class TestInSpark:
+    def test_offered_on_the_form_with_its_hint(self, site):
+        page = site.get("/targets/new").text
+        assert 'data-defaults="{&#34;&#34;: 15, &#34;hermes&#34;: 60}"' in page
+        assert '<option value="hermes"' in page and 'data-hint="hermes"' in page
+        assert "for hermes the Hermes dashboard's address" in flat(page)
+
+    def test_readings_kept_and_kept_through_an_outage(self, site, server, answer):
+        tid = add(site, server)
+        check(tid)
+        t = the_target(tid)
+        assert t.status == HealthStatus.UP and t.readings["platforms"][0]["label"] == "Discord"
+        answer.update(code=500, body=b"{}")
+        check(tid)
+        assert the_target(tid).readings == t.readings, "an answer with none keeps the last"
+
+    def test_down_alert_says_why(self, site, server, answer):
+        tid = add(site, server)
+        answer.update(body=json.dumps(platform("telegram", "fatal", "Unauthorized (401)")).encode())
+        for _ in range(the_target(tid).failure_threshold):
+            check(tid)
+        assert the_target(tid).status == HealthStatus.DOWN
+        [(subject, body)] = subjects()
+        assert subject == "Hermes is down" and "Telegram failed: Unauthorized (401)" in body
+        answer.clear()
+        for _ in range(the_target(tid).recovery_threshold):
+            check(tid)
+        assert the_target(tid).status == HealthStatus.UP and len(subjects()) == 2
+
+    def test_degraded_is_shown_not_sent(self, site, server, answer):
+        tid = add(site, server)
+        answer.update(body=json.dumps(platform("discord", "retrying")).encode())
+        for _ in range(the_target(tid).failure_threshold):
+            check(tid)
+        assert the_target(tid).status == HealthStatus.DEGRADED and subjects() == []
+
+    def test_the_card_on_its_device(self, site, server, answer):
+        here = device_at("127.0.0.1")
+        elsewhere = device_at("10.9.9.9")
+        tid = add(site, server)
+        answer.update(body=json.dumps(platform("discord", "retrying", "gateway 1006")).encode())
+        check(tid)
+        page = flat(site.get(f"/devices/{here}").text)
+        assert f'id="hermes-{tid}"' in page and "Hermes 0.21.3" in page
+        assert '<span class="pill warn">degraded</span> Discord is retrying: gateway 1006' in page
+        assert "<td>Telegram</td>" in page and "41000 MB free, 31.7% used" in page
+        assert f'href="/targets/{tid}/edit"' in page
+        assert f'id="hermes-{tid}"' not in site.get(f"/devices/{elsewhere}").text
+
+    def test_the_card_says_when_what_it_shows_is_old(self, site, server, answer):
+        here = device_at("127.0.0.1")
+        tid = add(site, server)
+        check(tid)
+        answer.update(code=500, body=b"{}")
+
+        async def earlier():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                t = await s.get(Target, tid)
+                t.readings = {**t.readings,
+                              "read_at": (utcnow() - timedelta(minutes=5)).isoformat()}
+        run(earlier())
+        check(tid)
+        page = flat(site.get(f"/devices/{here}").text)
+        assert "Last check: HTTP 500 from /api/status. Below is what it said last time it answered." in page
+
+    def test_not_read_yet(self, site):
+        here = device_at("127.0.0.1")
+        tid = add(site, "127.0.0.1:1")
+        page = flat(site.get(f"/devices/{here}").text)
+        assert f'id="hermes-{tid}"' in page and "Hermes, checked every 1 min: not read yet." in page
+        assert "Last check: ConnectError" in page
+
+    def test_once_a_minute_unless_tuned(self, site):
+        def tuned() -> bool:
+            page = site.get(f"/targets/{tid}/edit").text
+            return re.search(r'id="tune" name="tune" value="1"\s*checked', page) is not None
+
+        tid = add(site, "127.0.0.1:1")
+        assert the_target(tid).interval_seconds == 60 and not tuned()
+        edit = {"name": "Hermes", "check_type": "hermes", "address": "127.0.0.1:1", "params": ""}
+        site.post(f"/targets/{tid}/edit", data=edit)
+        assert the_target(tid).interval_seconds == 60, "an edit with the box closed keeps it"
+        site.post(f"/targets/{tid}/edit", data={**edit, "interval_seconds": "300"})
+        assert the_target(tid).interval_seconds == 300 and tuned()
+        web = add(site, "http://x.test", name="web", check_type="http")
+        assert the_target(web).interval_seconds == 15, "other types keep theirs"
+
+    def test_a_new_address_starts_its_card_again(self, site, server):
+        tid = add(site, server)
+        check(tid)
+        assert the_target(tid).readings
+        site.post(f"/targets/{tid}/edit", data={"name": "Hermes", "check_type": "hermes",
+                                                 "address": "127.0.0.1:1", "params": ""})
+        assert the_target(tid).readings is None
+
+
+def test_migration_29_from_a_version_28_database():
+    async def go():  # type: ignore[no-untyped-def]
+        config = _config()
+        D.init_engine(config)
+        await D.init_db(config)
+        async with D.session_scope() as s:
+            await s.execute(text("ALTER TABLE target DROP COLUMN readings"))
+            await D._set_version(s, 28)
+        await D.close_engine()
+        D.init_engine(config)
+        await D.init_db(config)
+        async with D.session_scope() as s:
+            s.add(Target(name="h", check_type=CheckType.HERMES, address="10.0.0.5",
+                         readings={"read_at": "2026-10-20T13:00:00+00:00"}))
+        async with D.session_scope() as s:
+            row = await s.scalar(select(Target))
+            version = await D._get_version(s)
+        await D.close_engine()
+        return row.readings, version
+
+    readings, version = asyncio.run(go())
+    assert readings == {"read_at": "2026-10-20T13:00:00+00:00"} and version == D.CURRENT_VERSION >= 29

@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Hermes Agent (2026-10-20)
+
+### Added
+
+- **A `hermes` check** (Targets → Add target): a Hermes Agent, through its
+  dashboard's `/api/status`, which Hermes publishes without sign-in for
+  uptime probes, so no credential. The address is the dashboard's,
+  `host:9119` by default or a URL behind a proxy; checked once a minute
+  unless tuned.
+- **Down** when there is no answer or it is not Hermes, the gateway is
+  stopped or failed to start, a messaging platform failed for good (Hermes's
+  *fatal*), the Nous sign-in ended, or the session database is corrupt.
+  **Degraded** for the rest Hermes counts against itself (a platform
+  retrying, a stale gateway heartbeat, storage) and critical memory or disk
+  pressure. Its alerts are a target's: "Hermes is down", with why.
+- **A Hermes card** on the page of the device it runs on: problems, the
+  gateway, each platform and its error, storage, memory, disk, the Nous
+  sign-in, a config migration waiting; it says when the last check got no
+  answer. Kept on the target (`target.readings`, migration 29), trimmed to
+  what the card shows: never the paths, process id or ports Hermes adds on
+  a loopback bind. At most 256 KB of an answer is read.
+- An answer of "Invalid Host header" is explained: Hermes only answers to
+  the address its dashboard listens on, or its `dashboard.public_url`.
+
+### Known, unfixed
+
+- The card is on the device's page only: a Hermes target whose address is
+  no device SPARK knows shows its state and reason on the Targets list but
+  has no card.
+
 ## Unreleased — traps and syslog (2026-10-20)
 
 ### Added

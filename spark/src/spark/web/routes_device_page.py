@@ -20,9 +20,12 @@ from .. import proxmox_health, suppressions, truenas_health, unifi
 from .. import charts, events, receiver
 from .. import scheduler as scheduler_module
 from .. import snmp_history as history
+from ..checks import hermes
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
+    CheckResult,
+    CheckType,
     DeviceEvent,
     ROLE_LABELS,
     AlertIncident,
@@ -317,6 +320,25 @@ async def device_page(
                 ips.setdefault(ip, ident)
         for a in apis:
             a["unifi"] = unifi.view(a["row"], macs=macs, ips=ips)
+    # Hermes Agent running on it: each Hermes target that belongs to this
+    # device, made from it or at its address (checks/hermes.py).
+    from .routes_targets import devices_for, every
+    hermes_targets = list((await session.execute(
+        select(Target).where(Target.check_type == CheckType.HERMES).order_by(Target.name))).scalars())
+    owners = await devices_for(session, hermes_targets)
+    hermes_cards = []
+    for t in hermes_targets:
+        if t.id not in owners or owners[t.id].id != device.id:
+            continue
+        card = hermes.view(t.readings)
+        last = await session.scalar(select(CheckResult).where(CheckResult.target_id == t.id)
+                                    .order_by(CheckResult.ts.desc()).limit(1))
+        hermes_cards.append({
+            "target": t, "hermes": card, "every": every(t.interval_seconds), "last": last,
+            # The last check got no answer as Hermes: what is below is older.
+            "stale": bool(card and card["read_at"] and last and last.ts > card["read_at"]
+                          + timedelta(seconds=1)),
+        })
 
     return templates.TemplateResponse(
         request,
@@ -368,6 +390,8 @@ async def device_page(
             "auto_placed": await topology.placed_automatically(session, device),
             # Its API credentials and whether they work (credentials.py).
             "apis": apis,
+            # Hermes Agent cards, from each Hermes target's last reading.
+            "hermes_cards": hermes_cards,
             # Drive health and TrueNAS's alerts, for the Storage card.
             "api_storage": api_storage,
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),

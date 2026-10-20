@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .base import CheckOutcome, CheckSpec, describe_exception
+from .hermes import check_hermes
 
 log = logging.getLogger(__name__)
 
@@ -291,6 +292,7 @@ CHECKS: dict[str, Any] = {
     "tcp": check_tcp,
     "http": check_http,
     "dns": check_dns,
+    "hermes": check_hermes,
 }
 
 

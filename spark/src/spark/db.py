@@ -455,7 +455,18 @@ async def _add_device_events(session: AsyncSession) -> None:
     await connection.run_sync(EventRule.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 28
+@migration(29, "What a Hermes check last read, for its card")
+async def _add_target_readings(session: AsyncSession) -> None:
+    """A column, so tolerant of it already being there (see migration 4)."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("target")}
+    )
+    if "readings" not in existing:
+        await session.execute(text("ALTER TABLE target ADD COLUMN readings JSON"))
+
+
+CURRENT_VERSION = 29
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

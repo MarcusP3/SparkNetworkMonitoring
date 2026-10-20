@@ -318,6 +318,64 @@
     {% endif %}
   </section>
 {% endmacro %}
+{% macro hermes_card(c) %}
+  {% set t, h = c.target, c.hermes %}
+  {% set status = t.status.value if t.status.value is defined else t.status %}
+  <section class="card pve-card hermes-card" id="hermes-{{ t.id }}">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M9 11h.01M12 11h.01M15 11h.01"/></svg></span>
+      <div>
+        <h2>Hermes</h2>
+        <p class="card-sub">
+          {% if t.enabled %}<span class="pill dot status-{{ status }}">{{ status }}</span>{% else %}<span class="pill neutral">paused</span>{% endif %}
+          {% if h %}
+            {% if h.version %}Hermes {{ h.version }} ·{% endif %}
+            {% if h.sessions is not none %}{{ h.sessions }} active session{{ 's' if h.sessions != 1 }} ·{% endif %}
+            {{ t.name }}, checked every {{ c.every }}; last read {{ h.read_at | local('%b %-d, %H:%M %Z') }}.
+          {% else %}
+            {{ t.name }}, checked every {{ c.every }}: not read yet.
+          {% endif %}
+        </p>
+      </div>
+      <div class="head-actions"><a class="btn-quiet" href="/targets/{{ t.id }}/edit">Edit target</a></div>
+    </div>
+    {% if c.last and (c.stale or not h) and c.last.detail %}
+      <p class="small snmp-error">Last check: {{ c.last.detail }}{% if h %}. Below is what it said last time it answered.{% endif %}</p>
+    {% endif %}
+    {% if h %}
+      {% if h.down or h.warn %}
+      <ul class="small hermes-problems">
+        {% for p in h.down %}<li><span class="pill bad">down</span> {{ p }}</li>{% endfor %}
+        {% for p in h.warn %}<li><span class="pill warn">degraded</span> {{ p }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="table-scroll">
+      <table class="table compact storage-table pve-table hermes-table">
+        <thead><tr><th>Part</th><th>State</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Gateway</td><td><span class="pill {{ h.gateway_pill }}">{{ h.gateway_state | replace('_', ' ') }}</span></td>
+            <td class="small">{% if h.agents %}{{ h.agents }} agent{{ 's' if h.agents != 1 }} working{% elif h.gateway.exit_reason %}{{ h.gateway.exit_reason }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+          {% for p in h.platforms %}
+          <tr class="{% if p.pill == 'neutral' %}is-quiet{% endif %}"><td>{{ p.label }}</td><td><span class="pill {{ p.pill }}">{{ p.state }}</span></td>
+            <td class="small">{{ p.error or '' }}</td></tr>
+          {% endfor %}
+          <tr><td>Storage</td><td><span class="pill {{ h.storage_pill }}">{{ h.storage or 'unknown' }}</span></td><td class="small muted">its session database</td></tr>
+          <tr><td>Memory</td><td><span class="pill {{ h.memory_pill }}">{{ h.memory.pressure or 'unknown' }}</span></td>
+            <td class="small">{% if h.memory.available_mb is not none %}{{ h.memory.available_mb }} MB free{% if h.memory.total_mb %} of {{ h.memory.total_mb }} MB{% endif %}{% endif %}</td></tr>
+          <tr><td>Disk</td><td><span class="pill {{ h.disk_pill }}">{{ h.disk.pressure or 'unknown' }}</span></td>
+            <td class="small">{% if h.disk.free_mb is not none %}{{ h.disk.free_mb }} MB free{% if h.disk.used_percent is not none %}, {{ h.disk.used_percent }}% used{% endif %}{% endif %}</td></tr>
+          {% if h.nous_words %}
+          <tr><td>Nous sign-in</td><td><span class="pill {{ h.nous_pill }}">{{ h.nous_words }}</span></td>
+            <td class="small">{% if h.nous == 'terminal' %}every turn fails until it signs in again{% endif %}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+      </div>
+      {% if h.config_behind %}<p class="muted small">Its config is at version {{ h.config.current }}; this Hermes expects {{ h.config.latest }}, so it has a config migration waiting.</p>{% endif %}
+      {% if not h.platforms %}<p class="muted small">No messaging platforms are set up, or the gateway is not running to report them.</p>{% endif %}
+    {% endif %}
+  </section>
+{% endmacro %}
 <div class="page device-page">
   <div class="page-head">
     <div class="page-title">
@@ -446,6 +504,8 @@
   {% if a.pve %}{{ pve_card(a, a.pve) }}{% endif %}
   {% if a.unifi %}{{ unifi_card(a, a.unifi) }}{% endif %}
   {% endfor %}
+
+  {% for c in hermes_cards %}{{ hermes_card(c) }}{% endfor %}
 
   {% if snmp %}
   {% set poll = snmp.poll %}

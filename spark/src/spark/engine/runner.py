@@ -47,6 +47,8 @@ async def check_target(session: AsyncSession,
             return None, None
     else:
         outcome = await run_check(check_type, spec_for(target))
+    if outcome.readings is not None:
+        target.readings = outcome.readings      # kept when an answer has none
     transition = await apply_outcome(session, target, outcome)
     if transition.changed:
         # Same transaction as the state change: the alert and the change it

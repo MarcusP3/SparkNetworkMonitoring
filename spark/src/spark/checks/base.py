@@ -45,6 +45,9 @@ class CheckOutcome:
     degraded: bool = False
     latency_ms: float | None = None
     detail: str | None = None
+    # What the check read, for a card to show (checks/hermes.py); the runner
+    # keeps the last on the target. None for a check that reads nothing.
+    readings: dict | None = None
 
     @classmethod
     def up(cls, latency_ms: float | None = None, detail: str | None = None) -> CheckOutcome:

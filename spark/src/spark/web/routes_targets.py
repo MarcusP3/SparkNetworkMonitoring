@@ -51,6 +51,7 @@ PARAM_HINTS: dict[str, str] = {
     "tcp": '{"port": 443}',
     "http": '{"expect_status": 200, "expect_body": "", "cert_warn_days": 14}',
     "dns": '{"rdtype": "A", "server": "", "expect": ""}',
+    "hermes": '{"verify_tls": true}',
 }
 
 
@@ -126,6 +127,15 @@ async def _validate(
     return kind, parent_id, None
 
 
+# A Hermes dashboard's status gathers a good deal each time it is asked
+# (its own code calls it heavyweight): once a minute is plenty.
+INTERVALS = {CheckType.HERMES: 60}
+
+
+def default_interval(kind: CheckType | str | None) -> int:
+    return INTERVALS.get(kind, DEFAULT_INTERVAL_SECONDS)  # type: ignore[arg-type]
+
+
 def _is_tuned(target: Target | None) -> bool:
     """Does this target differ from the defaults.
 
@@ -139,7 +149,7 @@ def _is_tuned(target: Target | None) -> bool:
     if target is None:
         return False
     return (
-        target.interval_seconds != DEFAULT_INTERVAL_SECONDS
+        target.interval_seconds != default_interval(target.check_type)
         or float(target.timeout_seconds) != DEFAULT_TIMEOUT_SECONDS
         or target.failure_threshold != DEFAULT_FAILURE_THRESHOLD
         or target.recovery_threshold != DEFAULT_RECOVERY_THRESHOLD
@@ -170,6 +180,8 @@ async def _form_context(
         "check_types": [t.value for t in CheckType
                         if t not in (CheckType.DOCKER, CheckType.HEARTBEAT)],
         "param_hints": PARAM_HINTS,
+        # Each type's interval when the timing box is left closed ('' for the rest).
+        "intervals": {"": DEFAULT_INTERVAL_SECONDS, **{k.value: v for k, v in INTERVALS.items()}},
         "candidates": others,
         "tuned": _is_tuned(target),
         "defaults": {
@@ -376,6 +388,8 @@ async def create_target(
             session, config, user, None, error=error, submitted=await request.form()
         )
         return templates.TemplateResponse(request, "target_form.html", context, status_code=400)
+    if "interval_seconds" not in await request.form():     # the timing box left closed
+        interval_seconds = default_interval(kind)
 
     target = Target(
         name=name.strip(),
@@ -451,6 +465,10 @@ async def update_target(
         context = await _form_context(session, config, user, target, error=error)
         return templates.TemplateResponse(request, "target_form.html", context, status_code=400)
 
+    if "interval_seconds" not in await request.form():     # the timing box left closed
+        interval_seconds = default_interval(kind)
+    if kind != target.check_type or address.strip() != target.address:
+        target.readings = None        # another thing now: its card starts again
     target.name = name.strip()
     target.check_type = kind
     target.address = address.strip()

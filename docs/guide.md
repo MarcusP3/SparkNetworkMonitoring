@@ -59,10 +59,48 @@ load the intervals put on the engine, not a health figure.
 | `tcp` | `172.16.10.1:443`, or address plus `{"port": 443}` | — |
 | `http` | `https://host/path` | `{"expect_status": 200, "expect_body": "ok", "cert_warn_days": 14}` |
 | `dns` | `example.com` | `{"rdtype": "A", "server": "172.16.10.1", "expect": "172.16.10."}` |
+| `hermes` | `172.16.10.40:9119`, or its URL behind a proxy | `{"verify_tls": true}` — see [Hermes Agent](#hermes-agent) |
 
 Checks never raise. A poller that throws when the thing it polls is broken has
 failed at its only job, so every failure path returns a result with a reason
 attached.
+
+### Hermes Agent
+
+The `hermes` check watches a [Hermes Agent](https://hermes-agent.nousresearch.com/)
+through its dashboard's `/api/status`, which Hermes answers without sign-in
+for exactly this: version, gateway, messaging platforms, health and
+pressure, no conversations and no secrets. So it needs no credential. Add it
+on the Targets page with the dashboard's address: `host:9119` (9119 is the
+dashboard's port, and is assumed when none is given), or its URL behind a
+proxy. It is checked once a minute unless you tune it.
+
+The dashboard listens only on `127.0.0.1` unless started with `--host`
+(`hermes dashboard --host 0.0.0.0`), so SPARK on another machine needs that.
+Hermes also refuses an address it was not started on: bound to one address,
+use that one, or its `dashboard.public_url` host; SPARK says so when this is
+what went wrong.
+
+- **Down:** no answer, or not Hermes; the gateway stopped or failed to
+  start (with its reason); a messaging platform failed for good (Hermes's
+  *fatal*: a token refused, two gateways holding one bot); the Nous sign-in
+  ended, after which every turn fails while everything else looks fine; or
+  its session database corrupt. These alert like any target going down:
+  "Hermes is down", with why.
+- **Degraded:** the rest of what Hermes counts against itself — a platform
+  retrying or disconnected, the gateway draining or starting, its heartbeat
+  stale (a wedged loop), storage unhealthy — and memory or disk pressure at
+  *critical*. Shown, not sent, like every degraded target.
+- **Up** otherwise: "Hermes 0.21.3: gateway running, 2 of 2 platforms
+  connected, 1 active session".
+
+On the page of the device it runs on (by its address, as for any target)
+there is a **Hermes** card: what is wrong, the gateway, each platform with
+its error, storage, memory and disk, the Nous sign-in when it has one, and a
+config migration waiting. It shows the last answer; when the last check got
+none it says so and what it got instead. SPARK keeps only what the card
+shows, never the paths and process details Hermes adds on a loopback bind,
+and reads at most 256 KB of an answer.
 
 ### Heartbeats
 

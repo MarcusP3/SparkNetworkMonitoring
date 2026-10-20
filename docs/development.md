@@ -19,7 +19,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Area | State |
 |---|---|
 | Configuration, database, authentication, web shell | ✅ working |
-| Check engine — ping, TCP, HTTP(S), DNS, heartbeats | ✅ working |
+| Check engine — ping, TCP, HTTP(S), DNS, heartbeats, Hermes Agent | ✅ working |
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Device inventory — naming, review state, watch one or many in one click | ✅ working |
@@ -177,6 +177,7 @@ spark/
       base.py           CheckSpec and CheckOutcome; no database access
       net.py            ping, tcp, http, dns
       heartbeat.py      a job that calls in: up, late, failed; the ping URL's token and hash
+      hermes.py         Hermes Agent by its dashboard's /api/status: the verdict, what its card keeps
     engine/
       state.py          hysteresis and the incident lifecycle
       runner.py         joins a check to the database, owns its session
@@ -200,6 +201,7 @@ spark/
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
+    test_hermes.py      Hermes Agent: the verdict on its status, a real local server, the alert, the card, migration 29
     test_receiver.py    traps and syslog: parsing, real UDP on loopback, strangers and rate limits, rules to alerts, the page; the image's capabilities agree with compose
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI

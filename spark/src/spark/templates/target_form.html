@@ -44,7 +44,8 @@
              placeholder="192.168.1.1  ·  192.168.1.1:443  ·  https://host/path  ·  example.com">
       <small class="muted">
         An IP or hostname for ping, host:port for tcp, a URL for http, a name to
-        resolve for dns.
+        resolve for dns, and for hermes the Hermes dashboard's address
+        (<code>192.168.1.50:9119</code>, or its URL behind a proxy).
       </small>
     </label>
 
@@ -56,8 +57,9 @@
       <div class="grid-2">
         <label>
           <span>Interval (seconds)</span>
-          <input type="number" name="interval_seconds" min="5" step="1"
-                 value="{{ target.interval_seconds if target else defaults.interval_seconds }}">
+          <input type="number" name="interval_seconds" min="5" step="1" id="interval_seconds"
+                 data-defaults="{{ intervals | tojson | forceescape }}"
+                 value="{{ target.interval_seconds if target else intervals.get(current, defaults.interval_seconds) }}">
         </label>
         <label>
           <span>Timeout (seconds)</span>
@@ -109,6 +111,7 @@
         <span data-hint="tcp">tcp: <code>{{ param_hints['tcp'] }}</code></span>
         <span data-hint="http">http: <code>{{ param_hints['http'] }}</code></span>
         <span data-hint="dns">dns: <code>{{ param_hints['dns'] }}</code></span>
+        <span data-hint="hermes">hermes: <code>{{ param_hints['hermes'] }}</code></span>
       </small>
     </label>
 
@@ -134,6 +137,13 @@
     }
     select.addEventListener('change', sync);
     sync();
+    // While the timing box is closed, show the interval the type gets.
+    var interval = document.getElementById('interval_seconds');
+    var tune = document.getElementById('tune');
+    var each = JSON.parse(interval.getAttribute('data-defaults'));
+    select.addEventListener('change', function () {
+      if (!tune.checked) interval.value = each[select.value] || each[''];
+    });
   })();
 
   // Grey out the tuning fields until the box is ticked. A disabled fieldset

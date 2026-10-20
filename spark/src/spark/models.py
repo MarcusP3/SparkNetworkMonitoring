@@ -192,6 +192,8 @@ class CheckType(enum.StrEnum):
     DOCKER = "docker"
     # Not a probe: the job being watched calls SPARK (checks/heartbeat.py).
     HEARTBEAT = "heartbeat"
+    # Hermes Agent, by its dashboard's public /api/status (checks/hermes.py).
+    HERMES = "hermes"
 
 
 class ServiceSource(enum.StrEnum):
@@ -503,6 +505,10 @@ class Target(Base, TimestampMixin):
     # the job last called it (migration 26).
     heartbeat_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     last_ping_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    # What a check that reads something last read, for its card: a Hermes
+    # check's status, trimmed (checks/hermes.py; migration 29).
+    readings: Mapped[dict | None] = mapped_column(JSON)
 
     service = relationship("Service", back_populates="targets")
     depends_on = relationship("Target", remote_side=[id], backref="dependents")
