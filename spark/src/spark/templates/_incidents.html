@@ -1,6 +1,7 @@
 {# One list of incidents, as the dashboard and the Alerts page show them:
-   outages and alert-rule incidents side by side (web/incident_rows.py). #}
-{% macro timeline(incidents) -%}
+   outages and alert-rule incidents side by side (web/incident_rows.py).
+   `back` is the page it is on, where Acknowledge and Undo return to. #}
+{% macro timeline(incidents, back="/alerts") -%}
       <ul class="timeline">
         {% for incident in incidents %}
         <li>
@@ -13,6 +14,7 @@
               <span class="pill neutral">{{ incident.source }}</span>
               {% if not incident.closed_at %}
                 <span class="pill bad dot">ongoing</span>
+                {% if incident.acknowledged_at %}<span class="pill neutral">acknowledged</span>{% endif %}
               {% else %}
                 Lasted {{ incident.duration }}
                 {# A duration alone cannot say whether the outage ended or
@@ -39,6 +41,31 @@
                 · <a href="{{ incident.suppress }}" class="suppress-link" title="Switch this alert off for this device, or give it its own line">Suppress</a>
               {% endif %}
             </span>
+            {% set ack_url = "/alerts/incidents/" ~ incident.kind ~ "/" ~ incident.id %}
+            {% if incident.acknowledged_at %}
+            <div class="detail ack-line">
+              {% if incident.ack_note %}<span class="ack-note">{{ incident.ack_note }}</span> · {% endif %}
+              Acknowledged {{ incident.acknowledged_at | local }}
+              {% if not incident.closed_at %}
+              <form method="post" action="{{ ack_url }}/unacknowledge" class="ack-undo" data-stay>
+                <input type="hidden" name="back" value="{{ back }}">
+                <button type="submit" class="link-button">Undo</button>
+              </form>
+              {% endif %}
+            </div>
+            {% elif not incident.closed_at %}
+            {# Open, and no one has said they have seen it. The note is for
+               the next person to look, or for you in a week. #}
+            <details class="ack">
+              <summary>Acknowledge</summary>
+              <form method="post" action="{{ ack_url }}/acknowledge" class="ack-form" data-stay>
+                <input type="hidden" name="back" value="{{ back }}">
+                <input type="text" name="note" maxlength="280" aria-label="Note"
+                       placeholder="Note, optional: new drive arrives Friday">
+                <button type="submit" class="btn-quiet">Acknowledge</button>
+              </form>
+            </details>
+            {% endif %}
           </span>
           <span class="when">{{ incident.opened_at | local }}</span>
         </li>

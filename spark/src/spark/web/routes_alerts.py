@@ -7,25 +7,30 @@ outbox (models.Notification): every alert SPARK decided to send, and whether
 Discord got it. The rules themselves are still under Rules and Suppressions
 (the cards that were Settings -> Alerts and -> Suppressions) render in this
 page's layout from routes_settings.py, where their forms still post.
+
+Acknowledge (and Undo) post here from the dashboard and from Firing now. An
+acknowledged incident still shows and still counts; it stops colouring the
+counts, which are for what nobody has looked at yet.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Literal
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import limits
+from .. import events, limits
 from ..config import Config
 from ..db import get_setting
 from .. import snmp_alerts
 from ..models import (AlertIncident, AlertSuppression, Device, Incident, Notification, NotificationStatus, Target,
                       User, utcnow)
 from . import incident_rows
-from .deps import get_config, get_session, require_user, templates
+from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
 
@@ -57,6 +62,7 @@ async def common(session: AsyncSession) -> dict:
     """The tiles and the menu, on every Alerts page."""
     now = utcnow()
     firing, left_out = await incident_rows.firing(session)
+    unacked = incident_rows.unacknowledged(firing)
     week = now - timedelta(days=7)
     sent = await session.scalar(select(func.count(Notification.id)).where(
         Notification.status == NotificationStatus.SENT, Notification.created_at >= week)) or 0
@@ -78,6 +84,7 @@ async def common(session: AsyncSession) -> dict:
         "left_out": left_out,
         "tiles": {
             "firing": len(firing),
+            "unacknowledged": unacked,
             "day": await incident_rows.opened_since(session, now - timedelta(days=1)),
             "week": await incident_rows.opened_since(session, week),
             "sent": sent,
@@ -86,8 +93,9 @@ async def common(session: AsyncSession) -> dict:
         },
         "menu": [
             {"slug": "activity", "label": "Activity", "url": "/alerts",
-             "hint": f"{len(firing)} firing" if firing else "quiet",
-             "warn": bool(firing), "about": "Firing now, and every one before"},
+             "hint": (f"{len(firing)} firing" if unacked
+                      else f"{len(firing)} acknowledged" if firing else "quiet"),
+             "warn": bool(unacked), "about": "Firing now, and every one before"},
             {"slug": "messages", "label": "Messages", "url": "/alerts/messages",
              "hint": f"{failed} failed" if failed else ("no webhook" if not webhook else ""),
              "warn": bool(failed) or not webhook, "about": "What went to Discord"},
@@ -198,3 +206,41 @@ async def messages(
             "next": link(page=number + 1) if number < pages else None,
         },
     })
+
+
+# --------------------------------------------------------------------------
+# Acknowledging
+# --------------------------------------------------------------------------
+
+# Where the buttons are, and where each returns to without JavaScript. With
+# it they are data-stay forms and the page stays put.
+BACK = {"/": "/", "/alerts": "/alerts#firing"}
+
+
+@router.post("/alerts/incidents/{kind}/{incident_id}/acknowledge")
+async def acknowledge(
+    kind: Literal["target", "alert"],
+    incident_id: ItemId,
+    note: str = Form("", max_length=limits.NOTE),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    if await incident_rows.acknowledge(session, kind, incident_id, note):
+        await session.commit()
+        events.publish({"kind": "acknowledged"})
+    return redirect(BACK.get(back, BACK["/alerts"]))
+
+
+@router.post("/alerts/incidents/{kind}/{incident_id}/unacknowledge")
+async def unacknowledge(
+    kind: Literal["target", "alert"],
+    incident_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    if await incident_rows.unacknowledge(session, kind, incident_id):
+        await session.commit()
+        events.publish({"kind": "acknowledged"})
+    return redirect(BACK.get(back, BACK["/alerts"]))

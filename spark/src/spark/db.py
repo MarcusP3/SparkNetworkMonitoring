@@ -378,7 +378,26 @@ async def _add_internet_sample(session: AsyncSession) -> None:
     await connection.run_sync(InternetSample.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 21
+@migration(22, "Acknowledging an incident, with a note")
+async def _add_acknowledgement(session: AsyncSession) -> None:
+    """Columns, so tolerant of them already being there (see migration 4).
+    incident.acknowledged_at has been in the schema since the start, unused;
+    it is checked like the rest rather than assumed."""
+    connection = await session.connection()
+    wanted = {
+        "incident": (("acknowledged_at", "DATETIME"), ("ack_note", "TEXT")),
+        "alert_incident": (("acknowledged_at", "DATETIME"), ("ack_note", "TEXT")),
+    }
+    for table, columns in wanted.items():
+        existing = await connection.run_sync(
+            lambda sync, table=table: {c["name"] for c in inspect(sync).get_columns(table)}
+        )
+        for name, kind in columns:
+            if name not in existing:
+                await session.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {kind}"))
+
+
+CURRENT_VERSION = 22
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

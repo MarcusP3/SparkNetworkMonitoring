@@ -1789,6 +1789,22 @@ code.fingerprint.small { display: inline; }
 .supp-table td:nth-child(2) { overflow-wrap: anywhere; }
 .suppress-link { color: var(--accent); text-decoration: none; }
 .suppress-link:hover { text-decoration: underline; }
+/* Acknowledge, under an open incident: a link-sized disclosure that opens
+   to a note and a button, and once acknowledged a line saying so with Undo. */
+.timeline .ack { margin-top: .3rem; font-size: .8125rem; }
+.timeline .ack > summary { display: inline-block; list-style: none; cursor: pointer; color: var(--accent); }
+.timeline .ack > summary::-webkit-details-marker { display: none; }
+.timeline .ack > summary:hover { text-decoration: underline; }
+.timeline .ack[open] > summary { margin-bottom: .4rem; }
+.ack-form { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.ack-form input[type="text"] { flex: 1 1 14rem; min-width: 0; padding: .3rem .45rem; font-size: .8125rem; }
+.ack-note { color: var(--text); }
+.ack-undo { display: inline; }
+.link-button {
+  background: none; border: 0; padding: 0; margin-left: .35rem;
+  font: inherit; color: var(--accent); cursor: pointer;
+}
+.link-button:hover { text-decoration: underline; }
 .js-supp .supp-form:not(.is-truenas) .supp-detail { display: none; }
 /* Add a credential: Proxmox's Token ID and words only for Proxmox, each
    kind's words only for it. With JS off all show, and the key's label reads

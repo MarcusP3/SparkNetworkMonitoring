@@ -222,6 +222,15 @@
           if (reason !== 'signed out') form.submit();   // the plain way, as a fallback
         });
     });
+    // Acknowledge (under an open incident) opens to its note, focused: typing
+    // is what it is for, and a focused field holds off a live refresh that
+    // would otherwise shut it. `toggle` does not bubble, hence the capture.
+    document.addEventListener('toggle', function (event) {
+      var box = event.target;
+      if (!box.classList || !box.classList.contains('ack') || !box.open) return;
+      var field = box.querySelector('input[name="note"]');
+      if (field) field.focus();
+    }, true);
     // A list marked data-autosubmit (the interface picker on a device page)
     // shows its choice as soon as it is made; its Show button is for when
     // JavaScript is off.

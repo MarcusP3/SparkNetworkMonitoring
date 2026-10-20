@@ -31,7 +31,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
-| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours | ✅ working |
+| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
@@ -199,6 +199,7 @@ spark/
     test_supply_chain.py  the lock matches pyproject; everything pinned and hashed
     test_incidents.py   one open incident per target, across pause/resume
     test_alert_incidents.py  incidents for alert rules: opened on firing, closed on clearing, on the dashboard
+    test_acknowledge.py  acknowledging an open incident: the note, Undo, ended ones untouched, the tiles, migration 22
     test_suppressions.py  per-device rule overrides: quiet, their own lines, afresh when saved; the page
     test_ports.py       the scanner against real sockets; the service store
     test_paging.py      one device per page, exactly once, whatever the filter

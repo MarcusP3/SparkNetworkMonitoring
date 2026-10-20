@@ -49,17 +49,21 @@ def _greeting() -> str:
     return "Good evening"
 
 
-async def _open_alerts(session: AsyncSession) -> int:
+async def _open_alerts(session: AsyncSession) -> tuple[int, int]:
+    """Open alert incidents the dashboard shows, and how many of those no
+    one has acknowledged."""
     hidden = await suppressions.hidden_on_dashboard(session)
-    total = 0
+    total = unacked = 0
     for row in (await session.execute(
         select(AlertIncident).where(AlertIncident.closed_at.is_(None))
     )).scalars():
         rule = suppressions.rule_of(row.key)
         klass = (await suppressions.klass_of(session, row.key, row.detail)
                  if rule == "truenas_alerts" else None)
-        total += not hidden(row, rule, klass)
-    return total
+        if not hidden(row, rule, klass):
+            total += 1
+            unacked += row.acknowledged_at is None
+    return total, unacked
 
 
 @router.get("/healthz")
@@ -81,6 +85,7 @@ async def dashboard(
             stmt = stmt.where(clause)
         return await session.scalar(stmt) or 0
 
+    open_alerts, unacked_alerts = await _open_alerts(session)
     stats = {
         "devices": await count(Device, Device.ignored.is_(False)),
         "services": await count(Service, Service.ignored.is_(False)),
@@ -89,8 +94,10 @@ async def dashboard(
         "degraded": await count(Target, Target.status == HealthStatus.DEGRADED),
         # Outages and every other kind of alert standing now, less what is
         # suppressed (the list below leaves those out too).
-        "open_incidents": await count(Incident, Incident.closed_at.is_(None))
-        + await _open_alerts(session),
+        "open_incidents": await count(Incident, Incident.closed_at.is_(None)) + open_alerts,
+        # Of those, what no one has acknowledged: only these colour the tile.
+        "unacknowledged": await count(Incident, Incident.closed_at.is_(None),
+                                      Incident.acknowledged_at.is_(None)) + unacked_alerts,
     }
 
     targets = list(

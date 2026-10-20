@@ -27,6 +27,7 @@ WEBHOOK = 512      # a Discord webhook URL is about 120 characters
 URL = 2048         # next= and back=, which are paths on this site
 TIMEZONE = 64      # the longest IANA name is 32
 SHORT = 32         # numbers, times, versions, protocol names, checkboxes
+NOTE = 280         # an acknowledgement's note: a line, not a write-up
 
 # The largest request body accepted at all, checked before any route runs.
 # The biggest real form is a target with 4 KB of params; this is 16x that.

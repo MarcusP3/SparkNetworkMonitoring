@@ -73,7 +73,10 @@
       <span class="stat-value">{{ stats.down }}</span>
     </div>
 
-    <div class="stat s-inc{% if stats.open_incidents %} is-bad{% endif %}" title="Still unresolved">
+    {# Red only for what no one has acknowledged: one already being dealt
+       with still counts, but it is not news. #}
+    {% set acked = stats.open_incidents - stats.unacknowledged %}
+    <div class="stat s-inc{% if stats.unacknowledged %} is-bad{% endif %}" title="Still unresolved{% if acked %}, {{ acked }} acknowledged{% endif %}">
       <span class="stat-head">
         <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
         <span class="stat-name">Open incidents</span>
@@ -167,7 +170,7 @@
       </div>
 
       {% if incidents %}
-      {{ timeline(incidents) }}
+      {{ timeline(incidents, back="/") }}
       {% else %}
       {# "All systems operational" only when something is being checked:
          with no targets there is nothing for it to be true about. #}

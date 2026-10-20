@@ -283,4 +283,4 @@ def test_migration_21_from_a_version_20_database():
         return columns, version
 
     assert run(shape(True)) == run(shape(False))
-    assert run(shape(False))[1] == D.CURRENT_VERSION == 21
+    assert run(shape(False))[1] == D.CURRENT_VERSION >= 21

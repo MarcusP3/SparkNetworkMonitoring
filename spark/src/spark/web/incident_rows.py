@@ -3,7 +3,8 @@ side by side, in one shape.
 
 The dashboard shows the newest ten; the Alerts page shows what is firing now
 and the whole history, paged and filtered. Both build their rows here so an
-incident reads the same on either.
+incident reads the same on either, and acknowledging one is here too: the
+button is on both.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import suppressions
 from ..engine.state import human_duration
-from ..models import AlertIncident, Incident, Target
+from ..models import AlertIncident, Incident, Target, utcnow
 
 # Where an alert incident came from, by its rule key's prefix (the keys
 # alert_state uses: snmp_alerts, storage, credentials, truenas_health,
@@ -49,6 +50,8 @@ def _key_is(source: str):  # type: ignore[no-untyped-def]
 
 def target_row(incident: Incident, name: str, href: str | None = None) -> dict:
     return {
+        "kind": "target",
+        "id": incident.id,
         "target_name": name,
         "source": TARGET,
         "href": href,
@@ -59,6 +62,8 @@ def target_row(incident: Incident, name: str, href: str | None = None) -> dict:
         "cause": incident.cause,
         "resolution": incident.resolution,
         "suppressed_by_dependency": incident.suppressed_by_dependency,
+        "acknowledged_at": incident.acknowledged_at,
+        "ack_note": incident.ack_note,
     }
 
 
@@ -80,6 +85,8 @@ def alert_row(row: AlertIncident, rule: str | None, klass: str | None) -> dict:
             query["detail"] = klass
         suppress = f"/alerts/suppressions?{urlencode(query)}#add"
     return {
+        "kind": "alert",
+        "id": row.id,
         "target_name": row.title,
         "source": source_of(row.key),
         "href": f"/devices/{row.device_id}" if row.device_id else None,
@@ -90,6 +97,8 @@ def alert_row(row: AlertIncident, rule: str | None, klass: str | None) -> dict:
         "cause": row.detail,
         "resolution": row.resolution,
         "suppressed_by_dependency": False,
+        "acknowledged_at": row.acknowledged_at,
+        "ack_note": row.ack_note,
     }
 
 
@@ -167,6 +176,40 @@ async def history(session: AsyncSession, *, source: str = "", device_id: int | N
             rows.append(alert_row(row, *await rule_of(session, row)))
     rows.sort(key=lambda r: r["opened_at"], reverse=True)
     return History(rows=rows[offset:want], total=total)
+
+
+# --------------------------------------------------------------------------
+# Acknowledging
+# --------------------------------------------------------------------------
+
+# A row's "kind", as the forms post it: which table its id is in.
+KINDS: dict[str, type[Incident] | type[AlertIncident]] = {"target": Incident, "alert": AlertIncident}
+
+
+async def acknowledge(session: AsyncSession, kind: str, incident_id: int, note: str) -> bool:
+    """Mark an open incident as seen, with an optional note; again replaces
+    the note. An incident that has closed meanwhile is left as it ended.
+    Nothing is sent: it says so on the pages, and the recovery still goes
+    out when it ends."""
+    row = await session.get(KINDS[kind], incident_id)
+    if row is None or row.closed_at is not None:
+        return False
+    row.acknowledged_at = utcnow()
+    row.ack_note = note.strip() or None
+    return True
+
+
+async def unacknowledge(session: AsyncSession, kind: str, incident_id: int) -> bool:
+    row = await session.get(KINDS[kind], incident_id)
+    if row is None or row.closed_at is not None or row.acknowledged_at is None:
+        return False
+    row.acknowledged_at = None
+    row.ack_note = None
+    return True
+
+
+def unacknowledged(rows: list[dict]) -> int:
+    return sum(1 for r in rows if not r["closed_at"] and not r["acknowledged_at"])
 
 
 async def opened_since(session: AsyncSession, since: datetime) -> int:

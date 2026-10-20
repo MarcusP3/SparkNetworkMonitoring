@@ -582,7 +582,10 @@ class Incident(Base):
     # and a duration alone cannot tell them apart: an incident closed because
     # monitoring was paused may well have continued afterwards.
     resolution: Mapped[str | None] = mapped_column(String(32))
+    # Someone has seen it and is dealing with it (Alerts -> Firing now). Only
+    # while it is open; the next incident starts unacknowledged (migration 22).
     acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    ack_note: Mapped[str | None] = mapped_column(Text)
 
     # True when this incident was a downstream symptom of another failure and
     # therefore never alerted on.
@@ -704,6 +707,9 @@ class AlertIncident(Base):
     # "recovered", or "no longer watched" when the thing it was about went
     # away (a port unstarred, a credential removed).
     resolution: Mapped[str | None] = mapped_column(String(32))
+    # As on Incident (migration 22).
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    ack_note: Mapped[str | None] = mapped_column(Text)
 
 
 class AlertSuppression(Base):

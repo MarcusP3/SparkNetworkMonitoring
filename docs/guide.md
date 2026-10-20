@@ -362,6 +362,19 @@ device, and stays *ongoing* until the rule clears. **Open incidents** counts
 both kinds. They are recorded even for a muted device (the problem was real;
 only the message is held back), but not while a rule is switched off.
 
+**Acknowledging** an incident says you have seen it and are dealing with
+it. Under every open incident, on the dashboard and in Firing now,
+**Acknowledge** opens to an optional note ("new drive arrives Friday", up to
+280 characters) and a button. An acknowledged incident stays in the list and
+still counts, showing the note and when it was acknowledged, but the
+**Firing now** and **Open incidents** tiles turn red only for what no one has
+acknowledged, and the Alerts menu reads "2 acknowledged" rather than "2
+firing" when that is all there is. Nothing is sent, and the recovery message
+still goes out when it ends. **Undo** takes it back while it is open;
+acknowledging again replaces the note. An incident that has ended keeps its
+note in the history, and the next one starts unacknowledged.
+Acknowledgements do not expire.
+
 **Suppressions** (Alerts → Suppressions) are for a device that breaks a
 rule by design — ZFS keeps TrueNAS's memory nearly full on purpose. One
 rule, for one device: **off**, or **its own line** ("memory over 100%",

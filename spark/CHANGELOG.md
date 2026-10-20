@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — acknowledging an incident (2026-10-20)
+
+### Added
+
+- **Acknowledge** under every open incident, on the dashboard and in Alerts
+  → Firing now, with an optional note (280 characters). An acknowledged
+  incident stays listed and still counts, with its note and when, but the
+  Firing now and Open incidents tiles (and the Alerts menu's warning) turn
+  red only for incidents no one has acknowledged. **Undo** takes it back
+  while it is open; acknowledging again replaces the note. Nothing is sent,
+  and recoveries go out as before. An ended incident keeps its note in the
+  history; the next one starts unacknowledged. Outages and alert-rule
+  incidents both take one. Open pages update when one is acknowledged.
+- Migration 22: `incident.ack_note`, and `alert_incident.acknowledged_at` and
+  `ack_note`. `incident.acknowledged_at` had been in the schema since the
+  first increment with nothing using it; it is used now.
+
+### Known, unfixed
+
+- **Acknowledgements do not expire.** One set on a problem that never ends
+  stays until Undo. An "until" time is a column and a check away if it turns
+  out to be wanted.
+
 ## Unreleased — the Alerts page, part 2: rules and suppressions (2026-10-07)
 
 ### Changed
