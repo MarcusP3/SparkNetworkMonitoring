@@ -74,7 +74,7 @@ async def context(session: AsyncSession, row: ApiCredential) -> tuple[str, bool,
     settings = await alerts.load(session)
     device = await session.get(Device, row.device_id) if row.device_id else None
     sending = settings.get("enabled", True) and not (
-        device is not None and await alerts.is_muted(session, device_id=device.id))
+        device is not None and await alerts.is_quiet(session, device_id=device.id))
     return (device.display_name if device else row.name, sending,
             settings.get("notify_on_recovery", True), await snmp_alerts.load(session))
 

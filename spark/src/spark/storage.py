@@ -189,8 +189,8 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
     rules = await snmp_alerts.load(session)
     supp = await suppressions.for_device(session, device.id)
     settings = await alerts.load(session)
-    sending = settings.get("enabled", True) and not await alerts.is_muted(
-        session, device_id=device.id)
+    sending = settings.get("enabled", True) and not await alerts.is_quiet(
+        session, device_id=device.id, when=now)
     recoveries = settings.get("notify_on_recovery", True)
     address = f"`{device.primary_ip or '—'}`"
     interval = INTERVAL_MINUTES * 60

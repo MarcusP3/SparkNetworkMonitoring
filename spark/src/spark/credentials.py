@@ -366,7 +366,7 @@ async def evaluate(session: AsyncSession, row: ApiCredential, worked: bool,
     settings = await alerts.load(session)
     device = await session.get(Device, row.device_id) if row.device_id else None
     sending = settings.get("enabled", True) and not (
-        device is not None and await alerts.is_muted(session, device_id=device.id))
+        device is not None and await alerts.is_quiet(session, device_id=device.id, when=now))
     name = device.display_name if device else row.name
     what = KINDS.get(row.kind, row.kind)
     on = bool(rules.get("api_down", True)) and not (

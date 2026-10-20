@@ -350,7 +350,8 @@ off or there was no webhook. The tiles count what is firing, what began in
 the last 24 hours and 7 days, and messages sent and failed in the last 7
 days. **Rules** holds the Discord webhook, what is sent, quiet hours, every
 alert rule, starred ports and the mute list; **Suppressions** quiets one rule
-on one device. (Both used to be under Settings; old links still land.) The
+on one device. (Both used to be under Settings; old links still land.)
+**Maintenance** holds alerts while you work on a device (below). The
 dashboard keeps the newest ten, with **All alerts →** to this page.
 
 **The dashboard's incidents** are every kind of problem, not only outages: a
@@ -427,6 +428,34 @@ device (its targets, its SNMP polling and its ports) or a single target.
 Muted things are still checked, polled and shown; only the messages stop.
 Add to it from the Muted card, or with **Mute alerts** on a device's page.
 
+**Maintenance windows** (Alerts → Maintenance) are for a device you are
+working on: patching Proxmox, swapping a switch, rebooting the router. While
+one is on, alerts about the device, and by default everything below it on the
+network map, are held: it is still checked, polled and shown, and what
+happens is recorded, but nothing is sent, and its incidents read *under
+maintenance* without turning the Firing now and Open incidents tiles red.
+**When it ends, anything still broken is sent then**: an outage as "proxmox
+web is still down after maintenance", an SNMP or storage alert as it stands.
+Its recovery follows as usual. Something that broke and came back during the
+window sends nothing; its incident still says *during maintenance*.
+
+- **Start one in a click** with **Maintenance…** under a device's name: hold
+  alerts for 30 minutes to 24 hours from now, with or without what is below
+  it, and a note. The device's page then says *under maintenance until 14:30*
+  (so do the pages of the devices below it) and has **End maintenance**,
+  which ends it at once and sends what it leaves behind.
+- **Schedule one** on Alerts → Maintenance: a start and an end, in the time
+  zone set under Preferences, up to 14 days long. **Every week** repeats it
+  at the same local time, daylight saving or not (up to a day long): for a
+  nightly backup or an update schedule. The list shows what is on, what is
+  planned, and what ended in the last week, with **End now**, **Cancel** and
+  **Stop repeating**. Removing one that is on ends it first.
+- Maintenance on the gateway holds "the internet is down" too: rebooting the
+  router takes the line with it.
+- A recovery during the window is not sent either, even for an outage you
+  were told about before it began. A muted device stays quiet at the end. A
+  device under two windows is dealt with when the last one ends.
+
 What is deliberately not sent:
 
 - a target whose failure is explained by one it **depends on** being down
@@ -438,7 +467,8 @@ What is deliberately not sent:
 - SNMP silence on a device a target already reports down, or on a device that
   has never answered (that is a configuration problem, shown on the SNMP card);
 - the devices from the very first sweep, which are all new and none of them news;
-- anything on the mute list.
+- anything on the mute list;
+- anything under a maintenance window, until the window ends.
 
 **Quiet hours** hold alerts and send one summary when the window ends. The
 window is kept in the time zone set under **Preferences**.

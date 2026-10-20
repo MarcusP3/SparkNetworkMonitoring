@@ -49,23 +49,6 @@ def _greeting() -> str:
     return "Good evening"
 
 
-async def _open_alerts(session: AsyncSession) -> tuple[int, int]:
-    """Open alert incidents the dashboard shows, and how many of those no
-    one has acknowledged."""
-    hidden = await suppressions.hidden_on_dashboard(session)
-    total = unacked = 0
-    for row in (await session.execute(
-        select(AlertIncident).where(AlertIncident.closed_at.is_(None))
-    )).scalars():
-        rule = suppressions.rule_of(row.key)
-        klass = (await suppressions.klass_of(session, row.key, row.detail)
-                 if rule == "truenas_alerts" else None)
-        if not hidden(row, rule, klass):
-            total += 1
-            unacked += row.acknowledged_at is None
-    return total, unacked
-
-
 @router.get("/healthz")
 async def healthz():
     """Liveness probe. Deliberately unauthenticated and free of any detail."""
@@ -85,19 +68,20 @@ async def dashboard(
             stmt = stmt.where(clause)
         return await session.scalar(stmt) or 0
 
-    open_alerts, unacked_alerts = await _open_alerts(session)
+    # Everything open, as Alerts -> Firing now lists it: outages and alerts,
+    # less what is suppressed (the list below leaves those out too).
+    open_rows, _left_out = await incident_rows.firing(session)
     stats = {
         "devices": await count(Device, Device.ignored.is_(False)),
         "services": await count(Service, Service.ignored.is_(False)),
         "targets": await count(Target, Target.enabled.is_(True)),
         "down": await count(Target, Target.status == HealthStatus.DOWN),
         "degraded": await count(Target, Target.status == HealthStatus.DEGRADED),
-        # Outages and every other kind of alert standing now, less what is
-        # suppressed (the list below leaves those out too).
-        "open_incidents": await count(Incident, Incident.closed_at.is_(None)) + open_alerts,
-        # Of those, what no one has acknowledged: only these colour the tile.
-        "unacknowledged": await count(Incident, Incident.closed_at.is_(None),
-                                      Incident.acknowledged_at.is_(None)) + unacked_alerts,
+        "open_incidents": len(open_rows),
+        # Of those, what no one is on (not acknowledged, not under
+        # maintenance): only these colour the tile.
+        "unhandled": incident_rows.unhandled(open_rows),
+        "handled": incident_rows.handled_note(open_rows),
     }
 
     targets = list(
@@ -145,13 +129,13 @@ async def dashboard(
     ]
 
     recent_outages = await session.execute(
-        select(Incident, Target.name)
+        select(Incident, Target.name, Target.device_id)
         .join(Target, Target.id == Incident.target_id)
         .order_by(Incident.opened_at.desc())
         .limit(RECENT)
     )
-    incidents = [incident_rows.target_row(incident, name)
-                 for incident, name in recent_outages.all()]
+    incidents = [incident_rows.target_row(incident, name, device_id=device_id)
+                 for incident, name, device_id in recent_outages.all()]
     # SNMP, storage and API alerts beside the outages, the newest ten of both.
     # Not what is suppressed: an alert closed by its suppression, or any from
     # a rule that is now off for its device -- that is expected, not news.
@@ -169,6 +153,7 @@ async def dashboard(
         incidents.append(incident_rows.alert_row(row, rule, klass))
     incidents.sort(key=lambda i: i["opened_at"], reverse=True)
     incidents = incidents[:RECENT]
+    await incident_rows.mark_maintenance(session, incidents)
 
     alerting = await get_setting(session, "alerting")
     warnings: list[str] = []

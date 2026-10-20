@@ -9,11 +9,13 @@ where to change that.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, credentials, hierarchy, identity, limits, merge, snmp_alerts, storage, topology
+from .. import alerts, credentials, hierarchy, identity, limits, maintenance, merge, snmp_alerts, storage, topology
 from .. import proxmox_health, suppressions, truenas_health, unifi
 from .. import charts, events
 from .. import scheduler as scheduler_module
@@ -272,6 +274,7 @@ async def device_page(
     snmp = await _snmp_section(session, device, range_name, port_id, zone)
     has_profiles = bool(await session.scalar(select(func.count(SnmpProfile.id))))
     muted = await alerts.is_muted(session, device_id=device.id)
+    under = await _under_maintenance(session, device, request.state.tz)
     placement = await _placement(session, device)
     addresses = await merge.addresses_of(session, device.id)
     merge_choices = sorted(
@@ -331,6 +334,13 @@ async def device_page(
             "ranges": [(key, RANGE_LABELS[key]) for key in history.RANGES],
             "port": port_id,
             "muted": muted,
+            # A maintenance window it is under now, its own or one above it;
+            # and the quick choices for starting one (maintenance.py).
+            "under": under,
+            "durations": maintenance.DURATIONS,
+            "everything_below": len(hierarchy.descendants(
+                dict((await session.execute(select(Device.id, Device.parent_device_id))).all()),
+                device.id)),
             "placement": placement,
             "addresses": addresses,
             "merge_choices": merge_choices,
@@ -357,6 +367,19 @@ async def device_page(
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
         },
     )
+
+
+async def _under_maintenance(session: AsyncSession, device: Device, tz) -> dict | None:  # type: ignore[no-untyped-def]
+    """The window this device is under now, if any: until when, and whose."""
+    window = await maintenance.covering(session, device.id)
+    if window is None:
+        return None
+    owner = device if window.device_id == device.id else await session.get(Device, window.device_id)
+    now = utcnow()
+    until = maintenance.span_at(window, now, tz).end
+    # "until 14:30" today; a date as well when it is further off.
+    return {"window": window, "until": until, "far": until - now > timedelta(hours=18),
+            "owner": owner, "own": window.device_id == device.id}
 
 
 async def _placement(session: AsyncSession, device: Device) -> dict:

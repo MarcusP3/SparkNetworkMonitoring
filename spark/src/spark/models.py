@@ -658,6 +658,32 @@ class AlertMute(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class MaintenanceWindow(Base):
+    """A device being worked on, on purpose, for a stretch of time
+    (Alerts -> Maintenance; maintenance.py).
+
+    While one is on, alerts about the device -- and, with `include_below`,
+    everything under it on the map -- are held like the mute list holds
+    them. When it ends, whatever is still broken is sent then. `weekly`
+    repeats it at the same local time every week; `ends_at` is then the
+    first occurrence's end. `finished_until` is the latest end whose
+    leftovers were sent, so each end is dealt with once. Kept after it ends,
+    so incidents can still say they began during maintenance (migration 23).
+    """
+
+    __tablename__ = "maintenance_window"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"), index=True)
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    ends_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    weekly: Mapped[bool] = mapped_column(Boolean, default=False)
+    include_below: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    finished_until: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class AlertState(Base):
     """Where one threshold rule stands for one device or port.
 

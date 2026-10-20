@@ -31,7 +31,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
-| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents | ✅ working |
+| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
@@ -148,6 +148,7 @@ spark/
     credentials.py      API credentials (Settings → Credentials): add, edit, Test, Trust
     internet.py         the Internet card: resolvers, DNS, web, gateway every minute; the alert
     suppressions.py     one alert rule, for one device, off or with its own line
+    maintenance.py      maintenance windows: alerts held while one is on, what is still broken sent when it ends
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
@@ -201,6 +202,8 @@ spark/
     test_alert_incidents.py  incidents for alert rules: opened on firing, closed on clearing, on the dashboard
     test_acknowledge.py  acknowledging an open incident: the note, Undo, ended ones untouched, the tiles, migration 22
     test_suppressions.py  per-device rule overrides: quiet, their own lines, afresh when saved; the page
+    test_maintenance.py  maintenance windows: weekly on the local clock, held below, still-down sent at the end, the pages
+    test_maintenance_alerts.py  maintenance and SNMP thresholds, SNMP silence and the internet: held, sent at the end, recovered
     test_ports.py       the scanner against real sockets; the service store
     test_paging.py      one device per page, exactly once, whatever the filter
     test_port_catalogue.py  the editable port list, and what it costs to scan

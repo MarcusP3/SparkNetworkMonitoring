@@ -327,9 +327,15 @@
           {% if addresses %} · <a href="#addresses">+{{ addresses | length }} more address{{ 'es' if addresses | length != 1 }}</a>{% endif %}
           {% if suggested %} · <a href="#suggested">{{ suggested | length }} possible duplicate{{ 's' if suggested | length != 1 }}</a>{% endif %}
           {% if muted %} · <span class="pill neutral" title="On the mute list: checked and shown as usual, but no alerts are sent for it">alerts muted</span>{% endif %}
+          {# All in the pill: plain text over the banner picture is hard to read. #}
+          {% if under %} · <span class="pill neutral dot" title="Alerts held until the window ends; anything still broken then is sent{% if under.window.note %}. {{ under.window.note }}{% endif %}">under maintenance until {{ under.until | local('%a %b %-d, %H:%M' if under.far else '%H:%M') }}
+            {%- if not under.own %} · from <a href="/devices/{{ under.owner.id }}">{{ under.owner.display_name }}</a>{% endif %}
+            {%- if under.window.note %} · {{ under.window.note | truncate(48, true, '…') }}{% endif %}</span>
+          {% endif %}
         </p>
         {# Under the title rather than over the picture on the right, where it
            was hard to read against the image. #}
+        <div class="head-controls">
         <form method="post" action="/devices/{{ device.id }}/mute" class="mute-form">
           <input type="hidden" name="muted" value="{{ '0' if muted else '1' }}">
           <input type="hidden" name="back" value="{{ back }}">
@@ -338,6 +344,41 @@
             {{ 'Unmute alerts' if muted else 'Mute alerts' }}
           </button>
         </form>
+        {% if under and under.own and not under.window.weekly %}
+        <form method="post" action="/alerts/maintenance/{{ under.window.id }}/end" class="mute-form">
+          <input type="hidden" name="back" value="/devices/{{ device.id }}">
+          <button type="submit" class="btn-quiet" title="Stop holding alerts now, and send anything still broken">End maintenance</button>
+        </form>
+        {% elif under %}
+        <a href="/alerts/maintenance" class="btn-quiet mute-form">Maintenance →</a>
+        {% else %}
+        {# Maintenance in a click: for a while, from now. A time later on is
+           on Alerts -> Maintenance. #}
+        <details class="maint-quick">
+          <summary class="btn-quiet">Maintenance…</summary>
+          <form method="post" action="/alerts/maintenance" class="maint-quick-form">
+            <input type="hidden" name="device_id" value="{{ device.id }}">
+            <input type="hidden" name="back" value="/devices/{{ device.id }}">
+            <label class="inline-field"><span class="muted small">Hold alerts for</span>
+              <select name="minutes">
+                {% for m in durations %}
+                <option value="{{ m }}" {% if m == 60 %}selected{% endif %}>{% if m < 60 %}{{ m }} minutes{% elif m == 60 %}1 hour{% elif m < 1440 %}{{ m // 60 }} hours{% else %}24 hours{% endif %}</option>
+                {% endfor %}
+              </select></label>
+            {% if everything_below %}
+            <label class="checkbox"><input type="checkbox" name="below" value="1" checked> <span>And the {{ everything_below }} device{{ 's' if everything_below != 1 }} below it</span></label>
+            {% else %}
+            <input type="hidden" name="below" value="1">
+            {% endif %}
+            <input type="text" name="note" maxlength="280" aria-label="Note" placeholder="Note, optional: patching">
+            <div class="maint-quick-actions">
+              <button type="submit" class="btn-primary">Start maintenance</button>
+              <a href="/alerts/maintenance?device={{ device.id }}#add" class="small">Later, or every week…</a>
+            </div>
+          </form>
+        </details>
+        {% endif %}
+        </div>
       </div>
     </div>
   </div>

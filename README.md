@@ -28,7 +28,8 @@ Linux VM · **Storage** one SQLite file
 - **Watches your internet connection**: three providers' resolvers, DNS
   two ways and a web fetch every minute, with uptime and outage history.
 - **Tells you in Discord** when something goes down and when it comes back,
-  with quiet hours, a mute list and per-device suppressions.
+  with quiet hours, maintenance windows, a mute list and per-device
+  suppressions.
 - **Backs itself up** every night, with encrypted downloads and a one-command
   restore.
 

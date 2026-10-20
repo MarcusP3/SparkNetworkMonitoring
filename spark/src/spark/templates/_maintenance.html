@@ -1,0 +1,87 @@
+{# Alerts -> Maintenance: windows when a device is worked on on purpose
+   (maintenance.py). Forms post to /alerts/maintenance (routes_alerts.py). #}
+  {% set f = form %}
+  <section class="card" id="maintenance">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.4-.4-2.1 2.5-2.5Z"/></svg></span>
+      <div>
+        <h2>Maintenance</h2>
+        <p class="card-sub">
+          A device you are working on, for a set time. While it is on, alerts about it
+          (and, unless you untick it, everything below it on the map) are held: it is
+          still checked and shown, and what happens is recorded as during maintenance.
+          When it ends, anything still broken is sent then. To stop alerts for good,
+          mute the device under <a href="/alerts/rules#muted">Rules</a> instead.
+        </p>
+      </div>
+    </div>
+
+    {% if windows %}
+    <div class="table-scroll">
+    <table class="table compact maint-table">
+      <thead><tr><th>Device</th><th>When</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+        {% for m in windows %}{% set w = m.window %}
+        <tr id="maintenance-{{ w.id }}">
+          <td>
+            <a href="/devices/{{ m.device.id }}" class="map-name">{{ m.device.display_name }}</a>
+            {% if m.below %}<div class="muted small">and {{ m.below }} below it</div>{% endif %}
+          </td>
+          <td>
+            {% if m.state == 'on' %}<span class="pill neutral dot">on now</span>{% elif m.state == 'ended' %}<span class="muted small">ended</span>{% endif %}
+            {% if w.weekly %}
+              Every {{ m.span.start | local('%A') }}, {{ m.span.start | local('%H:%M') }}–{{ m.span.end | local('%H:%M') }}
+              <div class="muted small">{{ 'Until' if m.state == 'on' else 'Next' }}: {{ (m.span.end if m.state == 'on' else m.span.start) | local('%a %b %-d, %H:%M') }}</div>
+            {% else %}
+              {{ m.span.start | local('%a %b %-d, %H:%M') }} – {{ m.span.end | local('%a %b %-d, %H:%M') }}
+            {% endif %}
+          </td>
+          <td class="small">{{ w.note or '' }}</td>
+          <td class="actions">
+            {% if m.state == 'on' and not w.weekly %}
+            <form method="post" action="/alerts/maintenance/{{ w.id }}/end">
+              <button type="submit" class="btn-quiet" title="Stop holding alerts now, and send anything still broken">End now</button>
+            </form>
+            {% endif %}
+            {% if m.state != 'ended' %}
+            <form method="post" action="/alerts/maintenance/{{ w.id }}/delete">
+              <button type="submit" class="btn-quiet danger">{{ 'Stop repeating' if w.weekly else 'Cancel' if m.state == 'planned' else 'Remove' }}</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">No maintenance on or planned. Start one from a device's page, or schedule one below.</p>
+    {% endif %}
+
+    <h3 class="sub-title" id="add">Schedule one</h3>
+    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+    <form method="post" action="/alerts/maintenance" class="maint-form">
+      <input type="hidden" name="back" value="/alerts/maintenance">
+      <label class="stack-field"><span class="muted small">Device</span>
+        <select name="device_id" required>
+          <option value="">Choose a device</option>
+          {% for d in devices %}
+          <option value="{{ d.id }}" {% if f.device_id == d.id|string %}selected{% endif %}>{{ d.display_name }}{% if d.primary_ip and d.primary_ip != d.display_name %} — {{ d.primary_ip }}{% endif %}</option>
+          {% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">Starts</span>
+        <input type="datetime-local" name="starts" value="{{ f.starts }}" required></label>
+      <label class="stack-field"><span class="muted small">Ends</span>
+        <input type="datetime-local" name="ends" value="{{ f.ends }}" required></label>
+      <label class="stack-field"><span class="muted small">Note</span>
+        <input type="text" name="note" maxlength="280" value="{{ f.note }}" placeholder="Optional: Proxmox 9 upgrade"></label>
+      <div class="maint-checks">
+        <label class="checkbox"><input type="checkbox" name="below" value="1" {% if f.below %}checked{% endif %}> <span>And everything below it on the map</span></label>
+        <label class="checkbox"><input type="checkbox" name="weekly" value="1" {% if f.weekly %}checked{% endif %}> <span>Every week at this time (up to a day long)</span></label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Schedule maintenance</button>
+        <span class="muted small">Times are in {{ request.state.tz_name }}.</span>
+      </div>
+    </form>
+  </section>

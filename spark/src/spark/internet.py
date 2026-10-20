@@ -244,7 +244,11 @@ async def record(session: AsyncSession, reading: Reading, now: datetime) -> None
         session, ALERT_KEY, breached=reading.state == DOWN, cleared=reading.state != DOWN,
         value=None, now=now, hold=timedelta(0), min_polls=DOWN_CHECKS,
         interval=INTERVAL_SECONDS, record=snmp_alerts.Record(None, subject, body) if on else None)
-    sending = settings.get("enabled", True)
+    # The gateway under maintenance: a router being rebooted takes the
+    # internet with it, and that is not news until the window ends.
+    gateway = await _gateway(session)
+    sending = settings.get("enabled", True) and not (
+        gateway is not None and await alerts.is_quiet(session, device_id=gateway.id, when=now))
     if out.fired and on and sending:
         if reading.gateway_ok is False and await _gateway_alerting(session):
             # The gateway's own target says it already: one alert, not two.

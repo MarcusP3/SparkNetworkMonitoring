@@ -301,7 +301,7 @@ main.centered {
 .optional { font-style: normal; font-weight: 400; color: var(--text-muted); }
 
 input[type="text"], input[type="password"], input[type="url"], input[type="number"],
-input[type="search"], select {
+input[type="search"], input[type="datetime-local"], select {
   font: inherit;
   font-size: .9375rem;
   padding: .55rem .7rem;
@@ -1653,6 +1653,25 @@ code.fingerprint.small { display: inline; }
    header picture. */
 .mute-form { margin: .6rem 0 0; }
 .mute-form .btn-quiet { background: rgba(6, 12, 24, .85); }
+/* Mute and Maintenance side by side under a device's title. */
+.head-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: flex-start; }
+a.btn-quiet.mute-form { background: rgba(6, 12, 24, .85); }
+.maint-quick { margin: .6rem 0 0; }
+.maint-quick > summary { list-style: none; background: rgba(6, 12, 24, .85); }
+.maint-quick > summary::-webkit-details-marker { display: none; }
+.maint-quick-form {
+  display: grid; gap: .6rem; margin-top: .5rem; padding: .85rem;
+  max-width: 24rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.maint-quick-form input[type="text"] { padding: .4rem .55rem; font-size: .875rem; }
+.maint-quick-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+/* Alerts -> Maintenance. */
+.maint-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem 1rem; align-items: start; margin-top: .75rem; }
+.maint-form .maint-checks, .maint-form .form-actions { grid-column: 1 / -1; }
+.maint-checks { display: grid; gap: .35rem; }
+.maint-table td:nth-child(3) { overflow-wrap: anywhere; }
+.maint-table .actions form { display: inline-block; margin-left: .3rem; }
 /* Remove, at the foot of the device page: the confirm opens below. */
 .remove-confirm > summary { display: inline-flex; list-style: none; cursor: pointer; }
 .remove-confirm > summary::-webkit-details-marker { display: none; }

@@ -538,6 +538,29 @@ def schedule_internet(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_maintenance(config) -> bool:  # type: ignore[no-untyped-def]
+    """Ending maintenance windows, every minute (maintenance.py): what a
+    window held back that is still broken is sent when it ends."""
+    from .maintenance import FIRST_RUN_SECONDS, INTERVAL_SECONDS, JOB_ID, run
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        run,
+        "interval",
+        seconds=INTERVAL_SECONDS,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_RUN_SECONDS),
+        name="End maintenance windows",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

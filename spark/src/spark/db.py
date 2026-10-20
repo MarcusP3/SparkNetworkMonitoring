@@ -28,6 +28,7 @@ from .models import (
     ApiCredential,
     AlertIncident,
     InternetSample,
+    MaintenanceWindow,
     AlertState,
     AlertSuppression,
     Base,
@@ -397,7 +398,13 @@ async def _add_acknowledgement(session: AsyncSession) -> None:
                 await session.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {kind}"))
 
 
-CURRENT_VERSION = 22
+@migration(23, "Maintenance windows (Alerts -> Maintenance)")
+async def _add_maintenance_window(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(MaintenanceWindow.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 23
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

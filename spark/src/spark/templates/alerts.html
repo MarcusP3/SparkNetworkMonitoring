@@ -16,7 +16,7 @@
   <div{% if section in ("activity", "messages") %} id="live"{% endif %}>
 
   <section class="stat-row">
-    <a class="stat {{ 's-inc is-bad' if tiles.unacknowledged else 's-inc' if tiles.firing else 's-mon' }}" href="/alerts#firing"{% if tiles.firing > tiles.unacknowledged %} title="{{ tiles.firing - tiles.unacknowledged }} acknowledged"{% endif %}><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span><span class="stat-name">Firing now</span></span><span class="stat-value">{{ tiles.firing }}</span></a>
+    <a class="stat {{ 's-inc is-bad' if tiles.unhandled else 's-inc' if tiles.firing else 's-mon' }}" href="/alerts#firing"{% if tiles.handled %} title="{{ tiles.handled }}"{% endif %}><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span><span class="stat-name">Firing now</span></span><span class="stat-value">{{ tiles.firing }}</span></a>
     <div class="stat s-svc" title="Outages and alerts that began in the last 24 hours"><span class="stat-head"><span class="stat-icon">{{ ICON }}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="stat-name">Last 24 hours</span></span><span class="stat-value">{{ tiles.day }}</span></div>
     <div class="stat s-svc" title="Outages and alerts that began in the last 7 days"><span class="stat-head"><span class="stat-icon">{{ ICON }}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span class="stat-name">Last 7 days</span></span><span class="stat-value">{{ tiles.week }}</span></div>
     <a class="stat s-svc" href="/alerts/messages?status=sent" title="Messages delivered to Discord in the last 7 days"><span class="stat-head"><span class="stat-icon">{{ ICON }}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg></span><span class="stat-name">Sent, 7 days</span></span><span class="stat-value">{{ tiles.sent }}</span></a>
@@ -32,6 +32,7 @@
           {%- if m.slug == 'activity' %}<path d="M3 12h4l3-8 4 16 3-8h4"/>
           {%- elif m.slug == 'messages' %}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/>
           {%- elif m.slug == 'rules' %}<path d="M4 6h16M4 12h10M4 18h6"/>
+          {%- elif m.slug == 'maintenance' %}<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.4-.4-2.1 2.5-2.5Z"/>
           {%- else %}<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>{% endif -%}
         </svg></span>
         <span>{{ m.label }}</span>
@@ -43,9 +44,9 @@
   <div class="settings-body">
 
   {% if section == 'activity' %}
-  <section class="card {{ 'is-warn-edge' if tiles.unacknowledged }}" id="firing">
+  <section class="card {{ 'is-warn-edge' if tiles.unhandled }}" id="firing">
     <div class="card-head">
-      <span class="card-icon{{ ' is-warn' if tiles.unacknowledged }}">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
+      <span class="card-icon{{ ' is-warn' if tiles.unhandled }}">{{ ICON }}<path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5Z"/><path d="M13.7 19a2 2 0 0 1-3.4 0"/></svg></span>
       <div>
         <h2>Firing now</h2>
         <p class="card-sub">Every outage and alert still open, newest first.
@@ -183,6 +184,9 @@
 
   {% elif section == 'suppressions' %}
   {% include "_suppressions.html" %}
+
+  {% elif section == 'maintenance' %}
+  {% include "_maintenance.html" %}
   {% endif %}
 
   </div>

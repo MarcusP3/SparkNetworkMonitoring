@@ -37,6 +37,11 @@
               {% if incident.suppressed_by_dependency %}
                 <span class="pill warn" title="A dependency was already down">symptom</span>
               {% endif %}
+              {% if incident.maintenance_now %}
+                <span class="pill neutral" title="Its device is under a maintenance window: held until it ends">under maintenance</span>
+              {% elif incident.maintenance %}
+                <span class="pill neutral" title="It began while its device was under a maintenance window">during maintenance</span>
+              {% endif %}
               {% if incident.suppress %}
                 · <a href="{{ incident.suppress }}" class="suppress-link" title="Switch this alert off for this device, or give it its own line">Suppress</a>
               {% endif %}

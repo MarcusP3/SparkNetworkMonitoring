@@ -11,11 +11,14 @@ page's layout from routes_settings.py, where their forms still post.
 Acknowledge (and Undo) post here from the dashboard and from Firing now. An
 acknowledged incident still shows and still counts; it stops colouring the
 counts, which are for what nobody has looked at yet.
+
+Maintenance lists the windows (maintenance.py) and schedules one; a device's
+page starts one in a click, posting here too.
 """
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -23,12 +26,13 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import events, limits
+from .. import events, limits, maintenance
 from ..config import Config
 from ..db import get_setting
 from .. import snmp_alerts
-from ..models import (AlertIncident, AlertSuppression, Device, Incident, Notification, NotificationStatus, Target,
-                      User, utcnow)
+from ..hierarchy import descendants
+from ..models import (AlertIncident, AlertSuppression, Device, Incident, MaintenanceWindow, Notification,
+                      NotificationStatus, Target, User, utcnow)
 from . import incident_rows
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
@@ -62,7 +66,7 @@ async def common(session: AsyncSession) -> dict:
     """The tiles and the menu, on every Alerts page."""
     now = utcnow()
     firing, left_out = await incident_rows.firing(session)
-    unacked = incident_rows.unacknowledged(firing)
+    unhandled = incident_rows.unhandled(firing)
     week = now - timedelta(days=7)
     sent = await session.scalar(select(func.count(Notification.id)).where(
         Notification.status == NotificationStatus.SENT, Notification.created_at >= week)) or 0
@@ -84,7 +88,8 @@ async def common(session: AsyncSession) -> dict:
         "left_out": left_out,
         "tiles": {
             "firing": len(firing),
-            "unacknowledged": unacked,
+            "unhandled": unhandled,
+            "handled": incident_rows.handled_note(firing),
             "day": await incident_rows.opened_since(session, now - timedelta(days=1)),
             "week": await incident_rows.opened_since(session, week),
             "sent": sent,
@@ -93,9 +98,9 @@ async def common(session: AsyncSession) -> dict:
         },
         "menu": [
             {"slug": "activity", "label": "Activity", "url": "/alerts",
-             "hint": (f"{len(firing)} firing" if unacked
-                      else f"{len(firing)} acknowledged" if firing else "quiet"),
-             "warn": bool(unacked), "about": "Firing now, and every one before"},
+             "hint": (f"{len(firing)} firing" if unhandled
+                      else incident_rows.handled_hint(firing) if firing else "quiet"),
+             "warn": bool(unhandled), "about": "Firing now, and every one before"},
             {"slug": "messages", "label": "Messages", "url": "/alerts/messages",
              "hint": f"{failed} failed" if failed else ("no webhook" if not webhook else ""),
              "warn": bool(failed) or not webhook, "about": "What went to Discord"},
@@ -104,6 +109,9 @@ async def common(session: AsyncSession) -> dict:
              "about": "Discord, rules, muted"},
             {"slug": "suppressions", "label": "Suppressions", "url": "/alerts/suppressions",
              "hint": str(suppressed), "warn": False, "about": "Quiet one rule on one device"},
+            {"slug": "maintenance", "label": "Maintenance", "url": "/alerts/maintenance",
+             "hint": await _maintenance_hint(session, now), "warn": False,
+             "about": "Hold alerts while you work on something"},
         ],
     }
 
@@ -244,3 +252,193 @@ async def unacknowledge(
         await session.commit()
         events.publish({"kind": "acknowledged"})
     return redirect(BACK.get(back, BACK["/alerts"]))
+
+
+# --------------------------------------------------------------------------
+# Maintenance
+# --------------------------------------------------------------------------
+
+
+async def _maintenance_hint(session: AsyncSession, now: datetime) -> str:
+    tz = await maintenance.zone(session)
+    on = planned = 0
+    for window in (await session.execute(select(MaintenanceWindow))).scalars():
+        upcoming = maintenance.next_span(window, now, tz)
+        if upcoming is None:
+            continue
+        if upcoming.holds(now):
+            on += 1
+        else:
+            planned += 1
+    return f"{on} on" if on else (f"{planned} planned" if planned else "")
+
+
+# Shown for a while after they end, then only in the incidents they explain.
+ENDED_SHOWN = timedelta(days=7)
+
+
+async def maintenance_rows(session: AsyncSession, now: datetime,
+                           device_id: int | None = None) -> list[dict]:
+    """Every window worth listing, on now first, then the next to begin, then
+    the recently ended. For one device, its own."""
+    tz = await maintenance.zone(session)
+    query = select(MaintenanceWindow, Device).join(Device, Device.id == MaintenanceWindow.device_id)
+    if device_id is not None:
+        query = query.where(MaintenanceWindow.device_id == device_id)
+    parents = dict((await session.execute(select(Device.id, Device.parent_device_id))).all())
+    rows = []
+    for window, device in (await session.execute(query)).all():
+        upcoming = maintenance.next_span(window, now, tz)
+        if upcoming is None:
+            if now - window.ends_at > ENDED_SHOWN:
+                continue
+            state, span = "ended", maintenance.Span(window.starts_at, window.ends_at)
+        else:
+            state, span = ("on" if upcoming.holds(now) else "planned"), upcoming
+        rows.append({
+            "window": window, "device": device, "state": state, "span": span,
+            "below": len(descendants(parents, device.id)) if window.include_below else 0,
+        })
+    order = {"on": 0, "planned": 1, "ended": 2}
+    rows.sort(key=lambda r: (order[r["state"]],
+                             r["span"].start if r["state"] != "ended" else now - r["span"].end))
+    return rows
+
+
+def _local_input(when: datetime, tz) -> str:  # type: ignore[no-untyped-def]
+    """A time as a datetime-local field wants it, on the chosen clock."""
+    return when.astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+
+
+def _from_input(value: str, tz) -> datetime | None:  # type: ignore[no-untyped-def]
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=tz)
+    return parsed.astimezone(timezone.utc)
+
+
+async def _maintenance_page(request: Request, session: AsyncSession, config: Config, user: User,
+                            *, device: str = "", form: dict | None = None, error: str | None = None,
+                            status_code: int = 200):
+    now = utcnow()
+    tz = request.state.tz
+    devices = sorted((await session.execute(
+        select(Device).where(Device.ignored.is_(False)))).scalars(),
+        key=lambda d: d.display_name.lower())
+    start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    chosen = limits.as_id(device) if device else None
+    form = form or {
+        "device_id": str(chosen or ""), "starts": _local_input(start, tz),
+        "ends": _local_input(start + timedelta(hours=1), tz), "weekly": False, "below": True,
+        "note": "",
+    }
+    return templates.TemplateResponse(request, "alerts.html", {
+        "config": config, "user": user, "title": "Alerts · Maintenance", "section": "maintenance",
+        **await common(session),
+        "windows": await maintenance_rows(session, now),
+        "devices": devices,
+        "form": form,
+        "error": error,
+    }, status_code=status_code)
+
+
+@router.get("/alerts/maintenance")
+async def maintenance_page(
+    request: Request,
+    device: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    return await _maintenance_page(request, session, config, user, device=device)
+
+
+def _maintenance_back(back: str, device_id: int | None) -> str:
+    """The device page a button was on, or the Maintenance list."""
+    if device_id is not None and back == f"/devices/{device_id}":
+        return back
+    return "/alerts/maintenance"
+
+
+@router.post("/alerts/maintenance")
+async def add_maintenance(
+    request: Request,
+    device_id: str = Form("", max_length=limits.SHORT),
+    minutes: str = Form("", max_length=limits.SHORT),
+    starts: str = Form("", max_length=limits.SHORT),
+    ends: str = Form("", max_length=limits.SHORT),
+    weekly: str = Form("", max_length=limits.SHORT),
+    below: str = Form("", max_length=limits.SHORT),
+    note: str = Form("", max_length=limits.NOTE),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Start one now, for a few minutes or hours (a device's page), or
+    schedule one with a start and an end (the Maintenance list)."""
+    now = utcnow()
+    tz = request.state.tz
+    chosen = limits.as_id(device_id)
+    form = {"device_id": device_id, "starts": starts, "ends": ends, "weekly": weekly == "1",
+            "below": below == "1", "note": note}
+    if minutes:
+        length = int(minutes) if minutes.isdigit() else 0
+        if length not in maintenance.DURATIONS:
+            return redirect(_maintenance_back(back, chosen))
+        starts_at, ends_at, repeat = now, now + timedelta(minutes=length), False
+    else:
+        starts_at, ends_at, repeat = _from_input(starts, tz), _from_input(ends, tz), weekly == "1"
+    try:
+        if chosen is None:
+            raise maintenance.MaintenanceError("Choose a device.")
+        if starts_at is None or ends_at is None:
+            raise maintenance.MaintenanceError("Give a start and an end.")
+        await maintenance.add(session, device_id=chosen, starts_at=starts_at, ends_at=ends_at,
+                              weekly=repeat, include_below=below == "1", note=note, now=now)
+    except maintenance.MaintenanceError as exc:
+        # Nothing was written: add() checks everything before it adds.
+        if minutes:
+            return redirect(_maintenance_back(back, chosen))
+        return await _maintenance_page(request, session, config, user, form=form, error=str(exc),
+                                       status_code=400)
+    await session.commit()
+    events.publish({"kind": "maintenance"})
+    return redirect(_maintenance_back(back, chosen))
+
+
+@router.post("/alerts/maintenance/{window_id}/end")
+async def end_maintenance(
+    window_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """End a one-off window early. What it held that is still broken is sent."""
+    window = await session.get(MaintenanceWindow, window_id)
+    device_id = window.device_id if window else None
+    if window is not None and await maintenance.end_now(session, window):
+        await session.commit()
+        events.publish({"kind": "maintenance"})
+    return redirect(_maintenance_back(back, device_id))
+
+
+@router.post("/alerts/maintenance/{window_id}/delete")
+async def delete_maintenance(
+    window_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Take a window away: cancel one to come, or stop a weekly one. One
+    that is on is ended first."""
+    window = await session.get(MaintenanceWindow, window_id)
+    device_id = window.device_id if window else None
+    if window is not None:
+        await maintenance.remove(session, window)
+        await session.commit()
+        events.publish({"kind": "maintenance"})
+    return redirect(_maintenance_back(back, device_id))

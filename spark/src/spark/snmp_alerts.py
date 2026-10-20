@@ -281,8 +281,9 @@ async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: 
     settings = await alerts.load(session)
     rules = await load(session)
     supp = await suppressions.for_device(session, device.id)
-    muted = await alerts.is_muted(session, device_id=device.id)
-    sending = settings.get("enabled", True) and not muted
+    # Muted, or under maintenance: still recorded, not sent.
+    quiet = await alerts.is_quiet(session, device_id=device.id, when=now)
+    sending = settings.get("enabled", True) and not quiet
     recoveries = settings.get("notify_on_recovery", True)
     address = f"`{device.primary_ip or '—'}`"
 

@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased — maintenance windows (2026-10-20)
+
+### Added
+
+- **Maintenance windows** (Alerts → Maintenance). A device, and by default
+  everything below it on the map, for a set time: alerts about it are held
+  like the mute list holds them (checked, recorded and shown, not sent), its
+  incidents read *under maintenance* and do not turn the Firing now and Open
+  incidents tiles red. **When a window ends, whatever it covers that is still
+  broken is sent**: outages as "… is still down after maintenance", SNMP
+  silence, thresholds, storage and API alerts as they stand. Each is marked
+  sent, so its recovery follows as usual. Incidents keep saying *during
+  maintenance* in the history.
+- **Maintenance…** under a device's name: 30 minutes to 24 hours from now,
+  with or without what is below it, and a note. Pages of devices under a
+  window say until when (and whose window it is), with **End maintenance**.
+- Alerts → Maintenance: schedule one with a start and an end in the
+  Preferences time zone (up to 14 days), or **every week** at the same local
+  time across daylight-saving changes (up to a day long). **End now**,
+  **Cancel**, **Stop repeating**; removing one that is on ends it first.
+- Maintenance on the gateway holds "the internet is down".
+- A job every minute (`maintenance:finish`) deals with windows that ended.
+- Migration 23: the `maintenance_window` table.
+
+### Changed
+
+- Every alert asks `alerts.is_quiet` (the mute list, or a maintenance
+  window) instead of `is_muted`, which now only answers for the mute list and
+  the device page's Mute button.
+- The dashboard's Open incidents count comes from the same rows as Alerts →
+  Firing now (`incident_rows.firing`) rather than counting them separately.
+
+### Known, unfixed
+
+- A recovery during a window is not sent, even for an outage alerted before
+  the window began. Deliberate, the same as a muted device; say if it should
+  be otherwise.
+- Windows are kept after they end (the history uses them to say *during
+  maintenance*) and nothing prunes them. A handful a month is nothing, but
+  nothing stops it growing.
+
 ## Unreleased — acknowledging an incident (2026-10-20)
 
 ### Added

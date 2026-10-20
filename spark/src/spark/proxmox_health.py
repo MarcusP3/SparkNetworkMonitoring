@@ -96,7 +96,7 @@ async def evaluate(session: AsyncSession, row: ApiCredential, before: dict,
     settings = await alerts.load(session)
     device = await session.get(Device, row.device_id) if row.device_id else None
     sending = settings.get("enabled", True) and not (
-        device is not None and await alerts.is_muted(session, device_id=device.id))
+        device is not None and await alerts.is_quiet(session, device_id=device.id, when=now))
     recoveries = settings.get("notify_on_recovery", True)
     rules = await snmp_alerts.load(session)
     supp = await suppressions.for_device(session, row.device_id)

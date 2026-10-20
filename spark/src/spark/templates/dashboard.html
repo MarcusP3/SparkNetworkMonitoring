@@ -73,10 +73,9 @@
       <span class="stat-value">{{ stats.down }}</span>
     </div>
 
-    {# Red only for what no one has acknowledged: one already being dealt
-       with still counts, but it is not news. #}
-    {% set acked = stats.open_incidents - stats.unacknowledged %}
-    <div class="stat s-inc{% if stats.unacknowledged %} is-bad{% endif %}" title="Still unresolved{% if acked %}, {{ acked }} acknowledged{% endif %}">
+    {# Red only for what no one is on: one acknowledged or under
+       maintenance still counts, but it is not news. #}
+    <div class="stat s-inc{% if stats.unhandled %} is-bad{% endif %}" title="Still unresolved{% if stats.handled %}, {{ stats.handled }}{% endif %}">
       <span class="stat-head">
         <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
         <span class="stat-name">Open incidents</span>

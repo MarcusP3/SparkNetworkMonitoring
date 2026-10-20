@@ -18,6 +18,8 @@ What is deliberately *not* alerted:
 
   * anything on the mute list (Settings -> Alerts): a muted device, or a
     muted target, is still checked and shown, but sends nothing;
+  * anything under a maintenance window (maintenance.py), likewise -- until
+    the window ends, when what is still broken is sent;
 
   * a target whose failure is explained by one it depends on being down, or
     by a device above it on the service map being down -- the switch goes,
@@ -233,6 +235,18 @@ async def is_muted(session: AsyncSession, *, device_id: int | None = None,
     return await session.scalar(select(AlertMute.id).where(or_(*clauses)).limit(1)) is not None
 
 
+async def is_quiet(session: AsyncSession, *, device_id: int | None = None,
+                   target_id: int | None = None, when: datetime | None = None) -> bool:
+    """Not to be sent about now: on the mute list, or under a maintenance
+    window (maintenance.py) at `when`. What every alert asks; the mute list
+    alone is `is_muted`, which is what the device page's button shows."""
+    if await is_muted(session, device_id=device_id, target_id=target_id):
+        return True
+    from .maintenance import covering
+
+    return await covering(session, device_id, when) is not None
+
+
 async def _queued(session: AsyncSession, key: str) -> bool:
     return await session.scalar(
         select(Notification.id).where(Notification.dedupe_key == key)
@@ -248,7 +262,7 @@ async def on_target_transition(session: AsyncSession, target: Target, transition
     now = utcnow()
     if target.muted_until is not None and target.muted_until > now:
         return
-    if await is_muted(session, device_id=target.device_id, target_id=target.id):
+    if await is_quiet(session, device_id=target.device_id, target_id=target.id, when=now):
         return
 
     if transition.incident_opened is not None and not transition.suppressed_by_dependency:
@@ -316,7 +330,8 @@ async def on_snmp_poll(session: AsyncSession, *, row_id: int, device_id: int,
         return  # suppressed for this device: fully quiet
     # Muted, or alerts switched off: the outage is still an incident on the
     # dashboard, only no message is sent.
-    sending = settings.get("enabled", True) and not await is_muted(session, device_id=device_id)
+    sending = settings.get("enabled", True) and not await is_quiet(session, device_id=device_id,
+                                                                   when=now)
     key = f"snmp:{row_id}:{previous_ok.isoformat()}"
 
     if not answered:
@@ -646,6 +661,6 @@ async def counts(session: AsyncSession) -> dict[str, int]:
 
 __all__ = [
     "AlertError", "dispatch", "enqueue", "in_quiet_hours", "on_new_devices",
-    "is_muted", "on_snmp_poll", "on_target_transition", "post", "seal_plaintext_webhook",
+    "is_muted", "is_quiet", "on_snmp_poll", "on_target_transition", "post", "seal_plaintext_webhook",
     "send_test", "set_webhook", "validate_webhook", "webhook_url",
 ]
