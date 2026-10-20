@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — heartbeats (2026-10-20)
+
+### Added
+
+- **Heartbeats**, for jobs SPARK cannot poll: a backup, a cron task, a
+  certificate renewal. **Add heartbeat** on the Targets page: how often it
+  runs and how late it may be. The job calls its ping URL when it has run
+  (GET, POST or HEAD); once no ping has come for the period and the grace,
+  it is down, and a ping brings it straight back. `…/fail` is the job saying
+  it failed, with the first line of a POST body as the reason. Alerts read
+  "… has not checked in", "… reported a failure", "… checked in again".
+- **The ping URL is shown once.** Its token (192 random bits) is kept only
+  as a SHA-256 (`target.heartbeat_hash`, migration 26, with `last_ping_at`);
+  **Make a new ping URL** replaces it. The page gives the curl line, which
+  pins SPARK's own certificate with `--pinnedpubkey` when SPARK made it.
+- `/hb/<token>` is the only path besides `/healthz` that takes no session:
+  plain-text `ok` / `not found`, no cookie, 30 pings a minute and 10 wrong
+  tokens in ten minutes per address.
+
+### Changed
+
+- The check engine judges a heartbeat every minute instead of probing it,
+  and records nothing while a new one waits for its first ping.
+- Heartbeats belong to no device and are not offered as a dependency, so a
+  late job never colours a device or silences what is below it.
+
 ## Unreleased — the availability report (2026-10-20)
 
 ### Added

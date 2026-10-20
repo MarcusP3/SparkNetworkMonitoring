@@ -63,6 +63,36 @@ Checks never raise. A poller that throws when the thing it polls is broken has
 failed at its only job, so every failure path returns a result with a reason
 attached.
 
+### Heartbeats
+
+For a job SPARK cannot poll: a backup, a cron task, a certificate renewal.
+Instead of SPARK checking it, it calls SPARK when it has run, and SPARK tells
+you when it has gone quiet. **Add heartbeat** on the Targets page: a name,
+how often it runs (minutes, hours or days, up to 31 days), and how late it may
+be (up to 7 days) — for a nightly job, every 1 day with 1 hour to spare.
+
+The next page shows its **ping URL**, `https://spark:9700/hb/<token>`, and the
+curl line to end the job with. Copy it then: SPARK keeps only a fingerprint
+(SHA-256) of the token, so the URL is never shown again. **Make a new ping
+URL** on its Edit page replaces it; the old one stops working at once. With
+SPARK's own certificate the curl line pins it (`-k --pinnedpubkey
+"sha256//…"`), which trusts exactly that certificate rather than any.
+
+- A ping (GET, POST or HEAD) marks it up at once. It is down once no ping has
+  come for the period and the grace together; before its first ping it waits
+  that long, reading *waiting for the first ping*, before it says anything.
+- `…/hb/<token>/fail` says the job ran and failed: down at once, until the
+  next ordinary ping. With a POST, the first line of the body is the reason
+  ("exit 3: disk full").
+- Alerts read "Nightly backup has not checked in", "… reported a failure"
+  and "… checked in again". Heartbeats belong to no device, and nothing can
+  depend on one: a late backup is not a reason a host is unreachable.
+- `/hb/` is the only part of SPARK that takes no sign-in: the token is the
+  credential. It answers `ok` or `not found` and nothing more, and each
+  address gets 30 pings a minute and 10 wrong tokens in ten minutes. A
+  paused heartbeat takes pings without changing state. If `app.allowed_hosts`
+  is set, the job has to use one of those names too.
+
 An `http` check reads at most the first 1 MB of a response, and only when
 `expect_body` is set; the phrase has to appear within that. A monitored host
 that starts serving something enormous cannot push SPARK out of memory.

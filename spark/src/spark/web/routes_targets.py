@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import charts, limits, proxmox_health
+from .. import charts, limits, proxmox_health, tls
 from .. import events
+from ..checks import heartbeat
 from .. import scheduler as scheduler_module
 from ..config import Config
 # Aliased: the module-level PAUSED here is an incident resolution, and
@@ -110,6 +111,8 @@ async def _validate(
         return None, None, f"{check_type!r} is not a check type."
     if kind is CheckType.DOCKER:
         return None, None, "Docker checks are not available yet."
+    if kind is CheckType.HEARTBEAT or (editing is not None and editing.check_type == CheckType.HEARTBEAT):
+        return None, None, "Heartbeats are set up with Add heartbeat on the Targets page."
 
     parent_id: int | None = None
     if depends_on_target_id.strip():
@@ -146,10 +149,14 @@ def _is_tuned(target: Target | None) -> bool:
 async def _form_context(
     session: AsyncSession, config: Config, user: User, target: Target | None, **extra
 ) -> dict:
+    # Nothing depends on a heartbeat: a late backup is not a reason a host
+    # cannot be reached.
     others = list(
         (
             await session.execute(
-                select(Target).where(Target.id != (target.id if target else -1)).order_by(Target.name)
+                select(Target).where(Target.id != (target.id if target else -1),
+                                     Target.check_type != CheckType.HEARTBEAT)
+                .order_by(Target.name)
             )
         )
         .scalars()
@@ -160,7 +167,8 @@ async def _form_context(
         "user": user,
         "title": "Edit target" if target else "New target",
         "target": target,
-        "check_types": [t.value for t in CheckType if t is not CheckType.DOCKER],
+        "check_types": [t.value for t in CheckType
+                        if t not in (CheckType.DOCKER, CheckType.HEARTBEAT)],
         "param_hints": PARAM_HINTS,
         "candidates": others,
         "tuned": _is_tuned(target),
@@ -233,6 +241,8 @@ async def devices_for(session: AsyncSession, targets: list[Target]) -> dict[int,
         by_host.setdefault(ip.lower(), device_id)
     out: dict[int, Device] = {}
     for t in targets:
+        if t.check_type == CheckType.HEARTBEAT:
+            continue          # belongs to no device, whatever its address reads
         device_id = t.device_id if t.device_id in devices else by_host.get(target_host(t.address))
         if device_id in devices:
             out[t.id] = devices[device_id]
@@ -274,12 +284,18 @@ async def list_targets(
         )).all()
         status = getattr(t.status, "value", t.status)
         latest = recent[0] if recent else None
+        beat = t.check_type == CheckType.HEARTBEAT
         rows.append({
             "status": status,
             "latency_ms": latest.latency_ms if latest else None,
-            "detail": latest.detail if latest else None,
+            "detail": (latest.detail if latest else
+                       "Waiting for the first ping." if beat and t.last_ping_at is None else None),
             "ago": ago(t.last_checked_at, now),
-            "every": every(t.interval_seconds),
+            # A heartbeat is judged every minute; what matters is how often
+            # the job is meant to run.
+            "every": every(int(heartbeat.period_of(t.params or {}).total_seconds())) if beat
+                     else every(t.interval_seconds),
+            "heartbeat": beat,
             # Speed-test samples are left out of the trend, as on the charts:
             # a deliberately saturated link is not the target getting slower.
             "trend": charts.trend([r.latency_ms for r in reversed(recent) if not r.suppressed],
@@ -396,6 +412,8 @@ async def edit_target_form(
     target = await session.get(Target, target_id)
     if target is None:
         return redirect("/targets")
+    if target.check_type == CheckType.HEARTBEAT:
+        return redirect(f"/targets/{target.id}/heartbeat")
     context = await _form_context(session, config, user, target)
     return templates.TemplateResponse(request, "target_form.html", context)
 
@@ -448,6 +466,176 @@ async def update_target(
     if target.enabled:
         scheduler_module.schedule_target(target)
     return redirect("/targets")
+
+
+# --------------------------------------------------------------------------
+# Heartbeats (checks/heartbeat.py, web/routes_heartbeat.py)
+# --------------------------------------------------------------------------
+
+
+def _amount(number: str, unit: str) -> int | None:
+    """Seconds from "6" and "hours", or None if either is not one the form
+    offers."""
+    if unit not in heartbeat.UNITS or not number.strip().isdigit() or len(number.strip()) > 6:
+        return None
+    return int(number.strip()) * heartbeat.UNITS[unit]
+
+
+def _in_units(seconds: int) -> tuple[int, str]:
+    for unit in ("days", "hours", "minutes"):
+        size = heartbeat.UNITS[unit]
+        if seconds % size == 0:
+            return seconds // size, unit
+    return max(1, seconds // 60), "minutes"
+
+
+def _heartbeat_form(request: Request, config: Config, user: User, target: Target | None, *,
+                    error: str | None = None, form: dict | None = None, status_code: int = 200):
+    params = dict(target.params or {}) if target else {}
+    every_n, every_unit = _in_units(int(heartbeat.period_of(params).total_seconds()))
+    grace_n, grace_unit = _in_units(int(heartbeat.grace_of(params).total_seconds()))
+    values = form or {"name": target.name if target else "", "every": every_n,
+                      "every_unit": every_unit, "grace": grace_n, "grace_unit": grace_unit}
+    return templates.TemplateResponse(request, "heartbeat_form.html", {
+        "config": config, "user": user,
+        "title": "Edit heartbeat" if target else "New heartbeat",
+        "target": target, "f": values, "units": list(heartbeat.UNITS), "error": error,
+    }, status_code=status_code)
+
+
+def _check_heartbeat(name: str, every_n: str, every_unit: str, grace_n: str,
+                     grace_unit: str) -> tuple[dict | None, str | None]:
+    if not name.strip():
+        return None, "Give the heartbeat a name: what is the job?"
+    period, grace = _amount(every_n, every_unit), _amount(grace_n, grace_unit)
+    if period is None or grace is None:
+        return None, "How often, and the grace, are each a whole number of minutes, hours or days."
+    if not heartbeat.MIN_PERIOD.total_seconds() <= period <= heartbeat.MAX_PERIOD.total_seconds():
+        return None, "A heartbeat can be expected every minute at most, and every 31 days at least."
+    if not 60 <= grace <= heartbeat.MAX_GRACE.total_seconds():
+        return None, "The grace can be from a minute to 7 days."
+    return {"period_seconds": period, "grace_seconds": grace}, None
+
+
+def _ping_page(request: Request, config: Config, user: User, target: Target, token: str):
+    """The ping URL, shown this once: only its hash is kept."""
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/hb/{token}"
+    curl = "curl -fsS -m 10 --retry 3"
+    if config.app.tls.mode == "auto" and base.startswith("https://"):
+        cert = config.app.tls_dir / tls.CERT_NAME
+        if cert.exists():
+            # SPARK's own certificate, trusted exactly: -k alone would trust
+            # any certificate at all, and --pinnedpubkey is checked even so.
+            curl += f' -k --pinnedpubkey "{tls.public_key_pin(cert.read_bytes())}"'
+    return templates.TemplateResponse(request, "heartbeat_url.html", {
+        "config": config, "user": user, "title": target.name, "target": target,
+        "url": url, "curl": curl,
+    })
+
+
+@router.get("/targets/heartbeat/new")
+async def new_heartbeat_form(
+    request: Request,
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    return _heartbeat_form(request, config, user, None)
+
+
+@router.post("/targets/heartbeat/new")
+async def create_heartbeat(
+    request: Request,
+    name: str = Form("", max_length=limits.NAME),
+    every_n: str = Form("1", alias="every", max_length=limits.SHORT),
+    every_unit: str = Form("days", max_length=limits.SHORT),
+    grace_n: str = Form("1", alias="grace", max_length=limits.SHORT),
+    grace_unit: str = Form("hours", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """A heartbeat is a target that is never probed: judged every minute,
+    down at the first miss, up at the first ping."""
+    params, error = _check_heartbeat(name, every_n, every_unit, grace_n, grace_unit)
+    if error:
+        form = {"name": name, "every": every_n, "every_unit": every_unit, "grace": grace_n,
+                "grace_unit": grace_unit}
+        return _heartbeat_form(request, config, user, None, error=error, form=form,
+                               status_code=400)
+    token = heartbeat.new_token()
+    target = Target(
+        name=name.strip(), check_type=CheckType.HEARTBEAT, address="heartbeat", params=params,
+        interval_seconds=heartbeat.EVALUATE_SECONDS, failure_threshold=1, recovery_threshold=1,
+        heartbeat_hash=heartbeat.token_hash(token), status=HealthStatus.UNKNOWN,
+    )
+    session.add(target)
+    await session.commit()
+    events.publish({"kind": "created", "target_id": target.id})
+    scheduler_module.schedule_target(target)
+    return _ping_page(request, config, user, target, token)
+
+
+@router.get("/targets/{target_id}/heartbeat")
+async def edit_heartbeat_form(
+    request: Request,
+    target_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    target = await session.get(Target, target_id)
+    if target is None or target.check_type != CheckType.HEARTBEAT:
+        return redirect("/targets")
+    return _heartbeat_form(request, config, user, target)
+
+
+@router.post("/targets/{target_id}/heartbeat")
+async def update_heartbeat(
+    request: Request,
+    target_id: ItemId,
+    name: str = Form("", max_length=limits.NAME),
+    every_n: str = Form("1", alias="every", max_length=limits.SHORT),
+    every_unit: str = Form("days", max_length=limits.SHORT),
+    grace_n: str = Form("1", alias="grace", max_length=limits.SHORT),
+    grace_unit: str = Form("hours", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    target = await session.get(Target, target_id)
+    if target is None or target.check_type != CheckType.HEARTBEAT:
+        return redirect("/targets")
+    params, error = _check_heartbeat(name, every_n, every_unit, grace_n, grace_unit)
+    if error:
+        form = {"name": name, "every": every_n, "every_unit": every_unit, "grace": grace_n,
+                "grace_unit": grace_unit}
+        return _heartbeat_form(request, config, user, target, error=error, form=form,
+                               status_code=400)
+    target.name = name.strip()
+    # A failure the job reported stands until it next succeeds.
+    target.params = {**dict(target.params or {}), **params}
+    await session.commit()
+    events.publish({"kind": "updated", "target_id": target.id})
+    return redirect("/targets")
+
+
+@router.post("/targets/{target_id}/heartbeat/url")
+async def new_ping_url(
+    request: Request,
+    target_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """A new ping URL. The old one stops working at once."""
+    target = await session.get(Target, target_id)
+    if target is None or target.check_type != CheckType.HEARTBEAT:
+        return redirect("/targets")
+    token = heartbeat.new_token()
+    target.heartbeat_hash = heartbeat.token_hash(token)
+    await session.commit()
+    return _ping_page(request, config, user, target, token)
 
 
 @router.post("/targets/{target_id}/toggle")

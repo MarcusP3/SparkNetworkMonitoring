@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{# A heartbeat: a job that calls SPARK when it has run (checks/heartbeat.py). #}
+{% block content %}
+<div class="page narrow">
+  <div class="page-head">
+    <div class="page-title">
+      <div>
+        <p class="page-tag">Monitoring</p>
+        <h1>{{ title }}</h1>
+        <p class="page-sub">A backup, a cron job, a certificate renewal: something that should run on its own,
+          and that nothing can be polled to ask about. It calls a URL when it has run; SPARK
+          tells you when it has gone quiet.</p>
+      </div>
+    </div>
+    <div class="head-actions">
+      <a class="btn-quiet" href="/targets">Back to targets</a>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="{% if target %}/targets/{{ target.id }}/heartbeat{% else %}/targets/heartbeat/new{% endif %}"
+        class="form card">
+    <label>
+      <span>Name</span>
+      <input type="text" name="name" maxlength="64" required autofocus value="{{ f.name }}"
+             placeholder="Nightly NAS backup">
+    </label>
+
+    <div class="grid-2">
+      <label>
+        <span>It runs every</span>
+        <span class="amount">
+          <input type="number" name="every" min="1" max="999999" required value="{{ f.every }}" aria-label="How often">
+          <select name="every_unit" aria-label="Unit">
+            {% for u in units %}<option value="{{ u }}" {% if u == f.every_unit %}selected{% endif %}>{{ u }}</option>{% endfor %}
+          </select>
+        </span>
+      </label>
+      <label>
+        <span>Allow it to be late by</span>
+        <span class="amount">
+          <input type="number" name="grace" min="1" max="999999" required value="{{ f.grace }}" aria-label="Grace">
+          <select name="grace_unit" aria-label="Unit">
+            {% for u in units %}<option value="{{ u }}" {% if u == f.grace_unit %}selected{% endif %}>{{ u }}</option>{% endfor %}
+          </select>
+        </span>
+      </label>
+    </div>
+    <small class="muted">It is down once no ping has come for the two together: for a nightly job,
+      every 1 day with 1 hour to spare. A job that calls the URL's <code>/fail</code> is down at once,
+      until it next succeeds.</small>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{{ 'Save' if target else 'Create heartbeat' }}</button>
+      <a class="btn-quiet" href="/targets">Cancel</a>
+    </div>
+  </form>
+
+  {% if target %}
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Its ping URL</h2>
+        <p class="card-sub">Shown once when it was made; SPARK keeps only a fingerprint of it. Lost it,
+          or think someone else has it? Make a new one: the old one stops working at once, so put
+          the new one in the job.</p>
+      </div>
+    </div>
+    <form method="post" action="/targets/{{ target.id }}/heartbeat/url">
+      <button type="submit" class="btn-quiet danger">Make a new ping URL</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

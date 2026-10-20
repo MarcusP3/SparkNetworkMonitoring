@@ -25,9 +25,10 @@
       <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg></span>
       <div>
         <h2>All targets</h2>
-        <p class="card-sub">Ping, TCP, HTTP and DNS checks. A target goes down after its failure threshold, not on one dropped packet.</p>
+        <p class="card-sub">Ping, TCP, HTTP and DNS checks, and heartbeats from jobs that call in. A target goes down after its failure threshold, not on one dropped packet.</p>
       </div>
       <div class="head-actions">
+        <a class="btn-quiet" href="/targets/heartbeat/new" title="A job that calls SPARK when it has run: a backup, a cron task">Add heartbeat</a>
         <a class="btn-primary" href="/targets/new"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add target</a>
       </div>
     </div>
@@ -102,7 +103,7 @@
             {% endif %}
           </td>
           <td><span class="ctype">{{ kind | upper }}</span></td>
-          <td><code>{{ target.address }}</code></td>
+          <td>{% if row.heartbeat %}<span class="muted small" title="The job calls its ping URL">pinged by the job</span>{% else %}<code>{{ target.address }}</code>{% endif %}</td>
           <td class="muted">{{ row.every }}</td>
           <td class="muted">{% if row.latency_ms is none %}—{% elif row.latency_ms < 10 %}{{ '%.1f ms' % row.latency_ms }}{% else %}{{ '%.0f ms' % row.latency_ms }}{% endif %}</td>
           <td class="tresult{% if status == 'down' %} is-bad-text{% endif %}">
@@ -129,7 +130,7 @@
             <form method="post" action="/targets/{{ target.id }}/check" data-stay>
               <button type="submit" class="ib" title="Check now" aria-label="Check {{ target.name }} now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
             </form>
-            <a class="ib" href="/targets/{{ target.id }}/edit" title="Edit" aria-label="Edit {{ target.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></a>
+            <a class="ib" href="/targets/{{ target.id }}/{{ 'heartbeat' if row.heartbeat else 'edit' }}" title="Edit" aria-label="Edit {{ target.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></a>
             <form method="post" action="/targets/{{ target.id }}/toggle" data-stay>
               {# toggle-enabled: the hook the paused-row tests look for. The
                  icon buttons are all one size, so Pause becoming Resume no

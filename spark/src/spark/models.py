@@ -190,6 +190,8 @@ class CheckType(enum.StrEnum):
     HTTP = "http"
     DNS = "dns"
     DOCKER = "docker"
+    # Not a probe: the job being watched calls SPARK (checks/heartbeat.py).
+    HEARTBEAT = "heartbeat"
 
 
 class ServiceSource(enum.StrEnum):
@@ -495,6 +497,12 @@ class Target(Base, TimestampMixin):
     consecutive_successes: Mapped[int] = mapped_column(Integer, default=0)
     last_checked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_status_change: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+    # A heartbeat (checks/heartbeat.py): the SHA-256 of the secret in its
+    # ping URL -- the URL itself is shown once and never stored -- and when
+    # the job last called it (migration 26).
+    heartbeat_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    last_ping_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     service = relationship("Service", back_populates="targets")
     depends_on = relationship("Target", remote_side=[id], backref="dependents")

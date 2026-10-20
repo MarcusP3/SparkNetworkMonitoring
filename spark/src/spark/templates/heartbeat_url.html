@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{# A heartbeat's ping URL, the one time it is shown (routes_targets._ping_page). #}
+{% block content %}
+<div class="page narrow">
+  <div class="page-head">
+    <div class="page-title">
+      <div>
+        <p class="page-tag">Heartbeat</p>
+        <h1>{{ target.name }}</h1>
+        <p class="page-sub">Copy the URL now. SPARK keeps only a fingerprint of it, so this page is the
+          only time it is shown; you can make a new one later from the heartbeat's Edit page.</p>
+      </div>
+    </div>
+    <div class="head-actions">
+      <a class="btn-primary" href="/targets">Done</a>
+    </div>
+  </div>
+
+  <section class="card hb-url">
+    <div class="card-head"><div><h2>Ping URL</h2>
+      <p class="card-sub">Call it when the job has finished. GET, POST or HEAD all count.</p></div></div>
+    <pre class="hb-copy" id="hb-url">{{ url }}</pre>
+    <p class="muted small">To say the job ran and failed, call <code>{{ url }}/fail</code> instead;
+      with a POST, the first line of what you send is kept as the reason.</p>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><div><h2>In a script or a crontab</h2>
+      <p class="card-sub">{% if '--pinnedpubkey' in curl %}SPARK's certificate is its own, so curl is told to
+        trust exactly that one (<code>--pinnedpubkey</code>) rather than any (<code>-k</code> alone).{% else %}
+        As SPARK is served here.{% endif %} <code>-m 10 --retry 3</code>: a slow or briefly
+        unreachable SPARK does not hold the job up, or lose the ping.</p></div></div>
+    <p class="muted small">At the end of the job:</p>
+    <pre class="hb-copy">{{ curl }} {{ url }}</pre>
+    <p class="muted small">Or say which way it went (<code>$?</code> is the job's exit code there):</p>
+    <pre class="hb-copy">if /usr/local/bin/backup.sh; then
+  {{ curl }} {{ url }}
+else
+  {{ curl }} --data-raw "exit $?" {{ url }}/fail
+fi</pre>
+    <p class="muted small">In a crontab, every night at 3:</p>
+    <pre class="hb-copy">0 3 * * * /usr/local/bin/backup.sh &amp;&amp; {{ curl }} {{ url }} &gt;/dev/null</pre>
+  </section>
+</div>
+{% endblock %}

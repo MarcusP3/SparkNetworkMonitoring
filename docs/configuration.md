@@ -78,7 +78,8 @@ reverse proxy's public name) and any other `Host` gets a 421 — the defence
 against DNS rebinding, where a page on another site re-points its own name
 at SPARK's address so your browser talks to SPARK under that name. Loopback is
 always allowed, for the healthcheck. Leave it empty until you are sure of
-the list: a name you forgot is a page you cannot open.
+the list: a name you forgot is a page you cannot open, and a heartbeat ping
+that is refused with 421.
 
 ### Dependencies and the supply chain
 
@@ -316,6 +317,15 @@ worse than no auth, because it looks like security.
 (`0600`), the database and its write-ahead log included; a database from an
 older version is made private at the next start. Reading it from the host
 therefore takes `sudo`.
+
+**The one way in without signing in** is a heartbeat's ping URL,
+`/hb/<token>` (and `…/fail`), for jobs that call in when they have run. The
+token is the credential: 192 random bits, stored only as its SHA-256, so a
+copy of the database cannot ping. It answers `ok` or `not found` and
+nothing else, sets no cookie, and is limited per address to 30 pings a minute
+and 10 wrong tokens in ten minutes. uvicorn's access log is off, so the
+token is not written to the log either. `/healthz` is the only other path
+that needs no session, and says only `ok`.
 
 **Transport.** HTTPS by default, with SPARK's own self-signed certificate
 pinned by fingerprint (see [TLS](#tls)); the cookie is `Secure` and

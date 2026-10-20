@@ -19,7 +19,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Area | State |
 |---|---|
 | Configuration, database, authentication, web shell | ✅ working |
-| Check engine — ping, TCP, HTTP(S), DNS | ✅ working |
+| Check engine — ping, TCP, HTTP(S), DNS, heartbeats | ✅ working |
 | Live-updating pages (server-sent events) | ✅ working |
 | Device discovery — ICMP/ARP sweep, MAC identity, vendor lookup | ✅ working |
 | Device inventory — naming, review state, watch one or many in one click | ✅ working |
@@ -174,6 +174,7 @@ spark/
     checks/
       base.py           CheckSpec and CheckOutcome; no database access
       net.py            ping, tcp, http, dns
+      heartbeat.py      a job that calls in: up, late, failed; the ping URL's token and hash
     engine/
       state.py          hysteresis and the incident lifecycle
       runner.py         joins a check to the database, owns its session
@@ -183,6 +184,7 @@ spark/
       snmp.py           the SNMP collector
     web/                routes and dependencies
       routes_device_page.py  the per-device page
+      routes_heartbeat.py  /hb/<token>: the pings, with no session, rate-limited
       routes_credentials.py  Settings → Credentials
       routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
@@ -194,6 +196,7 @@ spark/
                         and sidebar art (WebP)
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
+    test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
     test_retention.py   downsampling keeps outages; weighted averages; idempotence

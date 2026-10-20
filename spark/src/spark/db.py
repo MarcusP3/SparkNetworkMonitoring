@@ -422,7 +422,24 @@ async def _add_delivery(session: AsyncSession) -> None:
     await connection.run_sync(Delivery.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 25
+@migration(26, "Heartbeats: the ping URL's hash and the last ping")
+async def _add_heartbeat(session: AsyncSession) -> None:
+    """Columns, so tolerant of them already being there (see migration 4).
+    SQLite cannot add a UNIQUE column, so the uniqueness is the index's,
+    named as create_all names it."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("target")}
+    )
+    if "heartbeat_hash" not in existing:
+        await session.execute(text("ALTER TABLE target ADD COLUMN heartbeat_hash VARCHAR(64)"))
+    if "last_ping_at" not in existing:
+        await session.execute(text("ALTER TABLE target ADD COLUMN last_ping_at DATETIME"))
+    await session.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_target_heartbeat_hash ON target (heartbeat_hash)"))
+
+
+CURRENT_VERSION = 26
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

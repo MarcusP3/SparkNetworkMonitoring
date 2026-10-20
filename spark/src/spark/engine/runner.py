@@ -14,10 +14,11 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, events
+from ..checks import heartbeat
 from ..checks.base import CheckOutcome, CheckSpec
 from ..checks.net import run_check
 from ..db import session_scope
-from ..models import Target
+from ..models import CheckType, Target, utcnow
 from .state import Transition, apply_outcome
 
 log = logging.getLogger(__name__)
@@ -31,10 +32,21 @@ def spec_for(target: Target) -> CheckSpec:
     )
 
 
-async def check_target(session: AsyncSession, target: Target) -> tuple[CheckOutcome, Transition]:
-    """Probe one target and move its state machine, in the caller's session."""
+async def check_target(session: AsyncSession,
+                       target: Target) -> tuple[CheckOutcome | None, Transition | None]:
+    """Probe one target and move its state machine, in the caller's session.
+
+    A heartbeat is not probed: its last ping is judged (checks/heartbeat.py),
+    and while a new one waits for its first ping nothing is recorded at all
+    -- (None, None)."""
     check_type = getattr(target.check_type, "value", str(target.check_type))
-    outcome = await run_check(check_type, spec_for(target))
+    if check_type == CheckType.HEARTBEAT:
+        outcome = heartbeat.outcome(params=dict(target.params or {}), last_ping=target.last_ping_at,
+                                    since=target.created_at, now=utcnow())
+        if outcome is None:
+            return None, None
+    else:
+        outcome = await run_check(check_type, spec_for(target))
     transition = await apply_outcome(session, target, outcome)
     if transition.changed:
         # Same transaction as the state change: the alert and the change it

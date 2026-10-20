@@ -54,6 +54,7 @@ from .channels import SendResult
 from .db import get_setting, save_setting, session_scope
 from .models import (
     AlertMute,
+    CheckType,
     Delivery,
     HealthStatus,
     Notification,
@@ -263,17 +264,25 @@ async def on_target_transition(session: AsyncSession, target: Target, transition
     if await is_quiet(session, device_id=target.device_id, target_id=target.id, when=now):
         return
 
+    # A heartbeat is a job that went quiet (or said it failed), not a host.
+    beat = target.check_type == CheckType.HEARTBEAT
     if transition.incident_opened is not None and not transition.suppressed_by_dependency:
         await session.flush()  # the incident's id, for the key
         incident = transition.incident_opened
-        lines = [f"`{target.address}`"]
-        if detail:
-            lines.append(detail)
-        lines.append(f"Down after {target.consecutive_failures} failed checks in a row.")
+        if beat:
+            failed = bool((target.params or {}).get("failed"))
+            subject = f"{target.name} {'reported a failure' if failed else 'has not checked in'}"
+            lines = [detail] if detail else []
+        else:
+            subject = f"{target.name} is down"
+            lines = [f"`{target.address}`"]
+            if detail:
+                lines.append(detail)
+            lines.append(f"Down after {target.consecutive_failures} failed checks in a row.")
         await enqueue(
             session, kind="down", tone="bad",
-            subject=f"{target.name} is down",
-            body="\n".join(lines),
+            subject=subject,
+            body="\n".join(lines) or None,
             incident_id=incident.id,
             dedupe_key=f"incident:{incident.id}:down",
         )
@@ -287,8 +296,9 @@ async def on_target_transition(session: AsyncSession, target: Target, transition
 
         await enqueue(
             session, kind="recovered", tone="ok",
-            subject=f"{target.name} is back up",
-            body=f"`{target.address}` — down for {human_duration(incident.duration_seconds)}.",
+            subject=f"{target.name} {'checked in again' if beat else 'is back up'}",
+            body=(f"Quiet for {human_duration(incident.duration_seconds)}." if beat else
+                  f"`{target.address}` — down for {human_duration(incident.duration_seconds)}."),
             incident_id=incident.id,
             dedupe_key=f"incident:{incident.id}:up",
         )

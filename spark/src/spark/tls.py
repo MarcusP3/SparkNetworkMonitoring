@@ -53,6 +53,20 @@ def fingerprint(cert_pem: bytes) -> str:
     return ":".join(f"{b:02X}" for b in hashlib.sha256(der).digest())
 
 
+def public_key_pin(cert_pem: bytes) -> str:
+    """The certificate's public key as curl's --pinnedpubkey wants it,
+    "sha256//<base64>": a job can trust SPARK's own certificate exactly,
+    without trusting every certificate (-k alone)."""
+    import base64
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives.serialization import PublicFormat
+
+    key = x509.load_pem_x509_certificate(cert_pem).public_key()
+    spki = key.public_bytes(_der(), PublicFormat.SubjectPublicKeyInfo)
+    return "sha256//" + base64.b64encode(hashlib.sha256(spki).digest()).decode()
+
+
 def _der():  # type: ignore[no-untyped-def]
     from cryptography.hazmat.primitives.serialization import Encoding
 
