@@ -130,6 +130,13 @@ class Rates:
     out_bps: float | None
     in_errors: int | None
     out_errors: int | None
+    seconds: float = 0.0     # between the two readings
+
+    def errors_per_minute(self) -> float | None:
+        """Both directions' errors, as a rate. None if neither was counted."""
+        if (self.in_errors is None and self.out_errors is None) or self.seconds <= 0:
+            return None
+        return ((self.in_errors or 0) + (self.out_errors or 0)) * 60 / self.seconds
 
 
 def interface_rates(
@@ -176,6 +183,7 @@ def interface_rates(
         out_bps=out_bps,
         in_errors=counter_delta(previous.in_errors, current.in_errors, 32),
         out_errors=counter_delta(previous.out_errors, current.out_errors, 32),
+        seconds=seconds,
     )
 
 
@@ -355,6 +363,8 @@ async def record_poll(
         await snmp_alerts.evaluate(
             session, row_id=row_id, device=device, poll=poll,
             interfaces=current, now=now, interval=interval,
+            errors={iface.id: per_minute for iface, rates in pending
+                    if (per_minute := rates.errors_per_minute()) is not None},
         )
     return poll
 

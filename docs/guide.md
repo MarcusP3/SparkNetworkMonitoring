@@ -379,8 +379,9 @@ Acknowledgements do not expire.
 **Suppressions** (Alerts → Suppressions) are for a device that breaks a
 rule by design — ZFS keeps TrueNAS's memory nearly full on purpose. One
 rule, for one device: **off**, or **its own line** ("memory over 100%",
-"CPU over 98%"). Lines apply to CPU, memory, temperature, port traffic, pool
-and disk space, and drive temperature; the other rules can only be off.
+"CPU over 98%"). Lines apply to CPU, memory, temperature, port traffic, port
+errors, pool and disk space, and drive temperature; the other rules can only
+be off.
 TrueNAS's own alerts can be suppressed one type at a time (PoolUSBDisks),
 or all at once. A suppressed rule is fully quiet — no message and no
 incident — and every other rule and device is untouched. Saving or removing
@@ -408,11 +409,13 @@ What is sent — changes only, never a reminder that something is still down:
 | New devices on the network | One message per sweep that found any |
 | A **starred** port is down / back up | Down on two polls in a row |
 | A **starred** port is busy / back to normal | Over 80% of its speed for 10 minutes |
+| A **starred** port runs slower than usual / is back to its speed | Below the fastest it has run at while starred, for 5 minutes |
+| A **starred** port has errors / errors have stopped | Over 10 errors a minute (in and out together) for 10 minutes; ends under half that |
 | CPU / memory high, back to normal | Over 90% for 10 minutes |
 | Temperature high, back to normal | Over 80 °C for 5 minutes |
 | **Sign-in events** | The lockout tripping (once per window, with the address); a sign-in from an address no session has come from before; the password changed or reset; first-run setup completing. Off with "Sign-in events" on the Alerts card. |
 
-The last four are **SNMP alerts**, from what polling already collects. The
+The last six are **SNMP alerts**, from what polling already collects. The
 numbers are defaults, each rule can be switched off, and all of them are set
 on the SNMP alerts card. A value has to stay over the line on every poll for
 the whole time; it clears only when it is back under by 5 (% or °C), so a
@@ -422,6 +425,20 @@ only when **starred** — press the star beside a port on its device's page.
 Most ports on a switch are desks and access points whose links come and go,
 so the default is quiet; star the uplinks, the NAS, the server links. Every
 starred port is listed on the card with an Unstar button.
+
+Two of the port rules are for a link that is up but unwell, the classic
+"everything is green and the NAS copies at 11 MB/s". **Slower than usual**
+remembers the fastest a starred port has run at and alerts when it runs below
+that for five minutes: a failing cable or port renegotiates from 1 Gbps to
+100 Mbps and stays there. If the port is meant to be slower now (a new device
+on the other end), its device page says "Usually 1000 Mbps" with **Accept 100
+Mbps**, which makes that its usual speed and ends the alert without a
+recovery message. Unstarring a port forgets its usual speed. **Errors**
+counts in and out errors together as a rate per minute. IF-MIB gives error
+counts but not packet counts without more walking than every poll should do,
+so this is a rate rather than a share of packets; give a busy port its own
+line under Suppressions if the default is too keen for it. A counter that
+goes backwards (a reboot) is a new baseline, never a burst.
 
 **The mute list** is one global list of things that never alert: a whole
 device (its targets, its SNMP polling and its ports) or a single target.
@@ -584,7 +601,8 @@ or `no answer` with the reason — and when the next one is due.
 - **Interfaces** — one port's traffic chart, the busiest to begin with.
   Pick another from the **Interface** list (each shows its status and rate
   now); under the chart are its current rate, peak in the range, errors, and
-  its star for alerts. **All N interfaces**, folded away beneath, is the full
+  its star for alerts, and for a starred port running slower than usual, its
+  usual speed and **Accept**. **All N interfaces**, folded away beneath, is the full
   table: every port's status, rates, errors and a small trace of the range.
 - The solid line is the average for each point on the chart; where a point
   covers several polls, a faint line shows the busiest of them, so a

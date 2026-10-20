@@ -1,4 +1,5 @@
-"""Threshold alerts from SNMP polling: ports down or busy, CPU, memory, heat.
+"""Threshold alerts from SNMP polling: ports down, slow, erroring or busy,
+CPU, memory, heat.
 
 Decided in the poll's own transaction, like every other alert (alerts.py):
 record_poll calls `evaluate` after writing what it saw, and whatever it
@@ -17,6 +18,18 @@ Each rule is a small state machine per device or port, kept in `alert_state`:
 
 Ports alert only when starred on their device's page. The others apply to
 every polled device, minus the mute list.
+
+Two port rules catch a link that is up but unwell -- the classic "everything
+is green and the NAS copies at 11 MB/s":
+
+  * slower than usual: running below the fastest speed it has been seen at
+    while starred, for SPEED_MINUTES. A failing cable or port renegotiates
+    from 1 Gbps to 100 Mbps and stays there. A port that is meant to be
+    slower now is accepted at its new speed from the device page.
+  * errors: in and out errors together, as a rate per minute, over a line
+    for a while. IF-MIB counts errors, not packets, unless asked for more
+    walking than every poll should do, so this is a rate rather than
+    Checkmk's share of packets.
 """
 
 from __future__ import annotations
@@ -47,10 +60,15 @@ GAP_POLLS = 3
 # A port must be seen down on this many polls in a row.
 PORT_DOWN_POLLS = 2
 
+# A port must run below its usual speed for this long: a renegotiation after
+# a reconnect settles within a minute or two.
+SPEED_MINUTES = 5
+
 # Bounds for what the settings form accepts.
 PERCENT_RANGE = (1, 100)
 CELSIUS_RANGE = (30, 120)
 MINUTES_RANGE = (1, 1440)
+ERRORS_RANGE = (1, 10_000)       # errors a minute
 
 
 @dataclass(frozen=True)
@@ -112,6 +130,12 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
                                       "Port traffic"),
         "port_busy_minutes": _bounded(form.get("port_busy_minutes", ""), *MINUTES_RANGE,
                                       "Port traffic minutes"),
+        "port_speed": bool(form.get("port_speed")),
+        "port_errors": bool(form.get("port_errors")),
+        "port_errors_per_minute": _bounded(form.get("port_errors_per_minute", ""), *ERRORS_RANGE,
+                                           "Port errors"),
+        "port_errors_minutes": _bounded(form.get("port_errors_minutes", ""), *MINUTES_RANGE,
+                                        "Port errors minutes"),
         "cpu": bool(form.get("cpu")),
         "cpu_percent": _bounded(form.get("cpu_percent", ""), *PERCENT_RANGE, "CPU"),
         "cpu_minutes": _bounded(form.get("cpu_minutes", ""), *MINUTES_RANGE, "CPU minutes"),
@@ -166,6 +190,7 @@ class Record:
 
 RECOVERED = "recovered"
 GONE = "no longer watched"
+ACCEPTED = "accepted"     # a port's slower speed taken as its usual one
 
 
 async def open_incident(session: AsyncSession, key: str, record: Record,
@@ -274,8 +299,10 @@ def utilisation(iface: SnmpInterface) -> float | None:
 
 
 async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: SnmpPoll,
-                   interfaces: list[SnmpInterface], now: datetime, interval: int) -> None:
-    """Every rule, for one answered poll of one device."""
+                   interfaces: list[SnmpInterface], now: datetime, interval: int,
+                   errors: dict[int, float] | None = None) -> None:
+    """Every rule, for one answered poll of one device. `errors`: each up
+    port's errors a minute since the last poll, where they could be counted."""
     from . import suppressions
 
     settings = await alerts.load(session)
@@ -328,6 +355,10 @@ async def evaluate(session: AsyncSession, *, row_id: int, device: Device, poll: 
                          sending, recoveries, supp)
         await _port_busy(session, iface, device, rules, now, interval, address,
                          sending, recoveries, supp)
+        await _port_speed(session, iface, device, rules, now, interval, address,
+                          sending, recoveries, supp)
+        await _port_errors(session, iface, (errors or {}).get(iface.id), device, rules, now,
+                           interval, address, sending, recoveries, supp)
 
 
 async def _port_down(session, iface, device, rules, now, interval, address,  # type: ignore[no-untyped-def]
@@ -389,7 +420,97 @@ async def _port_busy(session, iface, device, rules, now, interval, address,  # t
         )
 
 
-async def forget(session: AsyncSession, *keys: str) -> None:
+def _speed(mbps: int) -> str:
+    return fmt_bps(mbps * 1_000_000)
+
+
+async def _port_speed(session, iface, device, rules, now, interval, address,  # type: ignore[no-untyped-def]
+                      sending, recoveries, supp) -> None:
+    """Up, but slower than it has been: the speed it ran at, kept as the
+    port's usual speed (the fastest seen while starred)."""
+    key = f"speed:{iface.id}"
+    if (iface.oper_status or "").lower() != "up" or not iface.speed_mbps:
+        return            # down is the other rule's; no speed, nothing to compare
+    if iface.expected_mbps is None or iface.speed_mbps > iface.expected_mbps:
+        iface.expected_mbps = iface.speed_mbps
+    usual = iface.expected_mbps
+    on = bool(rules.get("port_speed", True)) and not supp.off("port_speed")
+    subject = (f"{device.display_name}: port {iface.label} is running at "
+               f"{_speed(iface.speed_mbps)}, not {_speed(usual)}")
+    body = (f"{address} — slower than usual for {SPEED_MINUTES} minutes. Often a failing "
+            f"cable or port; if it is meant to be slower now, accept it on the device page.")
+    out = await step(session, key, breached=iface.speed_mbps < usual,
+                     cleared=iface.speed_mbps >= usual, value=float(iface.speed_mbps), now=now,
+                     hold=timedelta(minutes=SPEED_MINUTES), min_polls=1, interval=interval,
+                     record=Record(device.id, subject, body) if on else None)
+    if out.fired and on and sending:
+        await alerts.enqueue(
+            session, kind="port_slow", tone="bad", subject=subject, body=body,
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire",
+        )
+        await _mark_notified(session, key)
+    elif out.cleared and out.notified and recoveries and sending:
+        await alerts.enqueue(
+            session, kind="port_speed_ok", tone="ok",
+            subject=f"{device.display_name}: port {iface.label} is back to {_speed(iface.speed_mbps)}",
+            body=f"{address} — slower than usual for {human_duration((now - out.since).total_seconds())}.",
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:clear",
+        )
+
+
+async def _port_errors(session, iface, per_minute, device, rules, now, interval,  # type: ignore[no-untyped-def]
+                       address, sending, recoveries, supp) -> None:
+    """Errors a minute over the line for the whole time. Clears once under
+    half the line, so a port hovering at it is one alert, not one an hour."""
+    key = f"errors:{iface.id}"
+    if per_minute is None:
+        return            # not counted this poll: neither breach nor all-clear
+    limit = supp.line("port_errors", float(rules.get("port_errors_per_minute") or 10))
+    minutes = int(rules.get("port_errors_minutes") or 10)
+    on = bool(rules.get("port_errors", True)) and not supp.off("port_errors")
+    subject = f"{device.display_name}: port {iface.label} has errors ({per_minute:.0f} a minute)"
+    body = (f"{address} — over {limit:g} a minute for {minutes} minute{'s' if minutes != 1 else ''}. "
+            f"Often a failing cable, a bad port or a duplex mismatch.")
+    out = await step(session, key, breached=per_minute > limit, cleared=per_minute <= limit / 2,
+                     value=per_minute, now=now, hold=timedelta(minutes=minutes), min_polls=1,
+                     interval=interval, record=Record(device.id, subject, body) if on else None)
+    if out.fired and on and sending:
+        await alerts.enqueue(
+            session, kind="port_errors", tone="bad", subject=subject, body=body,
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:fire",
+        )
+        await _mark_notified(session, key)
+    elif out.cleared and out.notified and recoveries and sending:
+        await alerts.enqueue(
+            session, kind="port_errors_ok", tone="ok",
+            subject=f"{device.display_name}: port {iface.label} errors have stopped",
+            body=f"{address} — had errors for {human_duration((now - out.since).total_seconds())}.",
+            dedupe_key=f"rule:{key}:{out.since.isoformat()}:clear",
+        )
+
+
+def port_keys(interface_id: int) -> tuple[str, ...]:
+    """Every rule's state for one port."""
+    return (f"port:{interface_id}", f"busy:{interface_id}", f"speed:{interface_id}",
+            f"errors:{interface_id}")
+
+
+async def unstar(session: AsyncSession, iface: SnmpInterface) -> None:
+    """Stop watching a port: a later star starts from nothing -- no
+    half-counted streak, no remembered speed."""
+    iface.starred = False
+    iface.expected_mbps = None
+    await forget(session, *port_keys(iface.id))
+
+
+async def accept_speed(session: AsyncSession, iface: SnmpInterface) -> None:
+    """The speed it runs at now is its usual one: the slowed-down alert, if
+    it stands, ends without a recovery message (nothing recovered)."""
+    iface.expected_mbps = iface.speed_mbps
+    await forget(session, f"speed:{iface.id}", resolution=ACCEPTED)
+
+
+async def forget(session: AsyncSession, *keys: str, resolution: str = GONE) -> None:
     """Drop rule state, e.g. when a port is unstarred: a later star starts
     fresh, and an incident open for it closes as no longer watched."""
     from .models import utcnow
@@ -398,4 +519,4 @@ async def forget(session: AsyncSession, *keys: str) -> None:
         state = await session.get(AlertState, key)
         if state is not None:
             await session.delete(state)
-        await close_incidents(session, utcnow(), key=key, resolution=GONE)
+        await close_incidents(session, utcnow(), key=key, resolution=resolution)

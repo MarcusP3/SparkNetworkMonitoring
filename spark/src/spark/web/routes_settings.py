@@ -1090,6 +1090,10 @@ async def save_alert_rules(
     port_busy: str = Form("", max_length=limits.SHORT),
     port_busy_percent: str = Form("", max_length=limits.SHORT),
     port_busy_minutes: str = Form("", max_length=limits.SHORT),
+    port_speed: str = Form("", max_length=limits.SHORT),
+    port_errors: str = Form("", max_length=limits.SHORT),
+    port_errors_per_minute: str = Form("", max_length=limits.SHORT),
+    port_errors_minutes: str = Form("", max_length=limits.SHORT),
     cpu: str = Form("", max_length=limits.SHORT),
     cpu_percent: str = Form("", max_length=limits.SHORT),
     cpu_minutes: str = Form("", max_length=limits.SHORT),
@@ -1110,15 +1114,22 @@ async def save_alert_rules(
     api_down: str = Form("", max_length=limits.SHORT),
     drive_errors: str = Form("", max_length=limits.SHORT),
     truenas_alerts: str = Form("", max_length=limits.SHORT),
+    guest_down: str = Form("", max_length=limits.SHORT),
+    internet_down: str = Form("", max_length=limits.SHORT),
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
-    """The SNMP threshold rules. All validated before any is saved."""
+    """The SNMP threshold rules. All validated before any is saved. Every
+    checkbox on the form is a field here: one left out reads as unticked,
+    and saving the form would switch its rule off."""
     try:
         await snmp_alerts.save(session, {
             "port_down": port_down, "port_busy": port_busy,
             "port_busy_percent": port_busy_percent, "port_busy_minutes": port_busy_minutes,
+            "port_speed": port_speed, "port_errors": port_errors,
+            "port_errors_per_minute": port_errors_per_minute,
+            "port_errors_minutes": port_errors_minutes,
             "cpu": cpu, "cpu_percent": cpu_percent, "cpu_minutes": cpu_minutes,
             "memory": memory, "memory_percent": memory_percent, "memory_minutes": memory_minutes,
             "temperature": temperature, "temperature_celsius": temperature_celsius,
@@ -1128,6 +1139,7 @@ async def save_alert_rules(
             "disk_space_percent": disk_space_percent, "drive_temperature": drive_temperature,
             "drive_celsius": drive_celsius, "drive_minutes": drive_minutes,
             "api_down": api_down, "drive_errors": drive_errors, "truenas_alerts": truenas_alerts,
+            "guest_down": guest_down, "internet_down": internet_down,
         })
     except snmp_alerts.RuleError as exc:
         return await _render(request, session, config, user, section="alerts",
@@ -1176,8 +1188,7 @@ async def unstar_port(
 ):
     iface = await session.get(SnmpInterface, interface_id)
     if iface is not None:
-        iface.starred = False
-        await snmp_alerts.forget(session, f"port:{iface.id}", f"busy:{iface.id}")
+        await snmp_alerts.unstar(session, iface)
         await session.commit()
     return redirect(ALERTS_ANCHOR + "#starred")
 

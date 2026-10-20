@@ -60,8 +60,8 @@
         <legend class="muted small">What to do</legend>
         <label class="checkbox"><input type="radio" name="mode" value="off" {% if f.mode != 'line' %}checked{% endif %}> <span>Off for this device</span></label>
         <label class="checkbox"><input type="radio" name="mode" value="line" {% if f.mode == 'line' %}checked{% endif %}> <span>Its own line:</span>
-          <input type="number" name="threshold" min="1" max="120" value="{{ f.threshold or '' }}" aria-label="Its own line"></label>
-        <span class="muted small">A line applies to CPU, memory, temperature, port traffic, pool and disk space, and drive temperature. The rest can only be off.</span>
+          <input type="number" name="threshold" min="1" max="10000" value="{{ f.threshold or '' }}" aria-label="Its own line"></label>
+        <span class="muted small">A line applies to CPU, memory, temperature, port traffic, port errors, pool and disk space, and drive temperature. The rest can only be off.</span>
       </fieldset>
       <label class="stack-field supp-detail"><span class="muted small">TrueNAS alert type</span>
         <input type="text" name="detail" maxlength="64" list="truenas-classes" value="{{ f.detail or '' }}" placeholder="Empty: every TrueNAS alert" autocomplete="off">

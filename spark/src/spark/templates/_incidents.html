@@ -29,6 +29,8 @@
                 {% elif incident.resolution == 'no longer watched' %}
                   · <span title="What it was about stopped being watched (a port
                         unstarred, a credential removed) while it stood">no longer watched</span>
+                {% elif incident.resolution == 'accepted' %}
+                  · <span title="The port's slower speed was accepted as its usual one">speed accepted</span>
                 {% elif incident.resolution == 'superseded' %}
                   · <span title="Left open by an older bug and closed when the
                         next incident opened">superseded</span>

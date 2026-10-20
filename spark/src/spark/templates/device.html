@@ -560,11 +560,20 @@
         <span><span class="muted">Peak ({{ range }})</span> {{ sel.peak_in }} / {{ sel.peak_out }}</span>
         {% if sel.errors %}<span><span class="muted">Errors</span> {{ sel.errors }}</span>{% endif %}
         {% set iface = sel.iface %}
+        {# Slower than its usual speed (snmp_alerts._port_speed): say so, and
+           let a port that is meant to be slower now say that too. #}
+        {% if iface.starred and iface.expected_mbps and iface.speed_mbps and iface.speed_mbps < iface.expected_mbps %}
+        <span class="warn-text">Usually {{ iface.expected_mbps }} Mbps</span>
+        <form method="post" action="/devices/{{ device.id }}/interfaces/{{ iface.id }}/speed">
+          <input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="btn-quiet" title="This port is meant to run at {{ iface.speed_mbps }} Mbps now: stop the slower-than-usual alert">Accept {{ iface.speed_mbps }} Mbps</button>
+        </form>
+        {% endif %}
         <form method="post" action="/devices/{{ device.id }}/interfaces/{{ iface.id }}/star">
           <input type="hidden" name="starred" value="{{ '0' if iface.starred else '1' }}">
           <input type="hidden" name="back" value="{{ back }}">
           <button type="submit" class="btn-quiet"
-                  title="{{ 'Starred: alerts when it goes down or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down or stays busy' }}">
+                  title="{{ 'Starred: alerts when it goes down, slows down, has errors or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down, slows down, has errors or stays busy' }}">
             {{ '★ Starred' if iface.starred else '☆ Star for alerts' }}
           </button>
         </form>
@@ -599,7 +608,7 @@
               <input type="hidden" name="back" value="{{ back }}">
               <button type="submit" class="star{% if iface.starred %} on{% endif %}"
                       aria-pressed="{{ 'true' if iface.starred else 'false' }}"
-                      title="{{ 'Starred: alerts when it goes down or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down or stays busy' }}">
+                      title="{{ 'Starred: alerts when it goes down, slows down, has errors or stays busy. Click to stop.' if iface.starred else 'Star to get an alert when this port goes down, slows down, has errors or stays busy' }}">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
                 <span class="visually-hidden">{{ 'Unstar' if iface.starred else 'Star' }} {{ iface.label }}</span>
               </button>

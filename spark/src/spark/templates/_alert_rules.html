@@ -132,6 +132,19 @@
         <span>minutes</span>
       </div>
       <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_speed" value="1" {% if r.port_speed %}checked{% endif %}>
+          <span>A starred port runs slower than usual</span></label>
+        <span class="muted small rule-scope">Below the fastest it has run at while starred, for 5 minutes: 1 Gbps down to 100 Mbps is usually a failing cable. Accept a new speed on the device page.</span>
+      </div>
+      <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="port_errors" value="1" {% if r.port_errors %}checked{% endif %}>
+          <span>A starred port has over</span></label>
+        <input type="number" name="port_errors_per_minute" min="1" max="10000" required value="{{ r.port_errors_per_minute }}" aria-label="Port errors a minute">
+        <span>errors a minute for</span>
+        <input type="number" name="port_errors_minutes" min="1" max="1440" required value="{{ r.port_errors_minutes }}" aria-label="Port errors minutes">
+        <span>minutes</span>
+      </div>
+      <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="cpu" value="1" {% if r.cpu %}checked{% endif %}>
           <span>CPU is over</span></label>
         <input type="number" name="cpu_percent" min="1" max="100" required value="{{ r.cpu_percent }}" aria-label="CPU percent">
@@ -225,7 +238,8 @@
         {% for p in alerts.starred %}
         <tr>
           <td><a href="/devices/{{ p.device.id }}">{{ p.device.display_name }}</a></td>
-          <td>{{ p.iface.label }}{% if p.iface.speed_mbps %} <span class="muted small">· {{ p.iface.speed_mbps }} Mbps</span>{% endif %}</td>
+          <td>{{ p.iface.label }}{% if p.iface.speed_mbps %} <span class="muted small">· {{ p.iface.speed_mbps }} Mbps</span>{% endif %}
+            {%- if p.iface.expected_mbps and p.iface.speed_mbps and p.iface.speed_mbps < p.iface.expected_mbps %} <span class="warn-text small">usually {{ p.iface.expected_mbps }} Mbps</span>{% endif %}</td>
           <td><span class="pill {{ 'ok' if p.up else 'bad' }}">{{ 'up' if p.up else (p.iface.oper_status or 'down') }}</span></td>
           <td class="actions">
             <form method="post" action="/settings/alerts/ports/{{ p.iface.id }}/unstar">

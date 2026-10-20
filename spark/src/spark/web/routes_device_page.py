@@ -460,16 +460,40 @@ async def star_interface(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
-    """Star or unstar a port. Starred ports alert when they go down or stay busy."""
-    iface = await session.get(SnmpInterface, interface_id)
-    row = await session.get(SnmpDevice, iface.snmp_device_id) if iface else None
-    if iface is not None and row is not None and row.device_id == device_id:
-        iface.starred = starred == "1"
-        if not iface.starred:
-            # A later star starts from nothing, not from a half-counted streak.
-            await snmp_alerts.forget(session, f"port:{iface.id}", f"busy:{iface.id}")
+    """Star or unstar a port. Starred ports alert when they go down, slow
+    down, have errors or stay busy."""
+    iface = await _port_of(session, device_id, interface_id)
+    if iface is not None:
+        if starred == "1":
+            iface.starred = True
+        else:
+            await snmp_alerts.unstar(session, iface)
         await session.commit()
     return redirect(_back_to_device(device_id, back))
+
+
+@router.post("/devices/{device_id}/interfaces/{interface_id}/speed")
+async def accept_port_speed(
+    device_id: ItemId,
+    interface_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """The speed a starred port runs at now is its usual one: a port moved
+    to a slower device on purpose is not a failing cable."""
+    iface = await _port_of(session, device_id, interface_id)
+    if iface is not None and iface.starred and iface.speed_mbps:
+        await snmp_alerts.accept_speed(session, iface)
+        await session.commit()
+    return redirect(_back_to_device(device_id, back))
+
+
+async def _port_of(session: AsyncSession, device_id: int, interface_id: int) -> SnmpInterface | None:
+    """The interface, if it is one of this device's."""
+    iface = await session.get(SnmpInterface, interface_id)
+    row = await session.get(SnmpDevice, iface.snmp_device_id) if iface else None
+    return iface if row is not None and row.device_id == device_id else None
 
 
 @router.post("/devices/{device_id}/mute")

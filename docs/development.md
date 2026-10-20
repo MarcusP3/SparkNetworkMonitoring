@@ -31,7 +31,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
-| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows | ✅ working |
+| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows, starred ports slower than usual or erroring | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
@@ -217,6 +217,7 @@ spark/
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
+    test_port_health.py  starred ports slower than usual or erroring: held, cleared, accepted, suppressed; the form
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
     test_credentials.py  the TrueNAS client against a TLS fake: nothing sent before Trust, pins, renewals; the page
     test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts

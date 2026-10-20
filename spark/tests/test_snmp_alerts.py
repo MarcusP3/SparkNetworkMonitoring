@@ -396,7 +396,8 @@ class TestPages:
 
     def test_rules_are_saved_and_checked(self, site):
         form = {"port_down": "1", "port_busy": "1", "port_busy_percent": "70",
-                "port_busy_minutes": "5", "cpu": "1", "cpu_percent": "85", "cpu_minutes": "3",
+                "port_busy_minutes": "5", "port_errors_per_minute": "10", "port_errors_minutes": "10",
+                "cpu": "1", "cpu_percent": "85", "cpu_minutes": "3",
                 "memory_percent": "90", "memory_minutes": "10", "temperature": "1",
                 "temperature_celsius": "75", "temperature_minutes": "5",
                 "pool_health": "1", "pool_space": "1", "pool_space_percent": "80",

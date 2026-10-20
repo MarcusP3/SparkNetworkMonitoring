@@ -404,7 +404,18 @@ async def _add_maintenance_window(session: AsyncSession) -> None:
     await connection.run_sync(MaintenanceWindow.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 23
+@migration(24, "A starred port's usual speed, for the slowed-down alert")
+async def _add_expected_mbps(session: AsyncSession) -> None:
+    """A column, so tolerant of it already being there (see migration 4)."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("snmp_interface")}
+    )
+    if "expected_mbps" not in existing:
+        await session.execute(text("ALTER TABLE snmp_interface ADD COLUMN expected_mbps INTEGER"))
+
+
+CURRENT_VERSION = 24
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

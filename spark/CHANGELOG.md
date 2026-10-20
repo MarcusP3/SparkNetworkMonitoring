@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — port speed and error alerts (2026-10-20)
+
+### Added
+
+- **A starred port runs slower than usual.** SPARK keeps the fastest speed a
+  starred port has run at while up, and alerts when it runs below that for 5
+  minutes (a failing cable renegotiating 1 Gbps down to 100 Mbps), and again
+  when it is back. The device page shows "Usually 1000 Mbps" with **Accept
+  100 Mbps** for a port that is meant to be slower now: that becomes its
+  usual speed and the alert ends (*speed accepted*, no recovery message).
+  Unstarring forgets it. The Starred ports list says "usually …" too.
+- **A starred port has errors.** In and out errors together, as a rate per
+  minute, over 10 a minute for 10 minutes by default (both settable on the
+  SNMP alerts card); it ends under half the line. A counter reset is a new
+  baseline. Suppressions can switch either rule off for a device, and give
+  errors its own line.
+- Migration 24: `snmp_interface.expected_mbps`.
+
+### Fixed
+
+- **Saving the SNMP alerts card switched off "A watched VM or container
+  stops" and "The internet is down".** The form had both checkboxes but the
+  route never read them, so every save stored them as unticked. Every
+  checkbox on the form is now a field of the route, and a test posts the
+  whole form and checks each one stays on. Anyone who saved that card since
+  those rules arrived should tick them again.
+
 ## Unreleased — maintenance windows (2026-10-20)
 
 ### Added

@@ -1031,10 +1031,15 @@ class SnmpInterface(Base):
     first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
-    # Starred on the device page: this port alerts when it goes down or stays
-    # busy. Off by default, because most ports on a switch are desks and
-    # access points whose links come and go all day (migration 9).
+    # Starred on the device page: this port alerts when it goes down, slows
+    # down, has errors or stays busy. Off by default, because most ports on a
+    # switch are desks and access points whose links come and go all day
+    # (migration 9).
     starred: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # The fastest a starred port has run while up: below it, the link has
+    # renegotiated down (a failing cable, usually). Cleared when unstarred;
+    # "Accept" on the device page sets it to the speed now (migration 24).
+    expected_mbps: Mapped[int | None] = mapped_column(Integer)
 
     @property
     def label(self) -> str:
@@ -1359,6 +1364,8 @@ DEFAULT_SETTINGS: dict[str, dict] = {
     "alert_rules": {
         "port_down": True,
         "port_busy": True, "port_busy_percent": 80, "port_busy_minutes": 10,
+        "port_speed": True,
+        "port_errors": True, "port_errors_per_minute": 10, "port_errors_minutes": 10,
         "cpu": True, "cpu_percent": 90, "cpu_minutes": 10,
         "memory": True, "memory_percent": 90, "memory_minutes": 10,
         "temperature": True, "temperature_celsius": 80, "temperature_minutes": 5,

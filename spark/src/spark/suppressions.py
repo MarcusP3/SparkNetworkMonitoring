@@ -46,6 +46,9 @@ RULES: dict[str, Rule] = {
     "temperature": Rule("Temperature", "°C", CELSIUS, "temperature_celsius"),
     "port_down": Rule("A starred port goes down"),
     "port_busy": Rule("A starred port is busy", "%", PERCENT, "port_busy_percent"),
+    "port_speed": Rule("A starred port runs slower than usual"),
+    "port_errors": Rule("A starred port has errors", " a minute", snmp_alerts.ERRORS_RANGE,
+                        "port_errors_per_minute"),
     "snmp_down": Rule("Stops answering SNMP"),
     "pool_health": Rule("A pool is not ONLINE"),
     "pool_space": Rule("Pool space", "%", PERCENT, "pool_space_percent"),
@@ -60,7 +63,8 @@ RULES: dict[str, Rule] = {
 # The rule behind an alert_state / incident key, by its prefix.
 BY_PREFIX = {
     "cpu": "cpu", "memory": "memory", "temperature": "temperature",
-    "port": "port_down", "busy": "port_busy", "snmpdown": "snmp_down",
+    "port": "port_down", "busy": "port_busy", "speed": "port_speed", "errors": "port_errors",
+    "snmpdown": "snmp_down",
     "pool": "pool_health", "drive": "drive_temperature",
     "api": "api_down", "apidrive": "drive_errors", "tnalert": "truenas_alerts",
     "pveguest": "guest_down", "pvezfs": "pool_health", "pvestore": "pool_health",
@@ -193,8 +197,9 @@ async def _keys(session: AsyncSession, device_id: int, rule: str,
     if snmp_row is not None:
         if rule in ("cpu", "memory", "temperature"):
             keys.append(f"{rule}:{snmp_row}")
-        elif rule in ("port_down", "port_busy"):
-            head = "port" if rule == "port_down" else "busy"
+        elif rule in ("port_down", "port_busy", "port_speed", "port_errors"):
+            head = {"port_down": "port", "port_busy": "busy", "port_speed": "speed",
+                    "port_errors": "errors"}[rule]
             ids = (await session.execute(
                 select(SnmpInterface.id).where(SnmpInterface.snmp_device_id == snmp_row))).scalars()
             keys.extend(f"{head}:{i}" for i in ids)
