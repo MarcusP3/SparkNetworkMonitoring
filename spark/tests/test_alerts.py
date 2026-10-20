@@ -31,6 +31,7 @@ from spark.config import Config
 from spark.main import create_app
 from spark.models import (
     CheckType,
+    Delivery,
     Device,
     HealthStatus,
     Notification,
@@ -515,9 +516,11 @@ class TestDispatch:
         discord = FakeDiscord(*([503] * alerts.MAX_ATTEMPTS))
 
         async def due_now():
+            # Retries are kept per channel, on the alert's deliveries.
             async with D.session_scope() as s:
-                for n in (await s.execute(select(Notification))).scalars():
-                    n.next_attempt_at = utcnow() - timedelta(seconds=1)
+                for model in (Notification, Delivery):
+                    for n in (await s.execute(select(model))).scalars():
+                        n.next_attempt_at = utcnow() - timedelta(seconds=1)
         for _ in range(alerts.MAX_ATTEMPTS):
             asyncio.run(due_now())
             dispatch(db, discord)
@@ -674,9 +677,9 @@ class TestSettingsCard:
 
     def test_the_dashboard_says_when_nothing_can_alert(self, site):
         client, _ = site
-        assert "No Discord webhook configured" in client.get("/").text
+        assert "No alert channel set up yet" in client.get("/").text
         client.post("/settings/alerts", data={**FORM, "webhook": HOOK})
-        assert "No Discord webhook configured" not in client.get("/").text
+        assert "No alert channel set up yet" not in client.get("/").text
         client.post("/settings/alerts", data={**FORM, "enabled": ""})
         assert "Alerts are switched off" in client.get("/").text
 

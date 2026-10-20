@@ -1,4 +1,5 @@
-"""Alerting: deciding what is worth a message, and getting it to Discord.
+"""Alerting: deciding what is worth a message, and getting it to Discord,
+ntfy, email or a webhook (channels.py).
 
 Two halves, joined by the `notification` table (an outbox):
 
@@ -9,10 +10,12 @@ Two halves, joined by the `notification` table (an outbox):
     and the send, and it cannot be sent for a change that rolled back.
 
   * **Sending** is a scheduled job that takes what is due and posts it,
-    holding no database connection while Discord answers. Failures back off
-    and retry; Discord's rate limit is honoured; a burst is sent as one
-    message rather than twenty; during quiet hours messages are held and go
-    out afterwards as a single digest.
+    holding no database connection while a channel answers. Each alert gets
+    one delivery per channel that takes it (models.Delivery), and each is
+    sent on its own: failures back off and retry, a rate limit is honoured
+    per channel, a burst is sent as one message rather than twenty, and
+    during quiet hours messages are held and go out afterwards as a single
+    digest.
 
 What is deliberately *not* alerted:
 
@@ -38,19 +41,20 @@ from __future__ import annotations
 
 import logging
 import time as _time
-from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import prefs
+from . import channels, prefs
+from .channels import SendResult
 from .db import get_setting, save_setting, session_scope
 from .models import (
     AlertMute,
+    Delivery,
     HealthStatus,
     Notification,
     NotificationStatus,
@@ -69,12 +73,6 @@ DISPATCH_SECONDS = 15
 # webhook that is failing is usually failing for a reason that takes a while.
 BACKOFF_SECONDS = (30, 120, 600, 1800)
 MAX_ATTEMPTS = len(BACKOFF_SECONDS) + 1
-
-# A burst larger than this is sent as one combined message. Discord allows a
-# webhook about five posts in two seconds; a switch taking out twenty targets
-# without dependencies set would otherwise hit it and arrive out of order.
-BATCH_AT = 4
-MAX_LINES = 20
 
 # The brand's status colours, as Discord embed integers.
 TONES = {"bad": 0xF87171, "ok": 0x34D399, "info": 0x8E9BB0}
@@ -418,25 +416,6 @@ async def on_new_devices(session: AsyncSession, devices: list, *, first_sweep: b
 # --------------------------------------------------------------------------
 
 
-@dataclass
-class _Item:
-    id: int
-    kind: str
-    subject: str
-    body: str | None
-    tone: str
-    created_at: datetime
-    attempts: int
-
-
-@dataclass
-class SendResult:
-    ok: bool
-    error: str | None = None
-    retry_after: float | None = None
-    permanent: bool = False
-
-
 def _embed(title: str, body: str | None, tone: str, when: datetime) -> dict:
     embed = {"title": title[:256], "color": TONES.get(tone, TONES["info"]),
              "timestamp": when.astimezone(timezone.utc).isoformat()}
@@ -460,12 +439,13 @@ def _new_client() -> httpx.AsyncClient:
     A module attribute so the test suite and smoke test can replace it with
     one that never reaches the internet: their fake webhooks are shaped like
     real ones, and a real POST to Discord from a test run is not acceptable.
+    Every channel that posts over HTTP (channels.py) takes it from here.
     """
     return httpx.AsyncClient(timeout=10.0)
 
 
 async def post(url: str, body: dict, *, client: httpx.AsyncClient | None = None) -> SendResult:
-    """POST one message. Classifies the answer; never raises."""
+    """POST one message to Discord. Classifies the answer; never raises."""
     own = client is None
     client = client or _new_client()
     try:
@@ -496,40 +476,20 @@ async def post(url: str, body: dict, *, client: httpx.AsyncClient | None = None)
     return SendResult(False, text, permanent=400 <= response.status_code < 500)
 
 
-def _messages(items: list[_Item], held: list[_Item], tz) -> list[tuple[list[int], dict]]:  # type: ignore[no-untyped-def]
-    """Group what is due into Discord messages: (row ids, payload) pairs."""
-    out: list[tuple[list[int], dict]] = []
-    if held:
-        lines = [
-            f"`{h.created_at.astimezone(tz).strftime('%H:%M')}` {h.subject}"
-            for h in held[:MAX_LINES]
-        ]
-        if len(held) > MAX_LINES:
-            lines.append(f"…and {len(held) - MAX_LINES} more.")
-        tone = "bad" if any(h.tone == "bad" for h in held) else "info"
-        out.append(([h.id for h in held], payload([_embed(
-            f"While quiet hours were on: {len(held)} alert{'s' if len(held) != 1 else ''}",
-            "\n".join(lines), tone, utcnow())])))
-    if len(items) >= BATCH_AT:
-        lines = [f"**{i.subject}**" + (f" — {i.body.splitlines()[0]}" if i.body else "")
-                 for i in items[:MAX_LINES]]
-        if len(items) > MAX_LINES:
-            lines.append(f"…and {len(items) - MAX_LINES} more.")
-        tone = "bad" if any(i.tone == "bad" for i in items) else "info"
-        out.append(([i.id for i in items], payload([_embed(
-            f"{len(items)} alerts", "\n".join(lines), tone, utcnow())])))
-    else:
-        for i in items:
-            out.append(([i.id], payload([_embed(i.subject, i.body, i.tone, i.created_at)])))
-    return out
+OFF_REASON = "Alerting was switched off."
+NO_CHANNEL_REASON = "No Discord webhook or other channel is set up."
+NOT_TAKEN_REASON = "No channel takes this kind of alert."
+GONE_REASON = "That channel was removed."
 
 
-def _item(row: Notification) -> _Item:
-    return _Item(row.id, row.kind, row.subject, row.body, row.tone, row.created_at, row.attempts)
+def _item(delivery: Delivery, row: Notification) -> channels.Item:
+    return channels.Item(delivery.id, row.kind, row.subject, row.body, row.tone, row.created_at,
+                         delivery.attempts, row.incident_id)
 
 
 async def dispatch(config, *, client: httpx.AsyncClient | None = None) -> int:  # type: ignore[no-untyped-def]
-    """Send what is due. The scheduler's job. Returns how many rows it settled."""
+    """Send what is due. The scheduler's job. Returns how many deliveries it
+    settled (or alerts it dropped before any channel)."""
     try:
         return await _dispatch(config, client)
     except Exception:  # noqa: BLE001 - the scheduler must keep running
@@ -537,112 +497,188 @@ async def dispatch(config, *, client: httpx.AsyncClient | None = None) -> int:  
         return 0
 
 
+async def _route(session: AsyncSession, settings: dict,
+                 active: dict[str, channels.Channel]) -> int:
+    """Give each alert not yet routed one delivery per channel that takes
+    it. An alert from before channels existed carries its own state over
+    to its Discord delivery, retries and all."""
+    new = (await session.execute(
+        select(Notification).where(
+            Notification.status.in_([NotificationStatus.PENDING, NotificationStatus.HELD]),
+            ~exists().where(Delivery.notification_id == Notification.id))
+        .order_by(Notification.id).limit(200)
+    )).scalars().all()
+    reason = (OFF_REASON if not settings.get("enabled", True)
+              else NO_CHANNEL_REASON if not active else None)
+    dropped = 0
+    for row in new:
+        takers = [] if reason else [c for c in active.values() if c.wants(row.kind, row.tone)]
+        if not takers:
+            row.status, row.error = NotificationStatus.DROPPED, reason or NOT_TAKEN_REASON
+            dropped += 1
+            continue
+        for channel in takers:
+            session.add(Delivery(notification_id=row.id, channel=channel.key, status=row.status,
+                                 attempts=row.attempts, next_attempt_at=row.next_attempt_at))
+    await session.flush()
+    return dropped
+
+
+async def _summarise(session: AsyncSession, notification_ids: set[int]) -> None:
+    """Bring each alert's own status in line with its deliveries: sent once
+    any channel has it, else waiting, held, failed or dropped."""
+    if not notification_ids:
+        return
+    by_row: dict[int, list[Delivery]] = {}
+    for d in (await session.execute(
+            select(Delivery).where(Delivery.notification_id.in_(notification_ids)))).scalars():
+        by_row.setdefault(d.notification_id, []).append(d)
+    rows = (await session.execute(
+        select(Notification).where(Notification.id.in_(by_row)))).scalars()
+    for row in rows:
+        ds = by_row[row.id]
+        statuses = {d.status for d in ds}
+        for status in (NotificationStatus.SENT, NotificationStatus.PENDING, NotificationStatus.HELD,
+                       NotificationStatus.FAILED, NotificationStatus.DROPPED):
+            if status in statuses:
+                row.status = status
+                break
+        row.attempts = max(d.attempts for d in ds)
+        sent = [d.sent_at for d in ds if d.sent_at is not None]
+        row.sent_at = min(sent) if sent else None
+        several = len(ds) > 1
+        errors = [f"{channels.LABELS.get(d.channel, d.channel)}: {d.error}" if several else d.error
+                  for d in ds if d.error and d.status != NotificationStatus.SENT]
+        row.error = "; ".join(errors) or None
+        waiting = [d.next_attempt_at for d in ds if d.status == NotificationStatus.PENDING]
+        if waiting:
+            row.next_attempt_at = min(waiting)
+
+
 async def _dispatch(config, client) -> int:  # type: ignore[no-untyped-def]
     now = utcnow()
-    # ---- decide what goes out, then let go of the database ----
+    vault = vault_for(config)
+    # ---- route and decide what goes out, then let go of the database ----
     async with session_scope() as session:
         settings = await load(session)
         # Quiet hours are kept in the zone chosen under Preferences.
         settings["timezone"] = await prefs.get_timezone(session)
-        due = list((await session.execute(
-            select(Notification)
-            .where(Notification.status == NotificationStatus.PENDING,
-                   Notification.next_attempt_at <= now)
-            .order_by(Notification.id).limit(50)
-        )).scalars())
+        active = {c.key: c for c in channels.configured(settings, vault)}
+        settled = await _route(session, settings, active)
+
+        open_rows = (await session.execute(
+            select(Delivery, Notification)
+            .join(Notification, Notification.id == Delivery.notification_id)
+            .where(Delivery.status.in_([NotificationStatus.PENDING, NotificationStatus.HELD]))
+            .order_by(Delivery.id).limit(1000)
+        )).all()
+        changed: set[int] = set()
         quiet = in_quiet_hours(settings, now)
-        held = [] if quiet else list((await session.execute(
-            select(Notification).where(Notification.status == NotificationStatus.HELD)
-            .order_by(Notification.id).limit(200)
-        )).scalars())
-        if not due and not held:
-            return 0
-
-        url = webhook_url(settings, vault_for(config))
-        reason = None
-        if not settings.get("enabled", True):
-            reason = "Alerting was switched off."
-        elif url is None:
-            reason = "No Discord webhook is configured."
-        if reason:
-            for row in due + held:
-                row.status = NotificationStatus.DROPPED
-                row.error = reason
-            return len(due) + len(held)
-
-        if quiet:
-            for row in due:
-                row.status = NotificationStatus.HELD
-            return len(due)
-
-        items, held_items = [_item(r) for r in due], [_item(r) for r in held]
+        enabled = settings.get("enabled", True)
+        plan: list[tuple[channels.Channel, list[channels.Item], list[channels.Item]]] = []
+        for key in channels.KINDS:
+            mine = [(d, n) for d, n in open_rows if d.channel == key]
+            due = [(d, n) for d, n in mine
+                   if d.status == NotificationStatus.PENDING and d.next_attempt_at <= now][:50]
+            held = [(d, n) for d, n in mine if d.status == NotificationStatus.HELD][:200]
+            if not due and not held:
+                continue
+            channel = active.get(key)
+            if not enabled or channel is None:
+                for d, n in due + held:
+                    d.status, d.error = NotificationStatus.DROPPED, OFF_REASON if not enabled else GONE_REASON
+                    changed.add(n.id)
+                settled += len(due) + len(held)
+                continue
+            if quiet:
+                for d, n in due:
+                    d.status = NotificationStatus.HELD
+                    changed.add(n.id)
+                settled += len(due)
+                continue
+            plan.append((channel, [_item(d, n) for d, n in due], [_item(d, n) for d, n in held]))
+        await _summarise(session, changed)
+        if not plan:
+            return settled
         tz = zone(settings)
 
     # ---- send, holding nothing ----
-    results: list[tuple[list[int], SendResult]] = []
-    for ids, body in _messages(items, held_items, tz):
-        result = await post(url, body, client=client)  # type: ignore[arg-type]
-        results.append((ids, result))
-        if result.retry_after is not None:
-            break  # rate limited: everything after this waits too
+    results: list[tuple[str, list[int], SendResult]] = []
+    for channel, items, held in plan:
+        for message in channels.messages(items, held, tz, combines=channel.combines):
+            result = await channels.send(channel, message, client=client, tz=tz)
+            results.append((channel.key, [i.id for i in message.items], result))
+            if result.retry_after is not None:
+                break  # rate limited: everything after this on this channel waits too
 
     # ---- record ----
     sent_at = utcnow()
-    touched = {i for ids, _ in results for i in ids}
+    touched = {i for _, ids, _ in results for i in ids}
+    planned = {i.id for _, items, _ in plan for i in items}
     async with session_scope() as session:
-        rows = {r.id: r for r in (await session.execute(
-            select(Notification).where(Notification.id.in_(touched | {i.id for i in items}))
-        )).scalars()}
-        for ids, result in results:
-            for row_id in ids:
-                row = rows.get(row_id)
-                if row is None:
+        rows = {d.id: d for d in (await session.execute(
+            select(Delivery).where(Delivery.id.in_(touched | planned)))).scalars()}
+        for _, ids, result in results:
+            for delivery_id in ids:
+                d = rows.get(delivery_id)
+                if d is None:
                     continue
-                row.attempts += 1
+                d.attempts += 1
                 if result.ok:
-                    row.status, row.sent_at, row.error = NotificationStatus.SENT, sent_at, None
+                    d.status, d.sent_at, d.error = NotificationStatus.SENT, sent_at, None
                     continue
-                row.error = result.error
-                if result.permanent or row.attempts >= MAX_ATTEMPTS:
-                    row.status = NotificationStatus.FAILED
+                d.error = result.error
+                if result.permanent or d.attempts >= MAX_ATTEMPTS:
+                    d.status = NotificationStatus.FAILED
                 else:
-                    # A held row whose digest failed retries on its own.
-                    row.status = NotificationStatus.PENDING
+                    # A held delivery whose digest failed retries on its own.
+                    d.status = NotificationStatus.PENDING
                     wait = result.retry_after if result.retry_after is not None \
-                        else BACKOFF_SECONDS[min(row.attempts - 1, len(BACKOFF_SECONDS) - 1)]
-                    row.next_attempt_at = sent_at + timedelta(seconds=wait)
-        # Items never attempted because a 429 stopped the loop wait for it too.
-        if results and results[-1][1].retry_after is not None:
-            later = sent_at + timedelta(seconds=results[-1][1].retry_after or 5)
-            for item in items:
-                if item.id not in touched and item.id in rows:
-                    rows[item.id].next_attempt_at = later
-    return len(touched)
+                        else BACKOFF_SECONDS[min(d.attempts - 1, len(BACKOFF_SECONDS) - 1)]
+                    d.next_attempt_at = sent_at + timedelta(seconds=wait)
+        # Deliveries never attempted because a 429 stopped their channel wait for it too.
+        for key, _, result in results:
+            if result.retry_after is None:
+                continue
+            later = sent_at + timedelta(seconds=result.retry_after or 5)
+            for channel, items, _ in plan:
+                if channel.key != key:
+                    continue
+                for item in items:
+                    if item.id not in touched and item.id in rows:
+                        rows[item.id].next_attempt_at = later
+        await _summarise(session, {d.notification_id for d in rows.values()})
+    return settled + len(touched)
 
 
-async def send_test(session: AsyncSession, vault: Vault) -> SendResult:
-    """Send a test message now, and log it. For the Settings button.
+async def send_test(session: AsyncSession, vault: Vault, key: str = "discord") -> SendResult:
+    """Send a test message on one channel now, and log it. For the Test
+    buttons.
 
     Commits before the network call, like SNMP Test: the request is not left
-    holding its transaction while Discord answers.
+    holding its transaction while the channel answers.
     """
     settings = await load(session)
-    url = webhook_url(settings, vault)
-    if url is None:
-        return SendResult(False, "Save a Discord webhook first.")
+    channel = channels.ready(settings, vault, key)
+    if channel is None:
+        return SendResult(False, "Save a Discord webhook first." if key == "discord"
+                          else f"Set up {channels.LABELS[key]} first.")
     await session.commit()
     started = _time.monotonic()
-    result = await post(url, payload([_embed(
-        "SPARK test alert",
-        "If you can read this, alerts will reach this channel.",
-        "info", utcnow())]))
-    log.info("Test alert: %s in %.1fs", "sent" if result.ok else result.error,
+    result = await channels.send(channel, channels.Message(
+        "SPARK test alert", "If you can read this, alerts will reach you here.",
+        "info", utcnow(), [channels.Item(0, "test", "SPARK test alert", None, "info", utcnow(), 0)]),
+        tz=zone({"timezone": await prefs.get_timezone(session)}))
+    log.info("Test alert to %s: %s in %.1fs", channel.label, "sent" if result.ok else result.error,
              _time.monotonic() - started)
-    session.add(Notification(
-        kind="test", subject="Test alert", tone="info",
-        status=NotificationStatus.SENT if result.ok else NotificationStatus.FAILED,
-        attempts=1, sent_at=utcnow() if result.ok else None, error=result.error,
-    ))
+    status = NotificationStatus.SENT if result.ok else NotificationStatus.FAILED
+    row = Notification(kind="test", subject=f"Test alert to {channel.label}", tone="info",
+                       status=status, attempts=1, sent_at=utcnow() if result.ok else None,
+                       error=result.error)
+    session.add(row)
+    await session.flush()
+    session.add(Delivery(notification_id=row.id, channel=key, status=status, attempts=1,
+                         sent_at=row.sent_at, error=result.error))
     return result
 
 
@@ -662,5 +698,5 @@ async def counts(session: AsyncSession) -> dict[str, int]:
 __all__ = [
     "AlertError", "dispatch", "enqueue", "in_quiet_hours", "on_new_devices",
     "is_muted", "is_quiet", "on_snmp_poll", "on_target_transition", "post", "seal_plaintext_webhook",
-    "send_test", "set_webhook", "validate_webhook", "webhook_url",
+    "send_test", "set_webhook", "validate_webhook", "webhook_url", "SendResult",
 ]

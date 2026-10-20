@@ -48,7 +48,7 @@
           {%- else %}<path d="M4 7h16v13H4zM4 7l2-4h12l2 4M10 11h4"/>{% endif -%}
         </svg></span>
         <span>{{ m.label }}</span>
-        <span class="subnav-hint{% if m.hint == 'no webhook' %} warn{% endif %}">{{ m.hint }}</span>
+        <span class="subnav-hint{% if m.hint == 'no channel' %} warn{% endif %}">{{ m.hint }}</span>
         <small class="subnav-about">{{ about[m.slug] }}</small>
       </a>
     {% endfor %}

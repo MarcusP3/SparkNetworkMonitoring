@@ -185,7 +185,7 @@ class TestMessages:
 
     def test_no_webhook_says_so(self, site):
         page = flat(site.get("/alerts/messages").text)
-        assert "No Discord webhook is set, so nothing can be sent." in page
+        assert "No channel is set up, so nothing can be sent." in page
         assert ('<span class="pill neutral">waiting</span> <strong>SPARK set up: administrator '
                 '&#39;admin&#39; created') in page, "security events are messages too"
 

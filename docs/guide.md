@@ -345,13 +345,15 @@ newest first — and the history of everything that has ended, suppressed ones
 included, 25 to a page. Narrow the history by source (Target, SNMP, Port,
 Storage, API, TrueNAS, Proxmox, Internet) or by device. **Messages** is every
 message SPARK decided to send and what became of it: sent, waiting, held for
-quiet hours, failed (with Discord's answer), or not sent because alerting was
-off or there was no webhook. The tiles count what is firing, what began in
+quiet hours, failed (with the channel's answer), or not sent because alerting
+was off or no channel was set up to take it; each channel's own outcome is
+listed under it. The tiles count what is firing, what began in
 the last 24 hours and 7 days, and messages sent and failed in the last 7
 days. **Rules** holds the Discord webhook, what is sent, quiet hours, every
 alert rule, starred ports and the mute list; **Suppressions** quiets one rule
 on one device. (Both used to be under Settings; old links still land.)
-**Maintenance** holds alerts while you work on a device (below). The
+**Maintenance** holds alerts while you work on a device (below), and
+**Channels** sends them to ntfy, email or a webhook as well as Discord. The
 dashboard keeps the newest ten, with **All alerts →** to this page.
 
 **The dashboard's incidents** are every kind of problem, not only outages: a
@@ -397,6 +399,34 @@ the whole device, still recorded, only not sent.)
 Integrations → Webhooks → New Webhook → Copy Webhook URL), save, and press
 **Send a test**. The URL is stored encrypted, like SNMP credentials, and never
 shown again; only Discord's own hosts over https are accepted.
+
+**Alerts → Channels** sends alerts to more places than Discord. Each channel
+gets its own copy, sent, retried and given up on by itself: when the internet
+is down, Discord cannot be reached, and an ntfy server on your network still
+can. Each channel, Discord included, says what it **gets**: problems,
+recoveries, new devices, sign-in events (sign-in events to email only, say).
+What is decided at all is still the Rules card's. Every channel has **Send a
+test**.
+
+- **ntfy**: push notifications through an [ntfy](https://ntfy.sh) topic.
+  Give the topic's address (`https://ntfy.example.lan/spark-alerts`), and an
+  access token if the topic needs one. On ntfy.sh anyone who knows a topic's
+  name can read it, so make the name long and random, or run your own.
+  Problems arrive at high priority, recoveries at normal, the rest low.
+- **Email**: through an SMTP server, to up to five addresses. STARTTLS on 587
+  or TLS on 465; *None* is for a relay on your own network, and refuses a
+  password, which is never sent unencrypted. The certificate is checked.
+- **Webhook**: each alert as JSON (`source`, `kind`, `subject`, `body`,
+  `tone`, `at`, `incident_id`, `held_for_quiet_hours`), posted to an address
+  of your choosing (a Home Assistant webhook automation, n8n, Node-RED),
+  with a bearer token if it needs one. One alert per post: no burst
+  messages, no digest.
+
+Addresses, tokens and the SMTP password are stored encrypted and never shown
+again; a field left blank keeps what is saved. ntfy and the webhook post to
+whatever address they are given, on your network or not, which is what they
+are for; only Discord is held to Discord's hosts. Removing a channel drops
+what was waiting for it, saying so.
 
 What is sent — changes only, never a reminder that something is still down:
 
@@ -490,11 +520,13 @@ What is deliberately not sent:
 **Quiet hours** hold alerts and send one summary when the window ends. The
 window is kept in the time zone set under **Preferences**.
 
-**If Discord is unreachable** alerts wait and retry after 30 s, 2, 10 and 30
-minutes, then are marked failed; a webhook Discord says does not exist fails at
-once. Discord's rate limit is honoured, and a burst of four or more alerts is
-sent as one message. The **Recent** list on the card shows every alert and
-what happened to it.
+**If a channel is unreachable** its copy waits and retries after 30 s, 2, 10
+and 30 minutes, then is marked failed; an answer that will not get better (a
+webhook Discord says does not exist, a token ntfy refuses, a wrong SMTP
+password) fails at once. A channel's rate limit holds only that channel, and a
+burst of four or more alerts is sent as one message (except to the webhook).
+**Alerts → Messages** shows every alert and what happened to it: sent once
+any channel took it, with each channel's own answer beneath.
 
 How it works: the decision to alert is written in the same database
 transaction as the change that caused it (an outbox, the `notification`

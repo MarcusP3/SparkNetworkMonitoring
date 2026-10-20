@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import exclusions, limits
+from .. import channels, exclusions, limits
 from .. import alerts as alert_service
 from .. import port_catalogue
 from .. import prefs
@@ -321,13 +321,13 @@ async def _menu(session: AsyncSession, subnet_count: int) -> list[dict]:
     """The sub-menu, each entry with one line of state beside its name.
 
     So the menu answers "is anything set up here" without opening each page:
-    two subnets, scanning on, three devices polled, alerts with no webhook.
+    two subnets, scanning on, three devices polled, alerts with nowhere to go.
     """
     discovery = await get_setting(session, "discovery")
     polled = await session.scalar(select(func.count(SnmpDevice.id))) or 0
     alerting = await alert_service.load(session)
-    if not alerting.get("discord_webhook_sealed"):
-        alert_hint = "no webhook"
+    if not channels.set_up(alerting):
+        alert_hint = "no channel"
     elif not alerting.get("enabled", True):
         alert_hint = "off"
     else:

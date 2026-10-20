@@ -13,7 +13,8 @@ acknowledged incident still shows and still counts; it stops colouring the
 counts, which are for what nobody has looked at yet.
 
 Maintenance lists the windows (maintenance.py) and schedules one; a device's
-page starts one in a click, posting here too.
+page starts one in a click, posting here too. Channels sets up ntfy, email
+and a webhook beside Discord, and what each one gets (channels.py).
 """
 
 from __future__ import annotations
@@ -26,14 +27,15 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import events, limits, maintenance
+from .. import alerts as alert_service, channels, events, limits, maintenance
 from ..config import Config
-from ..db import get_setting
+from ..db import get_setting, save_setting
 from .. import snmp_alerts
 from ..hierarchy import descendants
-from ..models import (AlertIncident, AlertSuppression, Device, Incident, MaintenanceWindow, Notification,
-                      NotificationStatus, Target, User, utcnow)
+from ..models import (AlertIncident, AlertSuppression, Delivery, Device, Incident, MaintenanceWindow,
+                      Notification, NotificationStatus, Target, User, utcnow)
 from . import incident_rows
+from ..vault import vault_for
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -74,10 +76,12 @@ async def common(session: AsyncSession) -> dict:
         Notification.status == NotificationStatus.FAILED, Notification.created_at >= week)) or 0
     alerting = await get_setting(session, "alerting")
     webhook = bool(alerting.get("discord_webhook_sealed"))
+    # Anywhere at all to send to: Discord, or one of the other channels.
+    set_up = channels.set_up(alerting)
     rules = await snmp_alerts.load(session)
     switches = [v for v in rules.values() if isinstance(v, bool)]
-    if not webhook:
-        rules_hint = "no webhook"
+    if not set_up:
+        rules_hint = "no channel"
     elif not alerting.get("enabled", True):
         rules_hint = "sending off"
     else:
@@ -95,6 +99,7 @@ async def common(session: AsyncSession) -> dict:
             "sent": sent,
             "failed": failed,
             "webhook": webhook,
+            "channels": [channels.LABELS[k] for k in set_up],
         },
         "menu": [
             {"slug": "activity", "label": "Activity", "url": "/alerts",
@@ -102,16 +107,19 @@ async def common(session: AsyncSession) -> dict:
                       else incident_rows.handled_hint(firing) if firing else "quiet"),
              "warn": bool(unhandled), "about": "Firing now, and every one before"},
             {"slug": "messages", "label": "Messages", "url": "/alerts/messages",
-             "hint": f"{failed} failed" if failed else ("no webhook" if not webhook else ""),
-             "warn": bool(failed) or not webhook, "about": "What went to Discord"},
+             "hint": f"{failed} failed" if failed else ("no channel" if not set_up else ""),
+             "warn": bool(failed) or not set_up, "about": "What was sent, and where"},
             {"slug": "rules", "label": "Rules", "url": "/alerts/rules",
-             "hint": rules_hint, "warn": not webhook or not alerting.get("enabled", True),
+             "hint": rules_hint, "warn": not set_up or not alerting.get("enabled", True),
              "about": "Discord, rules, muted"},
             {"slug": "suppressions", "label": "Suppressions", "url": "/alerts/suppressions",
              "hint": str(suppressed), "warn": False, "about": "Quiet one rule on one device"},
             {"slug": "maintenance", "label": "Maintenance", "url": "/alerts/maintenance",
              "hint": await _maintenance_hint(session, now), "warn": False,
              "about": "Hold alerts while you work on something"},
+            {"slug": "channels", "label": "Channels", "url": "/alerts/channels",
+             "hint": str(len(set_up)) if set_up else "none", "warn": not set_up,
+             "about": "Discord, ntfy, email, a webhook"},
         ],
     }
 
@@ -196,7 +204,17 @@ async def messages(
             query.order_by(Notification.created_at.desc(), Notification.id.desc())
             .offset((number - 1) * PER_PAGE).limit(PER_PAGE))).scalars():
         pill, words = STATUS_WORDS.get(n.status, ("neutral", str(n.status)))
-        rows.append({"row": n, "pill": pill, "words": words})
+        rows.append({"row": n, "pill": pill, "words": words, "deliveries": []})
+    # How each channel did, for alerts sent to more than one place (or to
+    # one other than Discord). An alert from before channels has none.
+    by_id = {r["row"].id: r for r in rows}
+    for d in (await session.execute(
+            select(Delivery).where(Delivery.notification_id.in_(by_id))
+            .order_by(Delivery.id))).scalars():
+        pill, words = STATUS_WORDS.get(d.status, ("neutral", str(d.status)))
+        by_id[d.notification_id]["deliveries"].append(
+            {"label": channels.LABELS.get(d.channel, d.channel), "pill": pill, "words": words,
+             "error": d.error})
 
     def link(**over: object) -> str:
         return _url("/alerts/messages", **{"status": status, "page": 1, **over})
@@ -442,3 +460,205 @@ async def delete_maintenance(
         await session.commit()
         events.publish({"kind": "maintenance"})
     return redirect(_maintenance_back(back, device_id))
+
+
+# --------------------------------------------------------------------------
+# Channels
+# --------------------------------------------------------------------------
+
+
+def channel_view(settings: dict) -> dict:
+    """What the Channels tab shows of each channel: never a secret, only
+    whether one is saved."""
+    view = {}
+    for key in channels.KINDS:
+        conf = channels.saved(settings, key)
+        raw = settings.get(key) or {}
+        view[key] = {
+            "set_up": bool(conf),
+            "gets": conf.get("gets", sorted(channels.ALL)) if conf else sorted(channels.ALL),
+            "conf": {k: v for k, v in conf.items() if not k.endswith("_sealed")},
+            "has_token": bool(raw.get("token_sealed")),
+            "has_password": bool(raw.get("password_sealed")),
+        }
+    return view
+
+
+async def _channels_page(request: Request, session: AsyncSession, config: Config, user: User, *,
+                         error: str | None = None, notice: str | None = None,
+                         which: str | None = None, form: dict | None = None,
+                         status_code: int = 200):
+    settings = await alert_service.load(session)
+    return templates.TemplateResponse(request, "alerts.html", {
+        "config": config, "user": user, "title": "Alerts · Channels", "section": "channels",
+        **await common(session),
+        "ch": channel_view(settings),
+        "groups": channels.GROUPS,
+        "security_choices": channels.SECURITY,
+        # A form that was refused, as it was typed, and which card it was.
+        "which": which, "form": form or {},
+        "error": error, "notice": notice,
+    }, status_code=status_code)
+
+
+@router.get("/alerts/channels")
+async def channels_page(
+    request: Request,
+    saved: str = "",
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    notice = f"{channels.LABELS[saved]} saved." if saved in channels.LABELS else None
+    return await _channels_page(request, session, config, user, which=saved or None,
+                                notice=notice)
+
+
+def _gets(problems: str, recoveries: str, news: str, security: str) -> list[str]:
+    ticked = {g for g, on in zip(channels.GROUPS, (problems, recoveries, news, security)) if on}
+    return channels.gets_from(list(ticked))
+
+
+def _saved(key: str):  # type: ignore[no-untyped-def]
+    return redirect(f"/alerts/channels?saved={key}#{key}")
+
+
+@router.post("/alerts/channels/ntfy")
+async def save_ntfy(
+    request: Request,
+    url: str = Form("", max_length=limits.HOOK_URL),
+    token: str = Form("", max_length=limits.SECRET),
+    gets_problems: str = Form("", max_length=limits.SHORT),
+    gets_recoveries: str = Form("", max_length=limits.SHORT),
+    gets_news: str = Form("", max_length=limits.SHORT),
+    gets_security: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """A blank address or token keeps the saved one: they are never shown."""
+    settings = await alert_service.load(session)
+    try:
+        channels.seal_ntfy(settings, vault_for(config), url=url, token=token,
+                           gets=_gets(gets_problems, gets_recoveries, gets_news, gets_security))
+    except channels.ChannelError as exc:
+        return await _channels_page(request, session, config, user, error=str(exc), which="ntfy",
+                                    status_code=400)
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return _saved("ntfy")
+
+
+@router.post("/alerts/channels/webhook")
+async def save_webhook(
+    request: Request,
+    url: str = Form("", max_length=limits.HOOK_URL),
+    token: str = Form("", max_length=limits.SECRET),
+    gets_problems: str = Form("", max_length=limits.SHORT),
+    gets_recoveries: str = Form("", max_length=limits.SHORT),
+    gets_news: str = Form("", max_length=limits.SHORT),
+    gets_security: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    settings = await alert_service.load(session)
+    try:
+        channels.seal_hook(settings, vault_for(config), url=url, token=token,
+                           gets=_gets(gets_problems, gets_recoveries, gets_news, gets_security))
+    except channels.ChannelError as exc:
+        return await _channels_page(request, session, config, user, error=str(exc),
+                                    which="webhook", status_code=400)
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return _saved("webhook")
+
+
+@router.post("/alerts/channels/email")
+async def save_email(
+    request: Request,
+    host: str = Form("", max_length=limits.ADDRESS),
+    port: str = Form("", max_length=limits.SHORT),
+    security: str = Form("", max_length=limits.SHORT),
+    username: str = Form("", max_length=limits.ADDRESS),
+    password: str = Form("", max_length=limits.PASSWORD),
+    sender: str = Form("", max_length=limits.ADDRESS),
+    to: str = Form("", max_length=limits.EMAILS),
+    gets_problems: str = Form("", max_length=limits.SHORT),
+    gets_recoveries: str = Form("", max_length=limits.SHORT),
+    gets_news: str = Form("", max_length=limits.SHORT),
+    gets_security: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """A blank password keeps the saved one."""
+    settings = await alert_service.load(session)
+    current = settings.get("email") or {}
+    try:
+        checked = channels.validate_email(
+            host=host, port=port, security=security, username=username, sender=sender, to=to,
+            password_given=bool(password),
+            password_saved=bool(current.get("password_sealed")) and username == current.get("username"))
+        channels.seal_email(settings, vault_for(config), checked, password=password,
+                            gets=_gets(gets_problems, gets_recoveries, gets_news, gets_security))
+    except channels.ChannelError as exc:
+        form = {"host": host, "port": port, "security": security, "username": username,
+                "sender": sender, "to": to}
+        return await _channels_page(request, session, config, user, error=str(exc), which="email",
+                                    form=form, status_code=400)
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return _saved("email")
+
+
+@router.post("/alerts/channels/discord")
+async def save_discord_gets(
+    gets_problems: str = Form("", max_length=limits.SHORT),
+    gets_recoveries: str = Form("", max_length=limits.SHORT),
+    gets_news: str = Form("", max_length=limits.SHORT),
+    gets_security: str = Form("", max_length=limits.SHORT),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """What Discord gets. Its webhook is saved under Rules."""
+    settings = await alert_service.load(session)
+    channels.set_gets(settings, "discord",
+                      _gets(gets_problems, gets_recoveries, gets_news, gets_security))
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return _saved("discord")
+
+
+@router.post("/alerts/channels/{key}/test")
+async def test_channel(
+    request: Request,
+    key: Literal["discord", "ntfy", "email", "webhook"],
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Send a test now and say what the channel answered."""
+    result = await alert_service.send_test(session, vault_for(config), key)
+    await session.commit()
+    label = channels.LABELS[key]
+    if result.ok:
+        return await _channels_page(request, session, config, user, which=key,
+                                    notice=f"Test sent to {label}. Check that it arrived.")
+    return await _channels_page(request, session, config, user, which=key,
+                                error=f"The test to {label} did not arrive: {result.error}",
+                                status_code=400)
+
+
+@router.post("/alerts/channels/{key}/delete")
+async def remove_channel(
+    key: Literal["ntfy", "email", "webhook"],
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Take a channel away. Alerts waiting for it are dropped, saying so."""
+    settings = await alert_service.load(session)
+    channels.remove(settings, key)
+    await save_setting(session, alert_service.SETTING, settings)
+    await session.commit()
+    return redirect(f"/alerts/channels#{key}")

@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import subnets as subnet_service
-from .. import suppressions
+from .. import channels, suppressions
 from . import incident_rows
 from .. import internet
 from ..config import Config
@@ -157,13 +157,13 @@ async def dashboard(
 
     alerting = await get_setting(session, "alerting")
     warnings: list[str] = []
-    if not alerting.get("discord_webhook_sealed"):
+    if not channels.set_up(alerting):
         warnings.append(
-            "No Discord webhook configured yet, so nothing can alert you. "
-            "Add one under Alerts → Rules."
+            "No alert channel set up yet, so nothing can alert you. Add a Discord webhook "
+            "under Alerts → Rules, or ntfy, email or a webhook under Alerts → Channels."
         )
     elif not alerting.get("enabled", True):
-        warnings.append("Alerts are switched off under Alerts → Rules, so nothing will reach Discord.")
+        warnings.append("Alerts are switched off under Alerts → Rules, so nothing will be sent.")
     # From the database, not the config: spark.yaml seeds subnets once and is
     # never read again, so reading it here showed the file's idea of the
     # network rather than the one the Settings page edits.

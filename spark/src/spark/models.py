@@ -761,7 +761,7 @@ class NotificationStatus(enum.StrEnum):
     HELD = "held"          # arrived during quiet hours; goes out in the digest
     SENT = "sent"
     FAILED = "failed"      # gave up after the last retry
-    DROPPED = "dropped"    # alerting was switched off, or no webhook, when due
+    DROPPED = "dropped"    # alerting was switched off, or no channel took it, when due
 
 
 class Notification(Base):
@@ -800,6 +800,37 @@ class Notification(Base):
     )
     dedupe_key: Mapped[str | None] = mapped_column(String(128), unique=True)
 
+    status: Mapped[NotificationStatus] = enum_column(
+        NotificationStatus, default=NotificationStatus.PENDING
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class Delivery(Base):
+    """One alert on its way to one channel: Discord, ntfy, email or a webhook
+    (channels.py). The dispatcher makes one per channel that takes the
+    alert, the first time it sees the alert, and sends, retries and gives up
+    on each on its own -- ntfy goes out while Discord is rate-limited.
+
+    The notification row stays the decision, and its status, attempts, error
+    and sent_at are a summary of its deliveries: sent once any channel has
+    it. Older rows, from before channels, have none and are their own record
+    (migration 25).
+    """
+
+    __tablename__ = "delivery"
+    __table_args__ = (
+        Index("ix_delivery_due", "channel", "status", "next_attempt_at"),
+        UniqueConstraint("notification_id", "channel", name="uq_delivery"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_id: Mapped[int] = mapped_column(
+        ForeignKey("notification.id", ondelete="CASCADE"), index=True)
+    channel: Mapped[str] = mapped_column(String(16))
     status: Mapped[NotificationStatus] = enum_column(
         NotificationStatus, default=NotificationStatus.PENDING
     )

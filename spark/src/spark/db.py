@@ -27,6 +27,7 @@ from .models import (
     AlertMute,
     ApiCredential,
     AlertIncident,
+    Delivery,
     InternetSample,
     MaintenanceWindow,
     AlertState,
@@ -415,7 +416,13 @@ async def _add_expected_mbps(session: AsyncSession) -> None:
         await session.execute(text("ALTER TABLE snmp_interface ADD COLUMN expected_mbps INTEGER"))
 
 
-CURRENT_VERSION = 24
+@migration(25, "One delivery per alert per channel (ntfy, email, webhooks)")
+async def _add_delivery(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(Delivery.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 25
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

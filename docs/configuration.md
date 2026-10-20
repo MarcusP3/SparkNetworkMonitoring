@@ -45,7 +45,7 @@ Two layers, deliberately:
 | Where | What lives there |
 |---|---|
 | `config/spark.yaml` (your copy of `config/spark.example.yaml`; git ignores it) | Things needed *before the database exists*: bind address, data directory, TLS, auth mode, the names SPARK answers as. Its `network.subnets` block seeds the database once and is then ignored |
-| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, the Discord webhook and alert settings, and later retention |
+| Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, the Discord webhook, the other alert channels (ntfy, email, a webhook) and alert settings, and later retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
 underscores: `SPARK__APP__PORT=9800`, `SPARK__AUTH__MODE=proxy`,
@@ -325,7 +325,7 @@ pinned by fingerprint (see [TLS](#tls)); the cookie is `Secure` and
 [Names SPARK answers as](#names-spark-answers-as)).
 
 **Sign-in events** — a lockout, a sign-in from a new address, a password
-change or reset, first-run setup — go to Discord like any other alert, so the
+change or reset, first-run setup — go out like any other alert, so the
 account has a detective control as well as the preventive ones.
 
 ---

@@ -1,0 +1,158 @@
+{# Alerts -> Channels: where alerts go besides Discord, and what each channel
+   gets (channels.py). Forms post to /alerts/channels/... (routes_alerts.py).
+   Secrets are never shown: a field left blank keeps what is saved. #}
+{% macro gets_boxes(key) -%}
+  <fieldset class="channel-gets">
+    <legend class="muted small">Gets</legend>
+    {% for g, label in groups.items() %}
+    <label class="checkbox"><input type="checkbox" name="gets_{{ g }}" value="1" {% if g in ch[key].gets %}checked{% endif %}> <span>{{ label }}</span></label>
+    {% endfor %}
+  </fieldset>
+{%- endmacro %}
+{% macro said(key) -%}
+  {% if which == key and error %}<div class="alert error">{{ error }}</div>{% endif %}
+  {% if which == key and notice %}<div class="alert ok">{{ notice }}</div>{% endif %}
+{%- endmacro %}
+{% macro actions(key, remove=true) -%}
+  {% if ch[key].set_up %}
+  <div class="row-form channel-actions">
+    <form method="post" action="/alerts/channels/{{ key }}/test">
+      <button type="submit" class="btn-quiet">Send a test</button>
+    </form>
+    {% if remove %}
+    <form method="post" action="/alerts/channels/{{ key }}/delete">
+      <button type="submit" class="btn-quiet danger">Remove</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+{%- endmacro %}
+
+  <section class="card" id="channels-intro">
+    <div class="card-head">
+      <span class="card-icon">{{ ICON }}<path d="M4 12h3l2-6 4 12 2-6h5"/><circle cx="20" cy="12" r="1"/></svg></span>
+      <div>
+        <h2>Channels</h2>
+        <p class="card-sub">
+          Where alerts go. Every channel gets its own copy and is sent, retried and given up on by
+          itself: when the internet is down, Discord cannot be reached and an ntfy server on your
+          network still can. Each says what it gets. What is decided at all (recoveries, new
+          devices, sign-in events, quiet hours) is set under <a href="/alerts/rules">Rules</a>, and
+          how each message fared is under <a href="/alerts/messages">Messages</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="discord">
+    <div class="card-head">
+      <div>
+        <h2>Discord {% if ch.discord.set_up %}<span class="pill ok">set up</span>{% endif %}</h2>
+        <p class="card-sub">{% if ch.discord.set_up %}Its webhook is saved under <a href="/alerts/rules">Rules</a>.{% else %}Not set up: paste a webhook under <a href="/alerts/rules">Rules</a>.{% endif %}</p>
+      </div>
+    </div>
+    {{ said('discord') }}
+    {% if ch.discord.set_up %}
+    <form method="post" action="/alerts/channels/discord" class="channel-form">
+      {{ gets_boxes('discord') }}
+      <div class="form-actions"><button type="submit" class="btn-primary">Save</button></div>
+    </form>
+    {{ actions('discord', remove=false) }}
+    {% endif %}
+  </section>
+
+  {% set n = ch.ntfy %}
+  <section class="card" id="ntfy">
+    <div class="card-head">
+      <div>
+        <h2>ntfy {% if n.set_up %}<span class="pill ok">set up</span>{% endif %}</h2>
+        <p class="card-sub">
+          Push notifications to a phone through an <a href="https://ntfy.sh" rel="noopener">ntfy</a>
+          topic: on your own ntfy server, which keeps working when the internet does not, or on
+          ntfy.sh, where anyone who knows a topic's name can read it, so make it long and random.
+        </p>
+      </div>
+    </div>
+    {{ said('ntfy') }}
+    <form method="post" action="/alerts/channels/ntfy" class="channel-form">
+      <label class="stack-field"><span class="muted small">Topic address</span>
+        <input type="password" name="url" maxlength="2048" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'Saved, to ' ~ n.conf.host ~ ': paste a new one to replace it' if n.set_up else 'https://ntfy.example.lan/spark-alerts' }}"></label>
+      <label class="stack-field"><span class="muted small">Access token, if the topic needs one</span>
+        <input type="password" name="token" maxlength="1024" autocomplete="new-password" spellcheck="false"
+               placeholder="{{ 'Saved: paste a new one to replace it' if n.has_token else 'tk_…' }}"></label>
+      {{ gets_boxes('ntfy') }}
+      <div class="form-actions"><button type="submit" class="btn-primary">Save ntfy</button>
+        <span class="muted small">Stored encrypted, and never shown again.</span></div>
+    </form>
+    {{ actions('ntfy') }}
+  </section>
+
+  {% set e = ch.email %}
+  {% set ef = form if which == 'email' and form else e.conf %}
+  <section class="card" id="email">
+    <div class="card-head">
+      <div>
+        <h2>Email {% if e.set_up %}<span class="pill ok">set up</span>{% endif %}</h2>
+        <p class="card-sub">Through your mail provider's SMTP server, to up to five addresses.
+          Bursts and quiet-hours digests arrive as one email.</p>
+      </div>
+    </div>
+    {{ said('email') }}
+    <form method="post" action="/alerts/channels/email" class="channel-form email-form">
+      <label class="stack-field"><span class="muted small">SMTP server</span>
+        <input type="text" name="host" maxlength="255" value="{{ ef.host or '' }}" placeholder="smtp.example.com" required></label>
+      <label class="stack-field"><span class="muted small">Port</span>
+        <input type="number" name="port" min="1" max="65535" value="{{ ef.port or 587 }}" required></label>
+      <label class="stack-field"><span class="muted small">Encryption</span>
+        <select name="security">
+          {% for s, label in (('starttls', 'STARTTLS (port 587)'), ('tls', 'TLS (port 465)'), ('none', 'None: a relay on your network only')) %}
+          <option value="{{ s }}" {% if (ef.security or 'starttls') == s %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">User name</span>
+        <input type="text" name="username" maxlength="255" value="{{ ef.username or '' }}" autocomplete="off"></label>
+      <label class="stack-field"><span class="muted small">Password</span>
+        <input type="password" name="password" maxlength="1024" autocomplete="new-password"
+               placeholder="{{ 'Saved: type a new one to replace it' if e.has_password else '' }}"></label>
+      <label class="stack-field"><span class="muted small">From</span>
+        <input type="text" name="sender" maxlength="255" value="{{ ef.sender or '' }}" placeholder="spark@example.com" required></label>
+      <label class="stack-field email-to"><span class="muted small">To (commas between, up to five)</span>
+        <input type="text" name="to" maxlength="1024" value="{{ (ef.to | join(', ')) if ef.to is not string and ef.to else (ef.to or '') }}" placeholder="you@example.com" required></label>
+      {{ gets_boxes('email') }}
+      <div class="form-actions"><button type="submit" class="btn-primary">Save email</button>
+        <span class="muted small">The password is stored encrypted, and never shown again.</span></div>
+    </form>
+    {{ actions('email') }}
+  </section>
+
+  {% set w = ch.webhook %}
+  <section class="card" id="webhook">
+    <div class="card-head">
+      <div>
+        <h2>Webhook {% if w.set_up %}<span class="pill ok">set up</span>{% endif %}</h2>
+        <p class="card-sub">Each alert as JSON, posted to an address of your choosing: a Home
+          Assistant webhook automation, n8n, Node-RED. One alert per post, held ones included.</p>
+      </div>
+    </div>
+    {{ said('webhook') }}
+    <form method="post" action="/alerts/channels/webhook" class="channel-form">
+      <label class="stack-field"><span class="muted small">Address</span>
+        <input type="password" name="url" maxlength="2048" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'Saved, to ' ~ w.conf.host ~ ': paste a new one to replace it' if w.set_up else 'http://homeassistant.lan:8123/api/webhook/…' }}"></label>
+      <label class="stack-field"><span class="muted small">Bearer token, if it needs one</span>
+        <input type="password" name="token" maxlength="1024" autocomplete="new-password" spellcheck="false"
+               placeholder="{{ 'Saved: paste a new one to replace it' if w.has_token else '' }}"></label>
+      {{ gets_boxes('webhook') }}
+      <div class="form-actions"><button type="submit" class="btn-primary">Save webhook</button>
+        <span class="muted small">Stored encrypted, and never shown again.</span></div>
+    </form>
+    <details class="channel-sample">
+      <summary class="muted small">What it posts</summary>
+      <pre>{"source": "SPARK", "kind": "down", "subject": "nas web is down",
+ "body": "`10.0.0.20:443` — Down after 4 failed checks in a row.",
+ "tone": "bad", "at": "2026-10-20T14:02:11+00:00", "incident_id": 41,
+ "held_for_quiet_hours": false}</pre>
+    </details>
+    {{ actions('webhook') }}
+  </section>

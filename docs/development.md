@@ -31,14 +31,14 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
-| Alerting (Discord) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows, starred ports slower than usual or erroring | ✅ working |
+| Alerting (Discord, ntfy, email, webhooks) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows, starred ports slower than usual or erroring | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 
-SPARK tells you when something goes down, in Discord, and when it comes back —
+SPARK tells you when something goes down, in Discord, ntfy, email or a webhook, and when it comes back —
 see [Alerts](guide.md#alerts).
 
 ---
@@ -141,7 +141,8 @@ spark/
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
     prefs.py            preferences: time zone (the `local` filter's formatting), sign-in timeout
     limits.py           how long any input may be, the largest request, the largest id
-    alerts.py           deciding what to alert on; the mute list; the Discord outbox and dispatcher
+    alerts.py           deciding what to alert on; the mute list; the outbox and dispatcher
+    channels.py         where alerts go: Discord, ntfy, email, a webhook; what each gets; sending
     snmp_alerts.py      SNMP threshold rules: starred ports down or busy, CPU, memory, temperature
     storage.py          TrueNAS pools and drives, filesystems anywhere; read every 5 minutes, and their alerts
     truenas.py          the TrueNAS API client: JSON-RPC over wss only, certificate pinning, login
@@ -216,6 +217,7 @@ spark/
     test_layout.py      every table scrolls inside its card
     test_snmp_discover.py  Find suggests and never adds, from Settings or Devices; the SNMP column and filter
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
+    test_channels.py    ntfy, email and a webhook beside Discord: a copy each, on its own; what each gets; sealed; the tab
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
     test_port_health.py  starred ports slower than usual or erroring: held, cleared, accepted, suppressed; the form
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card

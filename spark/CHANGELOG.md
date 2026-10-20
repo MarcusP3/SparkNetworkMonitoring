@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — more ways to be told: ntfy, email, a webhook (2026-10-20)
+
+### Added
+
+- **Alerts → Channels.** Beside Discord: **ntfy** (a topic's address, and a
+  token if it needs one; problems at high priority), **email** over SMTP
+  (STARTTLS, TLS, or none for a relay on your network, which refuses a
+  password; up to five addresses), and a **webhook** that gets each alert as
+  JSON (Home Assistant, n8n, Node-RED), with a bearer token if it needs one.
+  Each has **Send a test** and **Remove**.
+- **Each channel gets its own copy**, sent, retried and given up on by
+  itself: a new `delivery` table, one row per alert per channel (migration
+  25). When the internet is down, Discord waits and an ntfy server on the LAN
+  still gets it. A rate limit holds only its own channel. The alert's own row
+  is a summary: sent once any channel took it.
+- **What each channel gets**: problems, recoveries, new devices, sign-in
+  events, Discord included (sign-in events to email only, say). An alert no
+  channel takes is "not sent", saying so.
+- **Messages** lists each channel's own answer under every alert that went
+  to more than Discord.
+- Bursts and quiet-hours digests are one message on Discord, ntfy and email;
+  the webhook gets one post per alert, held ones marked
+  `held_for_quiet_hours`.
+
+### Changed
+
+- Addresses, tokens and the SMTP password are sealed with the vault like the
+  Discord webhook, and never shown again; only each one's host is kept in
+  clear. ntfy and the webhook post to any address they are given, LAN
+  included; only Discord is held to Discord's hosts.
+- "No webhook" warnings (dashboard, Alerts and Settings menus, Messages) now
+  mean no channel at all.
+- Alerts waiting when you upgrade move to their Discord delivery with their
+  retries and quiet-hours hold carried over.
+- Email goes through the standard library's `smtplib` in a thread: no new
+  dependency, nothing to rebuild for.
+
 ## Unreleased — port speed and error alerts (2026-10-20)
 
 ### Added

@@ -2689,6 +2689,17 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 .msg-head strong { overflow-wrap: anywhere; }
 .msg-meta { margin-top: .25rem; }
 .msg-error { margin-top: .25rem; color: var(--bad); overflow-wrap: anywhere; }
+/* A message's own answer from each channel it went to. */
+.msg-channels { margin-top: .3rem; display: flex; flex-wrap: wrap; gap: .35rem .9rem; }
+.msg-channel { display: inline-flex; gap: .35rem; align-items: center; }
+/* Alerts -> Channels. */
+.channel-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .75rem 1rem; align-items: start; margin-top: .75rem; }
+.channel-form .channel-gets, .channel-form .form-actions, .channel-form .email-to { grid-column: 1 / -1; }
+.channel-gets { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; }
+.channel-gets legend { padding: 0; margin-bottom: .3rem; width: 100%; }
+.channel-actions { margin-top: .75rem; gap: .5rem; }
+.channel-sample { margin-top: .75rem; }
+.channel-sample pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; }
 .msg-body { margin-top: .35rem; }
 .msg-body pre { margin: .35rem 0 0; padding: .6rem .75rem; white-space: pre-wrap; overflow-wrap: anywhere;
   font-size: .8125rem; background: rgba(6, 13, 25, .7); border: 1px solid var(--border); border-radius: 8px; }

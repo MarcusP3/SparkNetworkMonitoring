@@ -91,8 +91,8 @@ Two things that look like details and are not:
   the cutoff loses its later half the following night.
 - **Alerts are decided in the transaction that makes the change** -- call
   `alerts.enqueue` (or an `on_*` helper) from the same session, never send
-  from a check or a request. The dispatcher sends; nothing else posts to
-  Discord except the Settings test button.
+  from a check or a request. The dispatcher sends; nothing else sends to a
+  channel (Discord, ntfy, email, a webhook) except the Test buttons.
 - **Checks never raise.** They return a `CheckOutcome` carrying a reason. A
   poller that throws when the thing it polls is broken has failed at its job.
   The state machine interprets sequences of outcomes; individual checks do not.
@@ -100,7 +100,8 @@ Two things that look like details and are not:
   never edit or reorder an entry that has shipped. The runner has not yet
   executed a real migration, so the first one needs care and a test.
 - **Secrets** are files or env vars, or -- when they are entered in the UI and
-  must be recovered to be used (SNMP credentials, the Discord webhook) --
+  must be recovered to be used (SNMP credentials, the Discord webhook, the
+  other channels' addresses, tokens and SMTP password) --
   sealed with `vault.py` before they touch the database. Never plaintext in a
   table or a setting, and never rendered back into a page.
 - **Client addresses** are settled once, in `web/hardening.py`, from

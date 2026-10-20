@@ -28,6 +28,8 @@ URL = 2048         # next= and back=, which are paths on this site
 TIMEZONE = 64      # the longest IANA name is 32
 SHORT = 32         # numbers, times, versions, protocol names, checkboxes
 NOTE = 280         # an acknowledgement's note: a line, not a write-up
+EMAILS = 1024      # up to five addresses to send alerts to
+HOOK_URL = 2048    # an ntfy topic's or a webhook's address, which may carry its secret
 
 # The largest request body accepted at all, checked before any route runs.
 # The biggest real form is a target with 4 KB of params; this is 16x that.
