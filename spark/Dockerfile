@@ -10,7 +10,7 @@
 # then replace the line below with what it prints. Re-pin deliberately when you
 # want a newer base -- which is the point: the upgrade becomes a commit you can
 # see rather than a side effect of rebuilding.
-FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 # MALLOC_ARENA_MAX: glibc gives every thread that allocates its own malloc
 # arena, and fragmentation accumulates in each. SPARK runs a dozen threads
