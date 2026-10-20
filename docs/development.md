@@ -37,6 +37,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
+| Availability report — per target and the internet, unreachable and planned apart, CSV | ✅ working |
 
 SPARK tells you when something goes down, in Discord, ntfy, email or a webhook, and when it comes back —
 see [Alerts](guide.md#alerts).
@@ -150,6 +151,7 @@ spark/
     internet.py         the Internet card: resolvers, DNS, web, gateway every minute; the alert
     suppressions.py     one alert rule, for one device, off or with its own line
     maintenance.py      maintenance windows: alerts held while one is on, what is still broken sent when it ends
+    availability.py     how much of a range each target was up, from incidents and the check history
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
@@ -205,6 +207,7 @@ spark/
     test_suppressions.py  per-device rule overrides: quiet, their own lines, afresh when saved; the page
     test_maintenance.py  maintenance windows: weekly on the local clock, held below, still-down sent at the end, the pages
     test_maintenance_alerts.py  maintenance and SNMP thresholds, SNMP silence and the internet: held, sent at the end, recovered
+    test_availability.py  up time per target: outages clipped to the range, unreachable and planned apart, watched time; the tab and CSV
     test_ports.py       the scanner against real sockets; the service store
     test_paging.py      one device per page, exactly once, whatever the filter
     test_port_catalogue.py  the editable port list, and what it costs to scan

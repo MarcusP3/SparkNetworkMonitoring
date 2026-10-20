@@ -143,6 +143,35 @@ async def covering(session: AsyncSession, device_id: int | None,
     return None
 
 
+async def spans_over(session: AsyncSession, device_id: int, start: datetime,
+                     end: datetime) -> list[Span]:
+    """Every stretch from `start` to `end` that this device was under a
+    window, its own or one above it that takes in what is below, merged."""
+    above = set(await ancestors(session, device_id))
+    windows = [w for w in (await session.execute(select(MaintenanceWindow).where(
+        MaintenanceWindow.starts_at < end,
+        or_(MaintenanceWindow.weekly.is_(True), MaintenanceWindow.ends_at > start),
+    ))).scalars() if w.device_id == device_id or (w.include_below and w.device_id in above)]
+    if not windows:
+        return []
+    tz = await zone(session)
+    found: list[Span] = []
+    for window in windows:
+        if not window.weekly:
+            found.append(Span(window.starts_at, window.ends_at))
+            continue
+        for index in range(max(0, _index(window, start, tz)), _index(window, end, tz) + 1):
+            found.append(_occurrence(window, index, tz))
+    merged: list[Span] = []
+    for piece in sorted((s for s in found if s.end > start and s.start < end),
+                        key=lambda s: s.start):
+        if merged and piece.start <= merged[-1].end:
+            merged[-1] = Span(merged[-1].start, max(merged[-1].end, piece.end))
+        else:
+            merged.append(piece)
+    return merged
+
+
 async def gateway_id(session: AsyncSession) -> int | None:
     """The gateway's device: "the internet is down" belongs to it."""
     from .internet import _gateway

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — the availability report (2026-10-20)
+
+### Added
+
+- **Alerts → Availability.** How much of a range each target was up, worst
+  first: the last 24 hours, 7, 30 or 90 days, a year, this month or last
+  month. Outages (linked to them in the history), downtime, the longest
+  outage, the mean time to recover, and how much of the range was watched.
+  From the incident rows and the check history, so nothing new is stored.
+- Shown but counted neither up nor down: **unreachable** (an outage explained
+  by a dependency or a device above it on the map), **planned** (the part
+  of an outage inside a maintenance window, whenever the outage began;
+  before and after the window it is unplanned), and time with no checks at
+  all (paused, or SPARK off).
+- **The internet** has its own row, from the Internet card's checks and its
+  outages, with the gateway's windows planned.
+- **Download CSV**: the same figures in seconds and plain percentages. A
+  name that starts like a spreadsheet formula is written as text.
+
 ## Unreleased — more ways to be told: ntfy, email, a webhook (2026-10-20)
 
 ### Added

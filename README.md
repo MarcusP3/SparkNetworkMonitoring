@@ -18,6 +18,7 @@ Linux VM · **Storage** one SQLite file
   MAC (they survive DHCP), vendor lookup, and a TCP port scan for services.
 - **Checks what matters.** Ping, TCP, HTTP(S) and DNS checks with hysteresis,
   incidents, and dependency suppression — one alert for the switch, not thirty.
+  An availability report says how much of the month each was up.
 - **Reads your gear over SNMP.** CPU, memory, temperature, interface traffic,
   storage and history charts per device, v2c and v3.
 - **Talks to TrueNAS, Proxmox and UniFi** over their own APIs: drive health,

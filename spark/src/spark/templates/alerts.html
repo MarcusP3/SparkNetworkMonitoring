@@ -32,6 +32,7 @@
           {%- if m.slug == 'activity' %}<path d="M3 12h4l3-8 4 16 3-8h4"/>
           {%- elif m.slug == 'messages' %}<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/>
           {%- elif m.slug == 'rules' %}<path d="M4 6h16M4 12h10M4 18h6"/>
+          {%- elif m.slug == 'availability' %}<path d="M4 19h16"/><path d="M7 15V9M12 15V5M17 15v-3"/>
           {%- elif m.slug == 'channels' %}<path d="M4 12h3l2-6 4 12 2-6h5"/><circle cx="20" cy="12" r="1"/>
           {%- elif m.slug == 'maintenance' %}<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.6 17.2a1.6 1.6 0 0 0 2.3 2.3l5.7-5.7a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.4-.4-2.1 2.5-2.5Z"/>
           {%- else %}<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>{% endif -%}
@@ -199,6 +200,9 @@
 
   {% elif section == 'channels' %}
   {% include "_channels.html" %}
+
+  {% elif section == 'availability' %}
+  {% include "_availability.html" %}
   {% endif %}
 
   </div>

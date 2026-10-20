@@ -1,0 +1,70 @@
+{# Alerts -> Availability: how much of a range each target was up, from the
+   incident rows and the check history (availability.py). #}
+  <section class="card" id="availability">
+    <div class="card-head">
+      <span class="card-icon">{{ ICON }}<path d="M4 19h16"/><path d="M7 15V9M12 15V5M17 15v-3"/></svg></span>
+      <div>
+        <h2>Availability · {{ av.label }}</h2>
+        <p class="card-sub">
+          How much of the time each target was up, worst first, from its outages and its check
+          history. Time it was unreachable because something above it was down, or inside a
+          maintenance window, is shown but counted neither up nor down; so is time it was not
+          being checked. Degraded counts as up.
+        </p>
+      </div>
+      <div class="head-actions">
+        <a href="/alerts/availability.csv?range={{ av.range }}" class="btn-quiet" download>Download CSV</a>
+      </div>
+    </div>
+
+    <nav class="tbar-chips" aria-label="Range">
+      {% for key, label in av.ranges.items() %}
+        <a class="chip" href="/alerts/availability?range={{ key }}"
+           {% if key == av.range %}aria-current="true"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="muted small">{{ av.start | local('%a %b %-d, %Y %H:%M') }} to {{ av.end | local('%a %b %-d, %Y %H:%M') }}.</p>
+
+    {% if av.rows or av.internet %}
+    <div class="table-scroll">
+    <table class="table compact avail-table">
+      <thead><tr>
+        <th>Target</th><th class="num">Up</th><th class="num">Outages</th><th class="num">Downtime</th>
+        <th class="num">Longest</th><th class="num" title="Mean time to recover: how long its outages lasted, on average">To recover</th>
+        <th class="num" title="How much of the range there are checks for">Watched</th>
+      </tr></thead>
+      <tbody>
+        {% if av.internet %}{% set f = av.internet %}
+        <tr class="avail-internet">
+          <td><strong>The internet</strong><div class="muted small">From the Internet card's checks, kept 30 days</div></td>
+          <td class="num avail-up">{{ f.up }}</td>
+          <td class="num">{{ f.outages }}</td>
+          <td class="num">{{ f.down }}{% if f.planned %}<div class="muted small">+ {{ f.planned }} planned</div>{% endif %}</td>
+          <td class="num">{{ f.longest }}</td>
+          <td class="num">{{ f.mttr }}</td>
+          <td class="num">{{ f.watched }}</td>
+        </tr>
+        {% endif %}
+        {% for r in av.rows %}{% set t = r.row.target %}{% set d = r.row.device %}
+        <tr>
+          <td>
+            {% if d %}<a href="/devices/{{ d.id }}">{{ t.name }}</a>{% else %}{{ t.name }}{% endif %}
+            <div class="muted small"><code>{{ t.address }}</code>{% if d and d.display_name != t.name %} · {{ d.display_name }}{% endif %}{% if not t.enabled %} · paused{% endif %}</div>
+          </td>
+          <td class="num avail-up">{{ r.up }}</td>
+          <td class="num">{% if r.outages and d %}<a href="/alerts?source=Target&amp;device={{ d.id }}#history">{{ r.outages }}</a>{% else %}{{ r.outages }}{% endif %}</td>
+          <td class="num">{{ r.down }}
+            {%- if r.unreachable %}<div class="muted small" title="Down while something it depends on was down">+ {{ r.unreachable }} unreachable</div>{% endif %}
+            {%- if r.planned %}<div class="muted small" title="Inside a maintenance window">+ {{ r.planned }} planned</div>{% endif %}</td>
+          <td class="num">{{ r.longest }}</td>
+          <td class="num">{{ r.mttr }}</td>
+          <td class="num">{{ r.watched }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted">No checks in this range yet. Targets appear here once they have been checked.</p>
+    {% endif %}
+  </section>

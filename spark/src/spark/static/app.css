@@ -2692,6 +2692,10 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 /* A message's own answer from each channel it went to. */
 .msg-channels { margin-top: .3rem; display: flex; flex-wrap: wrap; gap: .35rem .9rem; }
 .msg-channel { display: inline-flex; gap: .35rem; align-items: center; }
+/* Alerts -> Availability. */
+.avail-table td.avail-up { font-weight: 600; font-variant-numeric: tabular-nums; }
+.avail-table .avail-internet td { border-bottom: 1px solid var(--border); }
+.avail-table td.num div { font-weight: 400; }
 /* Alerts -> Channels. */
 .channel-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .75rem 1rem; align-items: start; margin-top: .75rem; }
 .channel-form .channel-gets, .channel-form .form-actions, .channel-form .email-to { grid-column: 1 / -1; }

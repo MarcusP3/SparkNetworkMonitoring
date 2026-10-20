@@ -15,6 +15,8 @@ counts, which are for what nobody has looked at yet.
 Maintenance lists the windows (maintenance.py) and schedules one; a device's
 page starts one in a click, posting here too. Channels sets up ntfy, email
 and a webhook beside Discord, and what each one gets (channels.py).
+Availability is how much of a range each target was up (availability.py),
+on the page and as CSV.
 """
 
 from __future__ import annotations
@@ -24,10 +26,11 @@ from typing import Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import Response
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts as alert_service, channels, events, limits, maintenance
+from .. import alerts as alert_service, availability, channels, events, limits, maintenance
 from ..config import Config
 from ..db import get_setting, save_setting
 from .. import snmp_alerts
@@ -35,6 +38,7 @@ from ..hierarchy import descendants
 from ..models import (AlertIncident, AlertSuppression, Delivery, Device, Incident, MaintenanceWindow,
                       Notification, NotificationStatus, Target, User, utcnow)
 from . import incident_rows
+from ..engine.state import human_duration
 from ..vault import vault_for
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
@@ -117,6 +121,8 @@ async def common(session: AsyncSession) -> dict:
             {"slug": "maintenance", "label": "Maintenance", "url": "/alerts/maintenance",
              "hint": await _maintenance_hint(session, now), "warn": False,
              "about": "Hold alerts while you work on something"},
+            {"slug": "availability", "label": "Availability", "url": "/alerts/availability",
+             "hint": "", "warn": False, "about": "How much each was up, and outages"},
             {"slug": "channels", "label": "Channels", "url": "/alerts/channels",
              "hint": str(len(set_up)) if set_up else "none", "warn": not set_up,
              "about": "Discord, ntfy, email, a webhook"},
@@ -662,3 +668,110 @@ async def remove_channel(
     await save_setting(session, alert_service.SETTING, settings)
     await session.commit()
     return redirect(f"/alerts/channels#{key}")
+
+
+# --------------------------------------------------------------------------
+# Availability
+# --------------------------------------------------------------------------
+
+
+def _percent(figures: availability.Availability) -> str:
+    """99.95%, or 100% for a clean record; never 100% with any downtime."""
+    p = figures.percent
+    if p is None:
+        return "—"
+    if figures.down <= 0:
+        return "100%"
+    return f"{min(p, 99.99):.2f}%"
+
+
+def _duration(seconds: float | None) -> str:
+    return "—" if not seconds else human_duration(seconds)
+
+
+def _figures(figures: availability.Availability) -> dict:
+    return {
+        "up": _percent(figures),
+        "percent": figures.percent,
+        "outages": figures.outages,
+        "down": _duration(figures.down),
+        "unreachable": _duration(figures.unreachable) if figures.unreachable else "",
+        "planned": _duration(figures.planned) if figures.planned else "",
+        "longest": _duration(figures.longest),
+        "mttr": _duration(figures.mean_to_recover),
+        "watched": f"{figures.coverage:.0f}%" if figures.coverage is not None else "—",
+    }
+
+
+async def _availability(session: AsyncSession, range_name: str, tz) -> dict:  # type: ignore[no-untyped-def]
+    range_name = range_name if range_name in availability.RANGES else availability.DEFAULT_RANGE
+    now = utcnow()
+    start, end = availability.span(range_name, now, tz)
+    label = availability.RANGES[range_name]
+    if range_name in ("month", "last-month"):
+        label = availability.month_name(start, tz)
+    rows = [{"row": r, **_figures(r.figures)}
+            for r in await availability.targets(session, start, end, now)]
+    net = await availability.internet(session, start, end, now)
+    return {"range": range_name, "label": label, "start": start, "end": end, "rows": rows,
+            "internet": _figures(net) if net else None,
+            "ranges": availability.RANGES}
+
+
+@router.get("/alerts/availability")
+async def availability_page(
+    request: Request,
+    range: str = "",  # noqa: A002 - the query parameter's name in the URL
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    return templates.TemplateResponse(request, "alerts.html", {
+        "config": config, "user": user, "title": "Alerts · Availability", "section": "availability",
+        **await common(session),
+        "av": await _availability(session, range, request.state.tz),
+    })
+
+
+def _csv_cell(value: object) -> str:
+    """One CSV field. A name that starts like a formula is quoted as text, so
+    a spreadsheet shows it rather than running it."""
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text
+    if any(c in text for c in ',"\n\r') or text.startswith("'"):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+@router.get("/alerts/availability.csv")
+async def availability_csv(
+    request: Request,
+    range: str = "",  # noqa: A002 - the query parameter's name in the URL
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """The same figures, for a spreadsheet: seconds and plain percentages."""
+    av = await _availability(session, range, request.state.tz)
+    header = ["target", "device", "address", "up_percent", "outages", "down_seconds",
+              "unreachable_seconds", "planned_seconds", "longest_seconds",
+              "mean_to_recover_seconds", "watched_percent"]
+    lines = [",".join(header)]
+
+    def numbers(f: availability.Availability) -> list[object]:
+        return [f"{f.percent:.4f}" if f.percent is not None else "", f.outages, round(f.down),
+                round(f.unreachable), round(f.planned), round(f.longest),
+                round(f.mean_to_recover) if f.mean_to_recover is not None else "",
+                f"{f.coverage:.1f}" if f.coverage is not None else ""]
+    net = await availability.internet(session, av["start"], av["end"])
+    if net is not None:
+        lines.append(",".join(_csv_cell(v) for v in ["The internet", "", "", *numbers(net)]))
+    for r in av["rows"]:
+        row = r["row"]
+        lines.append(",".join(_csv_cell(v) for v in [
+            row.target.name, row.device.display_name if row.device else "", row.target.address,
+            *numbers(row.figures)]))
+    start = av["start"].astimezone(request.state.tz).strftime("%Y-%m-%d")
+    end = av["end"].astimezone(request.state.tz).strftime("%Y-%m-%d")
+    return Response("\n".join(lines) + "\n", media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="spark-availability-{start}-to-{end}.csv"'})

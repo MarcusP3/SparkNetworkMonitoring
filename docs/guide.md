@@ -356,6 +356,27 @@ on one device. (Both used to be under Settings; old links still land.)
 **Channels** sends them to ntfy, email or a webhook as well as Discord. The
 dashboard keeps the newest ten, with **All alerts →** to this page.
 
+**Availability** (Alerts → Availability) says how much of a range each target
+was up: the last 24 hours, 7, 30 or 90 days, a year, this month or last
+month (on the Preferences calendar). Worst first, with each one's outages
+(linked to them in the history), downtime, longest outage and how long its
+outages took to recover on average. Some time is shown but counted neither
+up nor down:
+
+- **Unreachable**: an outage explained by something it depends on, or by a
+  device above it on the map, being down. That was the switch's outage.
+- **Planned**: the part of an outage inside a maintenance window on its
+  device (or one above it), weekly ones included. Before the window and
+  after it, the same outage is unplanned.
+- **Not watched**: time with no checks (a target paused, SPARK switched off).
+  **Watched** says how much of the range there are checks for, from the check
+  history at whatever width it is kept.
+
+Degraded counts as up. **The internet** has a row of its own, from the
+Internet card's checks (kept 30 days) and its outages; a window on the
+gateway is planned there too. **Download CSV** gives the same figures in
+seconds and plain percentages, for a spreadsheet or your ISP.
+
 **The dashboard's incidents** are every kind of problem, not only outages: a
 target down, and every alert rule that fired — SNMP thresholds, starred
 ports, storage, a device that stopped answering SNMP, an API credential that
