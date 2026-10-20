@@ -353,7 +353,7 @@ class TestCard:
         assert '<section class="card" id="storage">' in page
         assert "drive health from the TrueNAS API, last at" in page
         assert ('<td>tank</td> <td><span class="pill ok">ONLINE</span></td> '
-                '<td class="muted small" colspan="3">Space is read over SNMP</td> '
+                '<td class="muted small" colspan="4">Space is read over SNMP</td> '
                 '<td class="small">Aug 30 · <span class="muted">0 errors</span></td>') in page
         assert ('<td><code>sda</code></td> <td class="muted small">MB012000JWDFD</td> '
                 '<td class="num">12.0 TB</td> <td class="small">tank <span class="muted">· raidz2-0</span></td> '

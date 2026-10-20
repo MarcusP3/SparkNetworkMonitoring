@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — time until full (2026-10-20)
+
+### Added
+
+- **Full in** on the Storage card: when each pool and filesystem would be
+  full, from a least-squares line through its last two weeks of space —
+  "about 40 days", amber once under the rule's days, "not growing" when
+  flat, shrinking or under a megabyte a day, "learning" until there are two
+  days of history.
+- **A pool or disk will be full in under 14 days** (Alerts → Rules →
+  Storage, on by default, the days settable): on two reads in a row, with
+  how fast it is growing and the date; it ends at 21 days or more, or when
+  it stops growing. Suppressions can switch it off for a device or give it
+  its own days ("alert under 30 days").
+- **Storage history**: each pool's and filesystem's space once an hour
+  (`storage_sample`, migration 27), kept hourly for the five-minute
+  ladder's 90 days, then one a day (cut at a midnight) until the hourly
+  ladder's two years, then gone — in the nightly retention run.
+
 ## Unreleased — heartbeats (2026-10-20)
 
 ### Added

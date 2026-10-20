@@ -418,13 +418,22 @@ async def _storage(session: AsyncSession, row_id: int) -> dict:
     pool_line = float(rules.get("pool_space_percent") or 85)
     disk_line = float(rules.get("disk_space_percent") or 90)
     hot = float(rules.get("drive_celsius") or 50)
+    soon = float(rules.get("space_trend_days") or 14)
+    trends = {(row.kind, row.name): await storage.trend(session, row_id, row.kind, row.name)
+              for kind in (storage.POOL, storage.FS) for row in found[kind]}
 
     def space(row, line):  # type: ignore[no-untyped-def]
         pct = row.percent
         free = (row.size_bytes - row.used_bytes) if pct is not None else None
+        t = trends.get((row.kind, row.name))
         return {"row": row, "pct": pct, "over": pct is not None and pct >= line,
                 "used": storage.fmt_bytes(row.used_bytes), "size": storage.fmt_bytes(row.size_bytes),
-                "free": storage.fmt_bytes(free), "bar": min(100, round(pct)) if pct is not None else 0}
+                "free": storage.fmt_bytes(free), "bar": min(100, round(pct)) if pct is not None else 0,
+                # Time until full, from its last two weeks (storage.trend);
+                # None until there are two days of history.
+                "trend": t, "full_in": storage.fmt_days(t.days_left) if t else None,
+                "per_day": storage.fmt_bytes(int(t.per_day)) if t and t.days_left else None,
+                "soon": bool(t and t.days_left is not None and t.days_left < soon)}
 
     def health(row):  # type: ignore[no-untyped-def]
         value = (row.health or "").upper()

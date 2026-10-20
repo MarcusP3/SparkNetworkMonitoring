@@ -677,10 +677,22 @@ or `no answer` with the reason — and when the next one is due.
   - **Anything running net-snmp** (Linux servers, Proxmox hosts): each real
     filesystem's size, use and free space. Memory, /run, snaps and
     container layers are left out, and a bind mount is shown once.
+  - **Full in**: when each pool and filesystem would be full, at the rate
+    it has grown over the last two weeks — "about 40 days", amber once it is
+    under the rule's days below, "not growing" for one that is flat,
+    shrinking or growing less than a megabyte a day. Its space is kept once
+    an hour for this (hourly for 90 days, then one a day for two years, like
+    check history); it reads *learning* until there are two days of it. 85%
+    full means one thing on a pool growing a gigabyte a month and another
+    on one taking 50 GB of camera footage a day.
   - Alerts, under **Alerts → Rules → Storage**: a pool not ONLINE (at
     once), a pool 85% full or more, a disk 90% full or more (both on two
     reads in a row), a drive at 50 °C or more for 10 minutes. Each ends 5
-    under its line, and says so.
+    under its line, and says so. And **a pool or disk that will be full in
+    under 14 days** at that rate, on two reads in a row ("truenas: pool tank
+    will be full in about 6 days", with how fast it is growing and the
+    date); it ends once it would take 21 days or more, or it stops growing.
+    Suppressions can give it its own number of days for one device.
 - **Interfaces** — one port's traffic chart, the busiest to begin with.
   Pick another from the **Interface** list (each shows its status and rate
   now); under the chart are its current rate, peak in the range, errors, and

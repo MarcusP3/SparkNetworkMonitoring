@@ -53,6 +53,8 @@ RULES: dict[str, Rule] = {
     "pool_health": Rule("A pool is not ONLINE"),
     "pool_space": Rule("Pool space", "%", PERCENT, "pool_space_percent"),
     "disk_space": Rule("Disk space", "%", PERCENT, "disk_space_percent"),
+    "space_trend": Rule("A pool or disk will soon be full", " days", snmp_alerts.DAYS_RANGE,
+                        "space_trend_days"),
     "drive_temperature": Rule("Drive temperature", "°C", CELSIUS, "drive_celsius"),
     "drive_errors": Rule("A drive is not ONLINE, or has errors"),
     "api_down": Rule("An API credential stops working"),
@@ -64,6 +66,7 @@ RULES: dict[str, Rule] = {
 BY_PREFIX = {
     "cpu": "cpu", "memory": "memory", "temperature": "temperature",
     "port": "port_down", "busy": "port_busy", "speed": "port_speed", "errors": "port_errors",
+    "trend": "space_trend",
     "snmpdown": "snmp_down",
     "pool": "pool_health", "drive": "drive_temperature",
     "api": "api_down", "apidrive": "drive_errors", "tnalert": "truenas_alerts",
@@ -90,6 +93,8 @@ def describe(row: AlertSuppression) -> str:
         what = f"TrueNAS alert {row.detail}" if row.detail else "Every TrueNAS alert"
     if row.threshold is None:
         return f"{what}: off"
+    if row.rule == "space_trend":      # the one line that is a floor
+        return f"{what}: alert under {row.threshold:g}{rule.unit}"
     return f"{what}: alert over {row.threshold:g}{rule.unit if rule else ''}"
 
 
@@ -211,6 +216,8 @@ async def _keys(session: AsyncSession, device_id: int, rule: str,
             prefixes.append(f"space:{snmp_row}:pool:")
         elif rule == "disk_space":
             prefixes.append(f"space:{snmp_row}:fs:")
+        elif rule == "space_trend":
+            prefixes.append(f"trend:{snmp_row}:")
         elif rule == "drive_temperature":
             prefixes.append(f"drive:{snmp_row}:")
     for cred in creds:

@@ -234,7 +234,8 @@ class TestPages:
                 "memory_percent": "90", "memory_minutes": "10", "temperature": "1",
                 "temperature_celsius": "80", "temperature_minutes": "5", "pool_health": "1",
                 "pool_space": "1", "pool_space_percent": "85", "disk_space": "1",
-                "disk_space_percent": "90", "drive_temperature": "1", "drive_celsius": "50",
+                "disk_space_percent": "90", "space_trend": "1", "space_trend_days": "14",
+                "drive_temperature": "1", "drive_celsius": "50",
                 "drive_minutes": "10", "api_down": "1", "drive_errors": "1",
                 "truenas_alerts": "1", "guest_down": "1", "internet_down": "1"}
         assert site.post("/settings/alerts/rules", data=form).status_code == 303

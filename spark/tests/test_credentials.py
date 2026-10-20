@@ -531,7 +531,7 @@ class TestScheduled:
     def test_the_rules_form_saves_it(self, db, site):
         from spark import snmp_alerts
         form = {"port_busy_percent": "80", "port_busy_minutes": "10", "port_errors_per_minute": "10",
-                "port_errors_minutes": "10", "cpu_percent": "90",
+                "port_errors_minutes": "10", "space_trend_days": "14", "cpu_percent": "90",
                 "cpu_minutes": "10", "memory_percent": "90", "memory_minutes": "10",
                 "temperature_celsius": "80", "temperature_minutes": "5",
                 "pool_space_percent": "85", "disk_space_percent": "90", "drive_celsius": "50",

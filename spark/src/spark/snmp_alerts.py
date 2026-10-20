@@ -69,6 +69,7 @@ PERCENT_RANGE = (1, 100)
 CELSIUS_RANGE = (30, 120)
 MINUTES_RANGE = (1, 1440)
 ERRORS_RANGE = (1, 10_000)       # errors a minute
+DAYS_RANGE = (1, 365)            # days until full
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,9 @@ async def save(session: AsyncSession, form: dict[str, str]) -> None:
         "disk_space": bool(form.get("disk_space")),
         "disk_space_percent": _bounded(form.get("disk_space_percent", ""), *PERCENT_RANGE,
                                        "Disk space"),
+        "space_trend": bool(form.get("space_trend")),
+        "space_trend_days": _bounded(form.get("space_trend_days", ""), *DAYS_RANGE,
+                                     "Days until full"),
         "drive_temperature": bool(form.get("drive_temperature")),
         "drive_celsius": _bounded(form.get("drive_celsius", ""), *CELSIUS_RANGE,
                                   "Drive temperature"),

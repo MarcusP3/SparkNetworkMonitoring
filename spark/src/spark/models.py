@@ -1199,6 +1199,25 @@ class SnmpStorage(Base):
         return self.used_bytes / self.size_bytes * 100
 
 
+class StorageSample(Base):
+    """A pool's or filesystem's space, once an hour: the history behind
+    "full in about 40 days" (storage.trend). snmp_storage holds only the
+    latest read; this keeps what came before. Thinned to one a day after
+    the five-minute ladder's 90 days, and gone after the hourly one's two
+    years, like check history (retention.py, migration 27)."""
+
+    __tablename__ = "storage_sample"
+    __table_args__ = (Index("ix_storage_sample_key_ts", "snmp_device_id", "kind", "name", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(ForeignKey("snmp_device.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))            # "pool" or "fs"
+    name: Mapped[str] = mapped_column(String(255))
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    used_bytes: Mapped[int] = mapped_column(BigInteger)
+
+
 class ApiCredential(Base, TimestampMixin):
     """A key for a device's own API (Settings -> Credentials).
 
@@ -1412,6 +1431,8 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "pool_health": True,
         "pool_space": True, "pool_space_percent": 85,
         "disk_space": True, "disk_space_percent": 90,
+        # Growing fast enough to be full within this many days (storage.trend).
+        "space_trend": True, "space_trend_days": 14,
         "drive_temperature": True, "drive_celsius": 50, "drive_minutes": 10,
         # API credentials (credentials.py): two failed checks in a row.
         "api_down": True,

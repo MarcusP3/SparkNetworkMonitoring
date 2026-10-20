@@ -240,6 +240,24 @@ async def _snmp_retention(session: AsyncSession, raw_cutoff, five_cutoff,
     return out
 
 
+ONE_DAY = 86400
+
+
+async def _storage_retention(session: AsyncSession, day_cutoff: datetime,
+                             hourly_cutoff: datetime) -> dict:
+    """Storage space history (storage.StorageSample): an hourly sample, kept
+    hourly while check history keeps five-minute buckets, then the first of
+    each day until it is as old as hourly check history, then gone. The
+    cutoff is a midnight, so no day is thinned in two halves."""
+    thinned = await session.execute(text(
+        "DELETE FROM storage_sample WHERE ts < :cutoff AND id NOT IN ("
+        " SELECT MIN(id) FROM storage_sample WHERE ts < :cutoff"
+        " GROUP BY snmp_device_id, kind, name, date(ts))"), {"cutoff": day_cutoff})
+    expired = await session.execute(
+        text("DELETE FROM storage_sample WHERE ts < :cutoff"), {"cutoff": hourly_cutoff})
+    return {"thinned": thinned.rowcount or 0, "expired": expired.rowcount or 0}
+
+
 async def run_retention() -> dict:
     """Downsample and prune. Safe to run twice; safe to skip a night."""
     started = utcnow()
@@ -291,6 +309,9 @@ async def run_retention() -> dict:
             summary["snmp"] = await _snmp_retention(
                 session, raw_cutoff, five_cutoff, hourly_cutoff
             )
+
+            summary["storage"] = await _storage_retention(
+                session, _floor(started - timedelta(days=five_minute_days), ONE_DAY), hourly_cutoff)
 
             # The Internet card's checks: a row a minute, kept 30 days.
             from .internet import prune

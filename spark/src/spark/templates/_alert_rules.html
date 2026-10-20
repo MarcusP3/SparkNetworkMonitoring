@@ -191,6 +191,13 @@
         <span class="muted small rule-scope">Filesystems on Linux servers and appliances.</span>
       </div>
       <div class="rule-row">
+        <label class="checkbox"><input type="checkbox" name="space_trend" value="1" {% if r.space_trend %}checked{% endif %}>
+          <span>A pool or disk will be full in under</span></label>
+        <input type="number" name="space_trend_days" min="1" max="365" required value="{{ r.space_trend_days }}" aria-label="Days until full">
+        <span>days</span>
+        <span class="muted small rule-scope">At the rate it has grown over the last two weeks, once there are two days of history.</span>
+      </div>
+      <div class="rule-row">
         <label class="checkbox"><input type="checkbox" name="drive_temperature" value="1" {% if r.drive_temperature %}checked{% endif %}>
           <span>A drive is at</span></label>
         <input type="number" name="drive_celsius" min="30" max="120" required value="{{ r.drive_celsius }}" aria-label="Drive temperature in Celsius">

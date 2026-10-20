@@ -26,7 +26,7 @@ from ..models import AlertIncident, Incident, MaintenanceWindow, Target, utcnow
 SOURCES = {
     "cpu": "SNMP", "memory": "SNMP", "temperature": "SNMP", "snmpdown": "SNMP",
     "port": "Port", "busy": "Port", "speed": "Port", "errors": "Port",
-    "pool": "Storage", "space": "Storage", "drive": "Storage",
+    "pool": "Storage", "space": "Storage", "drive": "Storage", "trend": "Storage",
     "api": "API", "apidrive": "TrueNAS", "tnalert": "TrueNAS",
     "pveguest": "Proxmox", "pvezfs": "Proxmox", "pvestore": "Proxmox",
     "pvespace": "Proxmox", "pvedisk": "Proxmox",

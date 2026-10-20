@@ -28,6 +28,7 @@ from .models import (
     ApiCredential,
     AlertIncident,
     Delivery,
+    StorageSample,
     InternetSample,
     MaintenanceWindow,
     AlertState,
@@ -439,7 +440,13 @@ async def _add_heartbeat(session: AsyncSession) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_target_heartbeat_hash ON target (heartbeat_hash)"))
 
 
-CURRENT_VERSION = 26
+@migration(27, "Storage space history, for the time until full")
+async def _add_storage_sample(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(StorageSample.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 27
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

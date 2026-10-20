@@ -20,24 +20,35 @@ snmp_alerts.step):
     again when it is ONLINE;
   * a pool at or over its space limit (85%) on two reads in a row;
   * a filesystem at or over its limit (90%), the same way;
+  * a pool or filesystem filling fast enough to be full within its days
+    (14), from the trend below, on two reads in a row;
   * a drive at or over its temperature (50 C) for its time (10 minutes).
-A space or temperature alert ends once the value is 5 under the line.
+A space or temperature alert ends once the value is 5 under the line; a
+trend alert once it would take half as long again (21 days) or more.
+
+**Time until full.** Each pool's and filesystem's space is kept once an
+hour (models.StorageSample), and a least-squares line through the last 14
+days of it says how fast it is filling and when it would be full: 85% means
+one thing on a pool growing a gigabyte a month and another on one taking
+camera footage at 50 GB a day. Two days of history before it says anything;
+a pool shrinking, or growing less than a megabyte a day, is not growing.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts, suppressions
+from . import alerts, prefs, snmp_alerts, suppressions
 from .collectors import SnmpCollector
 from .collectors.snmp import DriveReading, FilesystemReading, PoolReading
 from .db import session_scope
 from .engine.state import human_duration
-from .models import Device, SnmpDevice, SnmpPoll, SnmpProfile, SnmpStorage, utcnow
+from .models import Device, SnmpDevice, SnmpPoll, SnmpProfile, SnmpStorage, StorageSample, utcnow
 from .snmp_config import credential_for
 from .vault import SecretUnavailable, vault_for
 
@@ -56,6 +67,14 @@ PERCENT_MARGIN = 5.0
 CELSIUS_MARGIN = 5.0
 # Space moves slowly and one odd read is not news: two in a row.
 SPACE_READS = 2
+
+# The trend: a sample an hour, fitted over this long, once there is enough.
+SAMPLE_EVERY = timedelta(hours=1)
+TREND_WINDOW = timedelta(days=14)
+TREND_NEEDS = timedelta(days=2)
+NOT_GROWING = 1_000_000          # bytes a day: less is noise, not growth
+# A trend alert ends once it would take this much longer than its line.
+TREND_CLEAR = 1.5
 
 
 # --------------------------------------------------------------------------
@@ -131,10 +150,10 @@ async def _ask(method, address: str, what: str):  # type: ignore[no-untyped-def]
 
 async def store(session: AsyncSession, row_id: int, *,
                 pools: list[PoolReading] | None, drives: list[DriveReading] | None,
-                filesystems: list[FilesystemReading] | None) -> None:
+                filesystems: list[FilesystemReading] | None, now: datetime | None = None) -> None:
     """Replace what this device said last time, kind by kind. None: not
     answered, so the last reading stands."""
-    now = utcnow()
+    now = now or utcnow()
     batches = (
         (POOL, pools, lambda p: dict(name=p.name, health=p.health, size_bytes=p.size_bytes,
                                      used_bytes=p.used_bytes)),
@@ -149,7 +168,80 @@ async def store(session: AsyncSession, row_id: int, *,
             SnmpStorage.snmp_device_id == row_id, SnmpStorage.kind == kind))
         session.add_all(SnmpStorage(snmp_device_id=row_id, kind=kind, read_at=now,
                                     **fields(item)) for item in found)
+    await _sample(session, row_id, now, pools=pools, filesystems=filesystems)
     await session.flush()
+
+
+async def _sample(session: AsyncSession, row_id: int, now: datetime, *,
+                  pools: list[PoolReading] | None,
+                  filesystems: list[FilesystemReading] | None) -> None:
+    """A sample of each pool's and filesystem's space, if its last is an
+    hour old: the read is every five minutes, the trend needs far fewer."""
+    last = dict(((kind, name), ts) for kind, name, ts in (await session.execute(
+        select(StorageSample.kind, StorageSample.name, func.max(StorageSample.ts))
+        .where(StorageSample.snmp_device_id == row_id)
+        .group_by(StorageSample.kind, StorageSample.name))).all())
+    for kind, found in ((POOL, pools), (FS, filesystems)):
+        for item in found or ():
+            if item.size_bytes is None or item.used_bytes is None or not item.size_bytes:
+                continue
+            before = last.get((kind, item.name))
+            if before is not None and now - before < SAMPLE_EVERY:
+                continue
+            session.add(StorageSample(snmp_device_id=row_id, kind=kind, name=item.name, ts=now,
+                                      size_bytes=item.size_bytes, used_bytes=item.used_bytes))
+
+
+@dataclass(frozen=True)
+class Trend:
+    per_day: float              # bytes a day, from the fitted line
+    days_left: float | None     # None: not growing
+    span: timedelta             # how much history the line is fitted to
+    full_at: datetime | None
+
+
+async def trend(session: AsyncSession, row_id: int, kind: str, name: str,
+                now: datetime | None = None) -> Trend | None:
+    """How fast it is filling and when it would be full, from a least-
+    squares line through its samples over TREND_WINDOW. None until there are
+    TREND_NEEDS of them."""
+    now = now or utcnow()
+    points = (await session.execute(
+        select(StorageSample.ts, StorageSample.used_bytes, StorageSample.size_bytes)
+        .where(StorageSample.snmp_device_id == row_id, StorageSample.kind == kind,
+               StorageSample.name == name, StorageSample.ts >= now - TREND_WINDOW)
+        .order_by(StorageSample.ts))).all()
+    if len(points) < 3 or points[-1].ts - points[0].ts < TREND_NEEDS:
+        return None
+    start = points[0].ts
+    xs = [(p.ts - start).total_seconds() / 86400 for p in points]
+    ys = [float(p.used_bytes) for p in points]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    spread = sum((x - mx) ** 2 for x in xs)
+    if spread <= 0:
+        return None
+    per_day = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / spread
+    span = points[-1].ts - start
+    if per_day < NOT_GROWING:
+        return Trend(per_day, None, span, None)
+    free = max(0.0, float(points[-1].size_bytes) - float(points[-1].used_bytes))
+    days = free / per_day
+    return Trend(per_day, days, span, points[-1].ts + timedelta(days=days))
+
+
+def fmt_days(days: float | None) -> str:
+    """'about 9 days', 'under a day', 'about 3 months': what the page and
+    the alert say."""
+    if days is None:
+        return "not growing"
+    if days < 1:
+        return "under a day"
+    if days < 60:
+        whole = round(days)
+        return f"about {whole} day{'s' if whole != 1 else ''}"
+    if days < 730:
+        return f"about {round(days / 30.4)} months"
+    return "years"
 
 
 async def rows_for(session: AsyncSession, row_id: int) -> dict[str, list[SnmpStorage]]:
@@ -231,6 +323,10 @@ async def evaluate(session: AsyncSession, row_id: int, now: datetime) -> None:
         await _space(run, row_id, name, address, pool, POOL, rules, supp)
     for fs in found[FS]:
         await _space(run, row_id, name, address, fs, FS, rules, supp)
+    tz = prefs.zone_of(await prefs.get_timezone(session))
+    for kind in (POOL, FS):
+        for row in found[kind]:
+            await _trend(session, run, row_id, name, address, row, kind, rules, supp, now, tz)
     limit = supp.line("drive_temperature", float(rules.get("drive_celsius") or 50))
     minutes = int(rules.get("drive_minutes") or 10)
     for drive in found[DRIVE]:
@@ -267,4 +363,33 @@ async def _space(run, row_id: int, name: str, address: str, row: SnmpStorage,  #
               f"{address} — {free} free of {fmt_bytes(row.size_bytes)}; the line is {limit:.0f}%."),
         clear=(f"{name}: {what} is back to {pct:.0f}% full",
                f"{address} — was at or over {limit:.0f}% for {{took}}."),
+    )
+
+
+async def _trend(session: AsyncSession, run, row_id: int, name: str, address: str,  # type: ignore[no-untyped-def]
+                 row: SnmpStorage, kind: str, rules: dict, supp, now: datetime, tz) -> None:  # type: ignore[no-untyped-def]
+    """Filling fast enough to be full within its days. Nothing until the
+    trend has its two days; then not growing counts as clear."""
+    if row.percent is None:
+        return
+    found = await trend(session, row_id, kind, row.name, now)
+    if found is None:
+        return
+    limit = supp.line("space_trend", float(rules.get("space_trend_days") or 14))
+    what = f"pool {row.name}" if kind == POOL else f"disk {row.name}"
+    days = found.days_left
+    when = found.full_at.astimezone(tz).strftime("%a %b %-d") if found.full_at else ""
+    over = round(found.span.total_seconds() / 86400)
+    await run(
+        f"trend:{row_id}:{kind}:{row.name}", breached=days is not None and days < limit,
+        cleared=days is None or days >= limit * TREND_CLEAR, value=days, hold=timedelta(0),
+        reads=SPACE_READS, on=bool(rules.get("space_trend", True)) and not supp.off("space_trend"),
+        kind="space_trend",
+        fire=(f"{name}: {what} will be full in {fmt_days(days)}",
+              f"{address} — {fmt_bytes(row.used_bytes)} of {fmt_bytes(row.size_bytes)}, growing "
+              f"{fmt_bytes(int(found.per_day))} a day over the last {over} days. "
+              f"At this rate it is full around {when}."),
+        clear=(f"{name}: {what} is no longer filling up fast",
+               f"{address} — {'not growing' if days is None else 'full in ' + fmt_days(days)} "
+               f"at the rate now; it was for {{took}}."),
     )

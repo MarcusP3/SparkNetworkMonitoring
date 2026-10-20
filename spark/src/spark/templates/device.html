@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
+{# Time until full, at its last two weeks' rate (storage.trend). #}
+{% macro full_in(s) -%}
+  {%- if s.full_in is none -%}<span class="muted small" title="Two days of history are needed first">learning</span>
+  {%- elif s.per_day -%}<span class="{{ 'warn-text' if s.soon }}" title="Growing {{ s.per_day }} a day">{{ s.full_in }}</span>
+  {%- else -%}<span class="muted small">{{ s.full_in }}</span>
+  {%- endif -%}
+{%- endmacro %}
 {% macro storage_card(st, api) %}
   <section class="card" id="storage">
     <div class="card-head">
@@ -29,7 +36,7 @@
     {% if st.pools or api_pools %}
     <div class="table-scroll">
     <table class="table compact storage-table">
-      <thead><tr><th>Pool</th><th>Health</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th>{% if api %}<th>Last scrub</th>{% endif %}</tr></thead>
+      <thead><tr><th>Pool</th><th>Health</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th><th title="At the rate it has grown over the last two weeks">Full in</th>{% if api %}<th>Last scrub</th>{% endif %}</tr></thead>
       <tbody>
         {% for p in st.pools %}
         <tr>
@@ -39,8 +46,9 @@
           <td>{{ p.used }} of {{ p.size }} <span class="{{ 'warn-text' if p.over else 'muted' }} small">({{ p.pct | round | int }}%)</span></td>
           <td class="num">{{ p.free }}</td>
           <td class="bar-col">{{ bar(p.bar, p.over) }}</td>
+          <td>{{ full_in(p) }}</td>
           {% else %}
-          <td class="muted small" colspan="3">Health only (TrueNAS gives no space for this pool)</td>
+          <td class="muted small" colspan="4">Health only (TrueNAS gives no space for this pool)</td>
           {% endif %}
           {% if api %}<td class="small">{{ scrub(p.row.name) }}</td>{% endif %}
         </tr>
@@ -49,7 +57,7 @@
         <tr>
           <td>{{ name }}</td>
           <td><span class="pill {{ 'ok' if a.healthy else 'bad' }}">{{ a.status or '—' }}</span></td>
-          <td class="muted small" colspan="3">Space is read over SNMP</td>
+          <td class="muted small" colspan="4">Space is read over SNMP</td>
           <td class="small">{{ scrub(name) }}</td>
         </tr>
         {% endfor %}
@@ -87,7 +95,7 @@
     {% if st.filesystems %}
     <div class="table-scroll">
     <table class="table compact storage-table">
-      <thead><tr><th>Filesystem</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th></tr></thead>
+      <thead><tr><th>Filesystem</th><th>Used</th><th class="num">Free</th><th class="bar-col"><span class="visually-hidden">Full</span></th><th title="At the rate it has grown over the last two weeks">Full in</th></tr></thead>
       <tbody>
         {% for f in st.filesystems %}
         <tr>
@@ -95,6 +103,7 @@
           <td>{{ f.used }} of {{ f.size }} <span class="{{ 'warn-text' if f.over else 'muted' }} small">({{ f.pct | round | int }}%)</span></td>
           <td class="num">{{ f.free }}</td>
           <td class="bar-col">{{ bar(f.bar, f.over) }}</td>
+          <td>{{ full_in(f) }}</td>
         </tr>
         {% endfor %}
       </tbody>
