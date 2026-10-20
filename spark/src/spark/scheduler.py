@@ -561,6 +561,29 @@ def schedule_maintenance(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_events(config) -> bool:  # type: ignore[no-untyped-def]
+    """Device events, every minute (receiver.py): close the incidents of
+    rules nothing has matched for their quiet minutes, and drop events
+    past events.keep_days."""
+    from .receiver import HOUSEKEEPING_SECONDS, JOB_ID, housekeeping
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        housekeeping,
+        "interval",
+        seconds=HOUSEKEEPING_SECONDS,
+        args=[config],
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        name="Device events",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

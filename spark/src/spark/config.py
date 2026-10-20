@@ -181,10 +181,24 @@ class NetworkConfig(BaseModel):
     subnets: list[SubnetConfig] = Field(default_factory=list)
 
 
+class EventsConfig(BaseModel):
+    """Listening for SNMP traps and syslog from the network's devices
+    (receiver.py). Off unless asked for: ports below 1024 need the image built
+    with SETCAP_NET_BIND_SERVICE=1 and NET_BIND_SERVICE in cap_add. Ports
+    above 1024 need neither, if the devices can send to one."""
+
+    traps: bool = False
+    trap_port: int = Field(default=162, ge=1, le=65535)
+    syslog: bool = False
+    syslog_port: int = Field(default=514, ge=1, le=65535)
+    keep_days: int = Field(default=30, ge=1, le=365)
+
+
 class Config(BaseModel):
     app: AppConfig = Field(default_factory=AppConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
+    events: EventsConfig = Field(default_factory=EventsConfig)
 
     # Read once per process. The vault asks for the key on every credential
     # it seals or opens, and each ask was a file read; the key does not change

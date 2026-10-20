@@ -31,10 +31,12 @@ SOURCES = {
     "pveguest": "Proxmox", "pvezfs": "Proxmox", "pvestore": "Proxmox",
     "pvespace": "Proxmox", "pvedisk": "Proxmox",
     "internet": "Internet",
+    "event": "Event",
 }
 TARGET = "Target"
 # The source filter's choices, in the order the chips show them.
-SOURCE_CHOICES = (TARGET, "SNMP", "Port", "Storage", "API", "TrueNAS", "Proxmox", "Internet")
+SOURCE_CHOICES = (TARGET, "SNMP", "Port", "Storage", "API", "TrueNAS", "Proxmox", "Internet",
+                  "Event")
 
 
 def source_of(key: str) -> str:

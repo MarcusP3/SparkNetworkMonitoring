@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased — traps and syslog (2026-10-20)
+
+### Added
+
+- **Events** (in the menu): SNMP traps, v1 and v2c, and syslog over UDP,
+  RFC 3164 and 5424, from the network's devices — what a poll a minute
+  misses. Traps are named where SPARK knows them (the standard six and
+  UPS-MIB's), with their values; each event has a syslog severity, a trap's
+  given by what it is (a UPS on battery is critical). Filtered by device,
+  source and severity, 50 to a page, kept `events.keep_days` (30). Each
+  device's page shows its latest eight.
+- **Only known devices are heard.** A packet counts only from a device's
+  address or one merged into it; others are counted, the busiest listed on
+  the Listening card, and dropped. 120 a minute per sender; each packet cut
+  to 8 KB before it is queued (a full queue is 16 MB), and its text to a
+  kilobyte.
+- **Event rules**: traps, syslog or either, a device or any, text it must
+  contain, a severity it must reach, and quiet minutes. The first match
+  opens an incident (source *Event*) and sends one alert, later ones are
+  counted on it, and it closes with "— quiet again" once none has come for
+  the quiet minutes. Mutes, maintenance windows and quiet hours hold them.
+  Four presets; a rule that would match everything is refused.
+- `events:` in `spark.yaml` (`traps`, `trap_port` 162, `syslog`,
+  `syslog_port` 514, `keep_days`), all off. `device_event` and `event_rule`
+  tables (migration 28).
+- **`SETCAP_NET_BIND_SERVICE`** build argument, default `0`: with `1`, and
+  `NET_BIND_SERVICE` uncommented under `cap_add`, the image can bind 162 and
+  514 as uid 9700. Needs `docker compose up -d --build`. Ports above 1024
+  need neither. What it costs is in `docs/configuration.md`.
+
+### Changed
+
+- `tests/test_input_limits.py` finds every `routes_` module instead of
+  listing them, so a new one cannot miss the check (heartbeats' had).
+
+### Known, unfixed
+
+- SNMPv3 traps and informs are not read; they are counted as unreadable.
+- Syslog over TCP or TLS is not heard, only UDP.
+- The community string on a trap is not checked: the sender's address is
+  the only test, and on your own LAN it can be forged.
+- With `NET_BIND_SERVICE` on, SPARK could bind any free port below 1024 on
+  the VM, not only 162 and 514 (host networking).
+- Listeners are IPv4 unless `app.host` names an IPv6 address.
+
 ## Unreleased — time until full (2026-10-20)
 
 ### Added

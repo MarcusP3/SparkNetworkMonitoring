@@ -23,6 +23,9 @@ Linux VM · **Storage** one SQLite file
   much of the month each was up.
 - **Reads your gear over SNMP.** CPU, memory, temperature, interface traffic,
   storage and history charts per device, v2c and v3.
+- **Hears what your gear says.** SNMP traps and syslog from devices it knows,
+  with rules that turn the ones that matter into alerts — the UPS that ran on
+  battery for twenty seconds between two polls. Off until you switch it on.
 - **Talks to TrueNAS, Proxmox and UniFi** over their own APIs: drive health,
   pools, TrueNAS alerts, VMs and containers, SMART, UniFi devices and
   clients — read-only, certificate-pinned.

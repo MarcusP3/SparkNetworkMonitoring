@@ -31,6 +31,7 @@ from .web.routes_credentials import router as credentials_router
 from .web.routes_suppressions import router as suppressions_router
 from .web.routes_backup import router as backup_router
 from .web.routes_heartbeat import router as heartbeat_router
+from .web.routes_device_events import router as device_events_router
 from .web.routes_preferences import router as preferences_router
 from .web.routes_events import router as events_router
 from .web.routes_settings import router as settings_router
@@ -205,6 +206,11 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_credentials(config)
         scheduler_module.schedule_internet(config)
         scheduler_module.schedule_maintenance(config)
+        scheduler_module.schedule_events(config)
+        # SNMP traps and syslog, if spark.yaml asks for them (receiver.py).
+        from . import receiver
+
+        await receiver.start(config)
         scheduler_module.schedule_backup(config)
 
         log.info(
@@ -233,6 +239,7 @@ def create_app(config: Config | None = None) -> FastAPI:
                 ", ".join(config.auth.proxy.trusted_proxies),
             )
         yield
+        await receiver.stop()
         await scheduler_module.shutdown()
         # The SNMP engines are shared across polls and hold this loop's UDP
         # socket (collectors/snmp.py); they go after the jobs that use them.
@@ -322,6 +329,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(suppressions_router)
     app.include_router(backup_router)
     app.include_router(heartbeat_router)
+    app.include_router(device_events_router)
     return app
 
 

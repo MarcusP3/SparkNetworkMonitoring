@@ -44,7 +44,7 @@ Two layers, deliberately:
 
 | Where | What lives there |
 |---|---|
-| `config/spark.yaml` (your copy of `config/spark.example.yaml`; git ignores it) | Things needed *before the database exists*: bind address, data directory, TLS, auth mode, the names SPARK answers as. Its `network.subnets` block seeds the database once and is then ignored |
+| `config/spark.yaml` (your copy of `config/spark.example.yaml`; git ignores it) | Things needed *before the database exists*: bind address, data directory, TLS, auth mode, the names SPARK answers as, and whether it listens for traps and syslog. Its `network.subnets` block seeds the database once and is then ignored |
 | Web UI | Everything you would change routinely: targets, subnets and VLAN tags, the scan schedule, SNMP profiles and the polling interval, the Discord webhook, the other alert channels (ntfy, email, a webhook) and alert settings, and later retention |
 
 Any YAML value can be overridden by environment variable, nesting with double
@@ -146,6 +146,66 @@ confirm it still finds devices; "ICMP unavailable" means the sysctl did not
 take. The compose file also carries a commented `read_only: true` block:
 SPARK writes only under `/data`, so it should simply work, and a
 "Read-only file system" error afterwards is a bug worth reporting.
+
+### Traps and syslog on ports 162 and 514
+
+```yaml
+events:
+  traps: true        # SNMP traps, v1 and v2c, over UDP
+  trap_port: 162
+  syslog: true       # syslog over UDP, RFC 3164 and 5424
+  syslog_port: 514
+  keep_days: 30      # events older than this are deleted; 1 to 365
+```
+
+Both are off by default. They listen on `app.host` (every address, unless
+you set one), start with SPARK, and so need a restart to change
+(`SPARK__EVENTS__TRAPS=true` works too). What SPARK does with what arrives,
+and why it hears only devices it already knows, is in the
+[guide](guide.md#events-traps-and-syslog).
+
+**Ports below 1024 need a capability.** SPARK runs as uid 9700, and Linux
+lets only root bind them unless the process holds `CAP_NET_BIND_SERVICE`.
+It is given the same way as `NET_RAW`, and is just as opt-in. In
+`docker-compose.yml`, both of:
+
+1. `SETCAP_NET_BIND_SERVICE: "1"` under `build.args`, so the image puts the
+   capability on the Python binary beside `cap_net_raw`;
+2. `- NET_BIND_SERVICE` uncommented under `cap_add`;
+
+then `docker compose up -d --build`. The build argument without `cap_add`
+and the container will not start (a file capability the kernel cannot
+grant makes `execve` fail, as above); `cap_add` without the build argument
+gives uid 9700 nothing, and the Events page says the port was refused and
+what to change. The rest of SPARK runs either way.
+
+**What it costs.** Small beside `NET_RAW`, which already lets SPARK send
+any packet it likes, but not nothing:
+
+- It is not per port. With host networking SPARK could bind any free port
+  below 1024 on the VM (53, 80, 443…) if something in it were turned to
+  that, not only the two you meant.
+- It is on the Python binary, so every Python process in the image has it,
+  not only SPARK's listener.
+- A port something else on the VM holds (`snmptrapd`, an `rsyslog`
+  configured to listen) leaves that listener down; the Events page says
+  which.
+- Neither traps nor syslog is authenticated, on any port. SPARK keeps only
+  what comes from a known device's address, and an address can be forged
+  on your own LAN: so a rule sends an alert and never does anything else.
+
+**Without it: a port above 1024.** `trap_port: 1162` and
+`syslog_port: 1514` need no capability at all. Point devices there if they let you choose the port (most syslog
+senders do; some trap senders do not). Otherwise the VM can hand the
+standard ports to SPARK's, keeping the sender's address:
+
+```bash
+sudo iptables -t nat -A PREROUTING -p udp --dport 162 -j REDIRECT --to-ports 1162
+sudo iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-ports 1514
+```
+
+(`iptables-persistent` keeps them across a reboot.) That is ordinary Linux,
+but SPARK's tests do not exercise it.
 
 ### What it costs to run
 

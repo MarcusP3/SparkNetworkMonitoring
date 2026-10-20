@@ -28,6 +28,8 @@ from .models import (
     ApiCredential,
     AlertIncident,
     Delivery,
+    DeviceEvent,
+    EventRule,
     StorageSample,
     InternetSample,
     MaintenanceWindow,
@@ -446,7 +448,14 @@ async def _add_storage_sample(session: AsyncSession) -> None:
     await connection.run_sync(StorageSample.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 27
+@migration(28, "SNMP traps and syslog from devices, and the rules that alert on them")
+async def _add_device_events(session: AsyncSession) -> None:
+    connection = await session.connection()
+    await connection.run_sync(DeviceEvent.__table__.create, checkfirst=True)
+    await connection.run_sync(EventRule.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 28
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

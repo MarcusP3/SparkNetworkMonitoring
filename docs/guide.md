@@ -9,6 +9,7 @@ How each part of SPARK works, page by page. Deploying, upgrading and backing up 
 - [Network map and Services](#network-map-and-services)
 - [Preferences](#preferences)
 - [Alerts](#alerts)
+- [Events: traps and syslog](#events-traps-and-syslog)
 - [SNMP](#snmp)
 - [Credentials](#credentials)
 - [Backup and restore](#backup-and-restore)
@@ -373,7 +374,7 @@ one account.
 place. **Activity** lists what is firing now — every open outage and alert,
 newest first — and the history of everything that has ended, suppressed ones
 included, 25 to a page. Narrow the history by source (Target, SNMP, Port,
-Storage, API, TrueNAS, Proxmox, Internet) or by device. **Messages** is every
+Storage, API, TrueNAS, Proxmox, Internet, Event) or by device. **Messages** is every
 message SPARK decided to send and what became of it: sent, waiting, held for
 quiet hours, failed (with the channel's answer), or not sent because alerting
 was off or no channel was set up to take it; each channel's own outcome is
@@ -584,6 +585,75 @@ transaction as the change that caused it (an outbox, the `notification`
 table), and a job every 15 seconds sends what is due without holding the
 database. A crash cannot lose an alert or send one for a change that never
 committed, and a slow Discord never delays a check.
+
+---
+
+## Events: traps and syslog
+
+What a device says when something happens, rather than what SPARK finds
+when it asks. A poll a minute misses a UPS that ran on battery for twenty
+seconds; the trap the UPS sends does not. **Events** in the menu.
+
+**Off until you switch it on**: `events:` in `spark.yaml`, and for the
+standard ports a capability in the image
+([Configuration](configuration.md#traps-and-syslog-on-ports-162-and-514)).
+Then tell each device where to send: its trap destination (or "trap
+receiver", "SNMP manager") is SPARK's address, v1 or v2c, any community;
+its remote syslog server is SPARK's address, UDP. The **Listening** card
+shows each listener's state, and when a port cannot be had it says why and
+what to change.
+
+**Only devices SPARK knows are heard.** Anything on the network can send
+these, and neither carries a password worth the name, so a packet counts
+only if it comes from a device's address or one merged into it (a device's
+page, **Addresses**). Others are counted and dropped; the Listening card
+lists the ten busiest, which is where to look when a device's events never
+appear (a NAS that logs from a second interface, say). Each sender gets 120
+a minute; past that they are counted and dropped too. The community string
+is not checked.
+
+**What is read:**
+
+- **Traps**, SNMP v1 and v2c. The standard ones by name (coldStart,
+  warmStart, linkDown, linkUp, authenticationFailure) and the UPS-MIB ones
+  most network-card UPSes send (upsTrapOnBattery, upsTrapAlarmEntryAdded,
+  upsTrapAlarmEntryRemoved, upsTrapTestCompleted); the rest by OID. The
+  values that came with it follow, named where SPARK knows the name
+  (`ifName.5 = eth5`). v3 traps and informs are not read, and are counted
+  as such.
+- **Syslog** over UDP, RFC 3164 and RFC 5424: the program as the title, the
+  message as the text. Without a priority a line counts as *notice*.
+
+Every event has a **severity** on syslog's scale, emergency to debug. Syslog
+brings its own; a trap gets one by what it is: a UPS on battery is
+critical, an alarm on it an error, a link down or a failed SNMP login a
+warning, a restart a notice, anything unknown a notice. Text is cut to a
+kilobyte.
+
+**Recent** lists them newest first, 50 to a page, by device, source and
+severity ("at least *error*"), kept for `events.keep_days` (30); each
+device's page has an **Events** card with its latest eight. This is for
+alerting on what matters, not a log store: send the firehose somewhere
+built for it, and SPARK only what is worth knowing.
+
+**Rules** turn events into alerts: a name (what the alert says), traps,
+syslog or either, one device or any, text it must contain (in its title,
+text or trap OID, any case), and a severity it must be at least. Four
+presets start you off: a UPS on battery, a link going down, syslog errors
+and worse, and failed sign-ins (`failed password`, as sshd writes it). A
+rule that would match everything from everywhere is refused.
+
+- The first match opens an incident (source **Event** under Alerts) and
+  sends one message: "nas: Failed sign-ins".
+- Matches while it is open are counted on it ("(14 so far)"), not sent.
+- Once none has come for the rule's **quiet minutes** it closes, and
+  "— quiet again" is sent, with how many and over how long, if recovery
+  messages are on.
+- A muted device's events open their incident and send nothing; under a
+  maintenance window nothing is sent until the window ends, and then only
+  if it is still open. Quiet hours hold them like any other alert.
+- Switching a rule off stops it matching; removing it closes its open
+  incidents within a minute, without a message.
 
 ---
 

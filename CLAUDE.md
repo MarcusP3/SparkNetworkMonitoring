@@ -178,6 +178,10 @@ the compose file must not gain `no-new-privileges` while that capability is
 on the binary (an effective file capability the kernel cannot grant makes
 `execve` fail). The documented alternative — `SETCAP_NET_RAW=0`, no
 `cap_add`, `ping_group_range` on the host — is the only way to have both.
+`CAP_NET_BIND_SERVICE` works the same way and is opt-in, off as shipped
+(`SETCAP_NET_BIND_SERVICE=1` *and* `NET_BIND_SERVICE` in `cap_add`): only for
+SNMP traps on 162 and syslog on 514. `TestImage` in `tests/test_receiver.py`
+fails if the build arguments and `cap_add` disagree.
 `docker compose up -d --build` is needed after any dependency change; a plain
 `up -d` reuses the existing image. It serves HTTPS on 9700 with a self-signed
 certificate unless `app.tls` says otherwise. The container has a 512 MB

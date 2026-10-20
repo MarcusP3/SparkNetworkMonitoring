@@ -672,6 +672,32 @@
   </section>
   {% endif %}
 
+  {% if device_events %}
+  <section class="card" id="device-events">
+    <div class="card-head">
+      <div>
+        <h2>Events</h2>
+        <p class="card-sub">The latest SNMP traps and syslog it sent.</p>
+      </div>
+      <div class="head-actions"><a class="btn-quiet" href="/device-events?device={{ device.id }}#events">All its events →</a></div>
+    </div>
+    <div class="table-scroll">
+    <table class="table compact events-table">
+      <tbody>
+        {% for e in device_events %}
+        <tr>
+          <td class="small nowrap">{{ e.received_at | local('%b %-d, %H:%M') }}</td>
+          <td><span class="ctype">{{ e.source | upper }}</span></td>
+          <td><span class="pill {{ 'bad' if e.severity <= 3 else 'warn' if e.severity == 4 else 'neutral' }}">{{ severities[e.severity] }}</span></td>
+          <td><strong>{{ e.title }}</strong>{% if e.text %}<div class="small event-text">{{ e.text }}</div>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% endif %}
+
   {% set pl = placement %}
   <section class="card" id="place">
     <div class="card-head">

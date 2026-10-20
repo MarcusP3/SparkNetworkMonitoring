@@ -38,6 +38,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 | Availability report — per target and the internet, unreachable and planned apart, CSV | ✅ working |
+| SNMP traps (v1, v2c) and syslog (UDP) — known devices only, rules that alert, the Events page | ✅ working (v3 traps, informs and syslog over TCP not yet) |
 
 SPARK tells you when something goes down, in Discord, ntfy, email or a webhook, and when it comes back —
 see [Alerts](guide.md#alerts).
@@ -152,6 +153,7 @@ spark/
     suppressions.py     one alert rule, for one device, off or with its own line
     maintenance.py      maintenance windows: alerts held while one is on, what is still broken sent when it ends
     availability.py     how much of a range each target was up, from incidents and the check history
+    receiver.py         SNMP traps and syslog: the UDP listeners, parsing, known senders only, the rules that alert
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
@@ -185,6 +187,7 @@ spark/
     web/                routes and dependencies
       routes_device_page.py  the per-device page
       routes_heartbeat.py  /hb/<token>: the pings, with no session, rate-limited
+      routes_device_events.py  /device-events: traps and syslog, the listeners' state, the rules
       routes_credentials.py  Settings → Credentials
       routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
@@ -197,6 +200,7 @@ spark/
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
+    test_receiver.py    traps and syslog: parsing, real UDP on loopback, strangers and rate limits, rules to alerts, the page; the image's capabilities agree with compose
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI
     test_retention.py   downsampling keeps outages; weighted averages; idempotence
@@ -260,7 +264,7 @@ No npm, no bundler, no Alembic. Clone it and read it top to bottom.
 
 ### Conventions
 
-Ten things that will bite you if you don't know them:
+Things that will bite you if you don't know them:
 
 - **Timestamps** use the `UTCDateTime` column type, not `DateTime(timezone=True)`.
   SQLite has no offset, so the latter silently returns naive datetimes and the
@@ -274,6 +278,11 @@ Ten things that will bite you if you don't know them:
   or reorder an entry that has shipped.
 - **SNMP counters** use the `Counter64` column type. They run to 2^64 − 1 and a
   plain `Integer` raises `OverflowError` above 2^63 − 1.
+- **A file capability is set in two places.** The Dockerfile's `setcap` (from a
+  `SETCAP_*` build argument) and the compose file's `cap_add` go together: one
+  without the other either gives uid 9700 nothing or makes `execve` fail, so the
+  container does not start. `tests/test_receiver.py` (`TestImage`) holds them
+  in step. Any capability past `NET_RAW` is opt-in, default off.
 - **Every table sits in `<div class="table-scroll">`.** Without it, a table
   wider than the window widens the whole page instead of scrolling inside its
   card. `tests/test_layout.py` checks every template.

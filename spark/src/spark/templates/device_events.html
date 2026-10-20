@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{# Events: SNMP traps and syslog from devices, and the rules that alert on
+   them (receiver.py, routes_device_events.py). #}
+{% macro severity_pill(n) -%}
+  <span class="pill {{ 'bad' if n <= 3 else 'warn' if n == 4 else 'neutral' }}">{{ severities[n] }}</span>
+{%- endmacro %}
+{% block content %}
+<div class="page page-events">
+  <div class="page-head">
+    <div>
+      <p class="page-tag">Monitoring</p>
+      <h1>Events</h1>
+      <p class="page-sub">SNMP traps and syslog from your devices: what a poll a minute misses, like a UPS
+        that ran on battery for twenty seconds. Rules below turn the ones that matter into alerts.</p>
+    </div>
+  </div>
+
+  <div id="live">
+  <section class="card" id="listening">
+    <div class="card-head"><div><h2>Listening</h2>
+      <p class="card-sub">Set under <code>events:</code> in spark.yaml. Only devices SPARK already knows are
+        heard: anything on the network can send these, so packets from other addresses are counted and dropped.</p></div></div>
+    <div class="table-scroll">
+    <table class="table compact">
+      <thead><tr><th>What</th><th>Port</th><th>State</th></tr></thead>
+      <tbody>
+        {% for key, label in (('trap', 'SNMP traps (v1, v2c)'), ('syslog', 'Syslog (UDP)')) %}
+        {% set l = status.listeners[key] if status else none %}
+        <tr>
+          <td>{{ label }}</td>
+          <td><code>{{ events_config.trap_port if key == 'trap' else events_config.syslog_port }}</code></td>
+          <td>
+            {% if l and l.state == 'listening' %}<span class="pill ok dot">listening</span>
+            {% elif l and l.state == 'failed' %}<span class="pill bad dot">not listening</span> <span class="small">{{ l.error }}</span>
+            {% else %}<span class="pill neutral">off</span> <span class="muted small">events.{{ 'traps' if key == 'trap' else 'syslog' }}: true in spark.yaml to listen</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if status %}{% set c = status.counts %}
+    <p class="muted small">Since SPARK started: {{ c.received }} received, {{ c.stored }} kept,
+      {{ c.unknown }} from addresses SPARK does not know{% if c.limited %}, {{ c.limited }} over a sender's 120 a minute{% endif %}
+      {%- if c.unreadable %}; unreadable: {% for why, n in c.unreadable.items() %}{{ n }} {{ why }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</p>
+    {% if strangers %}
+    <p class="muted small">Not known, so not heard:
+      {% for addr, n, at in strangers %}<code>{{ addr }}</code> ({{ n }}){{ ', ' if not loop.last }}{% endfor %}.
+      If one is yours, let a sweep find it, or check it is not sending from an address of its own that SPARK
+      has not merged in (a device's page, Addresses).</p>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="card" id="events">
+    <div class="card-head"><div><h2>Recent</h2>
+      <p class="card-sub">Newest first, kept {{ events_config.keep_days }} days. Severity is syslog's;
+        a trap is given one by what it is (a UPS on battery is critical, a link down a warning).</p></div></div>
+    <form method="get" action="/device-events#events" class="row-form events-filters">
+      <label class="inline-field"><span class="muted small">Device</span>
+        <select name="device" class="auto-submit">
+          <option value="">Every device</option>
+          {% for d in device_list %}<option value="{{ d.id }}" {% if d.id == filters.device %}selected{% endif %}>{{ d.display_name }}</option>{% endfor %}
+        </select></label>
+      <label class="inline-field"><span class="muted small">From</span>
+        <select name="source" class="auto-submit">
+          <option value="">Traps and syslog</option>
+          <option value="trap" {% if filters.source == 'trap' %}selected{% endif %}>Traps</option>
+          <option value="syslog" {% if filters.source == 'syslog' %}selected{% endif %}>Syslog</option>
+        </select></label>
+      <label class="inline-field"><span class="muted small">At least</span>
+        <select name="severity" class="auto-submit">
+          {% for n in range(7, -1, -1) %}<option value="{{ n }}" {% if n == filters.severity %}selected{% endif %}>{{ 'any' if n == 7 else severities[n] }}</option>{% endfor %}
+        </select></label>
+      <noscript><button type="submit" class="btn-quiet">Apply</button></noscript>
+      <span class="muted small">{{ total }} event{{ 's' if total != 1 }}.</span>
+    </form>
+    {% if rows %}
+    <div class="table-scroll">
+    <table class="table compact events-table">
+      <thead><tr><th>When</th><th>Device</th><th>From</th><th>Severity</th><th>What</th></tr></thead>
+      <tbody>
+        {% for e in rows %}{% set d = devices.get(e.device_id) %}
+        <tr>
+          <td class="small nowrap">{{ e.received_at | local('%b %-d, %H:%M:%S') }}</td>
+          <td>{% if d %}<a href="/devices/{{ d.id }}">{{ d.display_name }}</a>{% endif %}</td>
+          <td><span class="ctype">{{ e.source | upper }}</span></td>
+          <td>{{ severity_pill(e.severity) }}</td>
+          <td><strong>{{ e.title }}</strong>{% if e.text %}<div class="small event-text">{{ e.text }}</div>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted">Nothing yet{% if filters.device or filters.source or filters.severity < 7 %} with these filters{% endif %}.</p>
+    {% endif %}
+    {% if paging.pages > 1 %}
+    <nav class="pager" aria-label="Event pages">
+      {% if paging.prev %}<a class="btn-quiet" href="{{ paging.prev }}#events" rel="prev">← Newer</a>{% else %}<span class="btn-quiet disabled" aria-disabled="true">← Newer</span>{% endif %}
+      <span class="muted small">Page {{ paging.page }} of {{ paging.pages }}</span>
+      {% if paging.next %}<a class="btn-quiet" href="{{ paging.next }}#events" rel="next">Older →</a>{% else %}<span class="btn-quiet disabled" aria-disabled="true">Older →</span>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+  </div>
+
+  <section class="card" id="rules">
+    <div class="card-head"><div><h2>Rules</h2>
+      <p class="card-sub">Which events are worth an alert. The first match opens an incident and sends one
+        message; more while it is open are counted on it; it ends, and says so, once none has come for the
+        rule's quiet minutes. Muted devices and maintenance windows hold these like any other alert.</p></div></div>
+    {% if rules %}
+    <div class="table-scroll">
+    <table class="table compact">
+      <thead><tr><th>Rule</th><th>Matches</th><th>Quiet after</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rules %}
+        <tr class="{{ 'is-quiet' if not r.enabled }}">
+          <td><strong>{{ r.name }}</strong>{% if not r.enabled %} <span class="pill neutral">off</span>{% endif %}</td>
+          <td class="small">{{ {'any': 'Traps or syslog', 'trap': 'Traps', 'syslog': 'Syslog'}[r.source] }}
+            from {{ devices[r.device_id].display_name if r.device_id in devices else 'any device' }}
+            {%- if r.max_severity < 7 %}, {{ severities[r.max_severity] }} or worse{% endif %}
+            {%- if r.contains %}, containing “{{ r.contains }}”{% endif %}</td>
+          <td class="small">{{ r.quiet_minutes }} min</td>
+          <td class="actions">
+            <form method="post" action="/device-events/rules/{{ r.id }}/toggle"><button type="submit" class="btn-quiet">{{ 'Switch on' if not r.enabled else 'Switch off' }}</button></form>
+            <form method="post" action="/device-events/rules/{{ r.id }}/delete"><button type="submit" class="btn-quiet danger">Remove</button></form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="muted small">No rules yet: events are kept and shown, and nothing is sent. Start from one of these,
+        or make your own below.</p>
+    {% endif %}
+    <div class="row-form event-presets">
+      {% for p in presets %}{% if p.name not in rules | map(attribute='name') | list %}
+      <form method="post" action="/device-events/rules">
+        {% for k, v in p.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <button type="submit" class="btn-quiet">+ {{ p.name }}</button>
+      </form>
+      {% endif %}{% endfor %}
+    </div>
+
+    <h3 class="sub-title" id="add">Make a rule</h3>
+    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+    {% set f = form %}
+    <form method="post" action="/device-events/rules" class="maint-form">
+      <label class="stack-field"><span class="muted small">Name (what the alert says)</span>
+        <input type="text" name="name" maxlength="64" required value="{{ f.name or '' }}" placeholder="The firewall blocked a scan"></label>
+      <label class="stack-field"><span class="muted small">From</span>
+        <select name="source">
+          {% for v, label in (('any', 'Traps or syslog'), ('trap', 'Traps'), ('syslog', 'Syslog')) %}<option value="{{ v }}" {% if (f.source or 'any') == v %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">Device</span>
+        <select name="device_id">
+          <option value="">Any device</option>
+          {% for d in device_list %}<option value="{{ d.id }}" {% if f.device_id == d.id | string %}selected{% endif %}>{{ d.display_name }}</option>{% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">Containing (optional; its name, text or trap OID)</span>
+        <input type="text" name="contains" maxlength="128" value="{{ f.contains or '' }}" placeholder="block, linkDown, 1.3.6.1.4.1.318"></label>
+      <label class="stack-field"><span class="muted small">Severity at least</span>
+        <select name="max_severity">
+          {% for n in range(7, -1, -1) %}<option value="{{ n }}" {% if (f.max_severity or '7') == n | string %}selected{% endif %}>{{ 'any' if n == 7 else severities[n] }}</option>{% endfor %}
+        </select></label>
+      <label class="stack-field"><span class="muted small">Quiet after (minutes)</span>
+        <input type="number" name="quiet_minutes" min="1" max="1440" required value="{{ f.quiet_minutes or 30 }}"></label>
+      <div class="form-actions"><button type="submit" class="btn-primary">Add rule</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

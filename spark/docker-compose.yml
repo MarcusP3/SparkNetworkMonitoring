@@ -7,6 +7,11 @@ services:
         # `cap_add: [NET_RAW]` below. 0: no capability at all -- see the
         # "Without NET_RAW" block below for what the host needs instead.
         SETCAP_NET_RAW: "1"
+        # 0 (default): no listening below port 1024. 1: SNMP traps on 162 and
+        # syslog on 514 (events: in spark.yaml) -- and uncomment
+        # NET_BIND_SERVICE under cap_add below, or the container will not
+        # start. Not needed for ports above 1024.
+        SETCAP_NET_BIND_SERVICE: "0"
     image: spark-monitor:latest
     container_name: spark
     restart: unless-stopped
@@ -51,6 +56,10 @@ services:
       - ALL
     cap_add:
       - NET_RAW
+      # With SETCAP_NET_BIND_SERVICE "1" above, for traps on 162 and syslog
+      # on 514. It lets SPARK bind any free port below 1024 on this VM (host
+      # networking), which is the trade: see docs/configuration.md.
+      # - NET_BIND_SERVICE
 
     # --- Without NET_RAW (optional, stronger) -----------------------------
     # The kernel can let ordinary users send ICMP echo through datagram
@@ -62,7 +71,8 @@ services:
     # Then set SETCAP_NET_RAW above to "0", delete the two cap_add lines,
     # uncomment the two below, and `docker compose up -d --build`. Confirm a
     # sweep still finds devices (Devices page, "Scan now") before you keep
-    # it; if it says "ICMP unavailable", the sysctl did not take.
+    # it; if it says "ICMP unavailable", the sysctl did not take. With
+    # SETCAP_NET_BIND_SERVICE "1", keep cap_add and its NET_BIND_SERVICE line.
     # security_opt:
     #   - no-new-privileges:true
 

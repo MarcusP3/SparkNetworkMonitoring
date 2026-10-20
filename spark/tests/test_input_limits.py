@@ -159,15 +159,17 @@ class TestSize:
 
     def test_every_form_field_has_a_server_side_cap(self):
         """So a field added later cannot quietly accept a megabyte."""
+        import importlib
+        import pkgutil
+
         from annotated_types import MaxLen
 
-        from spark.web import (routes_alerts, routes_auth, routes_credentials, routes_device_page,
-                               routes_devices, routes_map, routes_preferences, routes_settings,
-                               routes_suppressions, routes_targets)
+        import spark.web
+        modules = [importlib.import_module(f"spark.web.{m.name}")
+                   for m in pkgutil.iter_modules(spark.web.__path__) if m.name.startswith("routes_")]
+        assert len(modules) >= 15, "every routes_ module, found rather than listed"
         uncapped = []
-        for module in (routes_alerts, routes_auth, routes_credentials, routes_device_page,
-                       routes_devices, routes_map, routes_preferences, routes_settings,
-                       routes_suppressions, routes_targets):
+        for module in modules:
             for route in module.router.routes:
                 for param in route.dependant.body_params:
                     if "str" not in str(param.field_info.annotation):

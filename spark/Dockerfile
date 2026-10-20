@@ -103,9 +103,22 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation .
 # add no-new-privileges. Do not just drop NET_RAW with the file capability
 # still on the binary: a file capability the kernel cannot grant makes
 # execve fail, and the container will not start.
+#
+# CAP_NET_BIND_SERVICE is the same mechanism, and opt-in: only for listening
+# to SNMP traps (UDP 162) and syslog (UDP 514), which a uid that is not root
+# cannot bind (receiver.py, events: in spark.yaml). Build with
+# `--build-arg SETCAP_NET_BIND_SERVICE=1` and add NET_BIND_SERVICE to the
+# compose file's cap_add -- both, or the container will not start, for the
+# reason above. With host networking it lets SPARK bind any free port below
+# 1024 on the VM, not only those two; listening on ports above 1024 instead
+# (events.trap_port and events.syslog_port) needs neither.
 ARG SETCAP_NET_RAW=1
-RUN if [ "$SETCAP_NET_RAW" = "1" ]; then \
-        setcap cap_net_raw+ep "$(readlink -f "$(command -v python3)")"; \
+ARG SETCAP_NET_BIND_SERVICE=0
+RUN caps=""; \
+    if [ "$SETCAP_NET_RAW" = "1" ]; then caps="cap_net_raw"; fi; \
+    if [ "$SETCAP_NET_BIND_SERVICE" = "1" ]; then caps="${caps:+$caps,}cap_net_bind_service"; fi; \
+    if [ -n "$caps" ]; then \
+        setcap "$caps+ep" "$(readlink -f "$(command -v python3)")"; \
     fi
 
 RUN mkdir -p /data /config && chown spark:spark /data /config

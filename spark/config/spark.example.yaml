@@ -73,3 +73,14 @@ network:
     #   cidr: 192.168.30.0/24
     #   vlan: 30
     #   attached: false
+
+# SNMP traps and syslog from your devices (Events page). Off by default.
+# Ports below 1024 need the image built with SETCAP_NET_BIND_SERVICE "1" and
+# NET_BIND_SERVICE added in docker-compose.yml; see docs/configuration.md.
+# Only devices SPARK already knows are listened to.
+events:
+  traps: false
+  trap_port: 162
+  syslog: false
+  syslog_port: 514
+  keep_days: 30

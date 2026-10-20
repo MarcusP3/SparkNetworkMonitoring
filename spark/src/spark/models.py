@@ -1218,6 +1218,49 @@ class StorageSample(Base):
     used_bytes: Mapped[int] = mapped_column(BigInteger)
 
 
+class DeviceEvent(Base):
+    """One SNMP trap or syslog message a device sent (receiver.py).
+
+    Only from devices SPARK knows, rate-limited per sender, and kept
+    events.keep_days (30). Not a log store: the text is cut to a kilobyte,
+    and an event matters because an EventRule can turn it into an alert
+    (migration 28)."""
+
+    __tablename__ = "device_event"
+    __table_args__ = (Index("ix_device_event_device_at", "device_id", "received_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"))
+    received_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+    source: Mapped[str] = mapped_column(String(8))          # "trap" or "syslog"
+    # Syslog's scale, 0 (emergency) to 7 (debug); a trap is given one.
+    severity: Mapped[int] = mapped_column(Integer, default=5)
+    title: Mapped[str] = mapped_column(String(255))          # trap name, or syslog tag
+    text: Mapped[str | None] = mapped_column(Text)
+    oid: Mapped[str | None] = mapped_column(String(128))     # a trap's OID
+    address: Mapped[str] = mapped_column(String(45))         # who sent it
+
+
+class EventRule(Base):
+    """Which device events are worth an alert (receiver.py): from a source,
+    optionally one device, optionally containing some text, at or above a
+    severity. A match opens one incident and sends one alert; more matches
+    while it is open are counted on it; it closes once none has come for
+    `quiet_minutes` (migration 28)."""
+
+    __tablename__ = "event_rule"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(8), default="any")   # any, trap, syslog
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"))
+    contains: Mapped[str | None] = mapped_column(String(128))
+    max_severity: Mapped[int] = mapped_column(Integer, default=7)    # 3: error or worse
+    quiet_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
 class ApiCredential(Base, TimestampMixin):
     """A key for a device's own API (Settings -> Credentials).
 

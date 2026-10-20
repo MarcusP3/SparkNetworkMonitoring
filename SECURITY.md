@@ -21,7 +21,10 @@ fix to point at.
 - Getting past sign-in, or staying signed in after being signed out.
 - Reading or changing another instance's data, credentials, or alerts.
 - Getting SPARK to send requests, credentials, or traffic somewhere it should not.
-- Container escape, or anything that turns SPARK's `NET_RAW` into more than ping.
+- Container escape, or anything that turns SPARK's `NET_RAW` into more than ping,
+  or the optional `NET_BIND_SERVICE` into more than listening for traps and syslog.
+- A trap or syslog line from an address SPARK does not know getting kept, or any
+  of them doing more than being recorded and matched against rules.
 
 ## Out of scope
 
@@ -31,7 +34,9 @@ fix to point at.
 - The self-signed certificate not being trusted by browsers. It is pinned by
   fingerprint, not trusted by a CA; see `docs/configuration.md`.
 - SNMPv2c sending its community in clear text, and anything else that is the
-  protocol's own property. SPARK says so in the UI.
+  protocol's own property. SPARK says so in the UI. That includes traps and
+  syslog forged from a known device's address on your own network: neither
+  protocol authenticates, and the docs say so.
 - Denial of service against the monitoring of your own network from your own
   network.
 

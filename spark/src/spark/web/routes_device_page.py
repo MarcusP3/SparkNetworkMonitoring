@@ -17,12 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, maintenance, merge, snmp_alerts, storage, topology
 from .. import proxmox_health, suppressions, truenas_health, unifi
-from .. import charts, events
+from .. import charts, events, receiver
 from .. import scheduler as scheduler_module
 from .. import snmp_history as history
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
+    DeviceEvent,
     ROLE_LABELS,
     AlertIncident,
     AlertMute,
@@ -337,6 +338,11 @@ async def device_page(
             # A maintenance window it is under now, its own or one above it;
             # and the quick choices for starting one (maintenance.py).
             "under": under,
+            # SNMP traps and syslog it sent (receiver.py): the latest few.
+            "device_events": list((await session.execute(
+                select(DeviceEvent).where(DeviceEvent.device_id == device.id)
+                .order_by(DeviceEvent.received_at.desc()).limit(8))).scalars()),
+            "severities": receiver.SEVERITIES,
             "durations": maintenance.DURATIONS,
             "everything_below": len(hierarchy.descendants(
                 dict((await session.execute(select(Device.id, Device.parent_device_id))).all()),
