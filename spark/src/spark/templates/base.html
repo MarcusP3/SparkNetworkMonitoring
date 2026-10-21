@@ -23,6 +23,23 @@
     <a href="/devices" class="{% if request.url.path.startswith('/devices') %}active{% endif %}">Devices</a>
     <a href="/map" class="{% if request.url.path.startswith('/map') %}active{% endif %}"><span class="nav-full">Network map</span><span class="nav-short">Map</span></a>
     <a href="/services" class="{% if request.url.path.startswith('/services') %}active{% endif %}">Services</a>
+    {# Integrations drops down to each kind there is one of (integrations.py),
+       or to Settings to add the first. Open on its own pages. The top bar
+       of a narrow screen has no room to drop down, so there it is a link to
+       the list -- as it is anywhere the menu was not read. #}
+    {% set on_integrations = request.url.path.startswith('/integrations') %}
+    {% if request.state.integrations is defined %}
+    <details class="nav-group"{% if on_integrations %} open{% endif %}>
+      <summary class="{% if on_integrations %}active{% endif %}">Integrations</summary>
+      <div class="nav-sub">
+        {% for k in request.state.integrations %}
+        <a href="/integrations/{{ k.slug }}" class="{% if request.url.path == '/integrations/' ~ k.slug %}active{% endif %}">{{ k.label }}{% if k.count > 1 %} <span class="nav-count">{{ k.count }}</span>{% endif %}</a>
+        {% endfor %}
+        <a href="/settings/credentials?add#credentials" class="nav-add">{{ 'Add an integration…' if request.state.integrations else 'Add credentials in Settings' }}</a>
+      </div>
+    </details>
+    {% endif %}
+    <a href="/integrations" class="nav-integrations{% if on_integrations %} active{% endif %}">Integrations</a>
     <a href="/alerts" class="{% if request.url.path.startswith('/alerts') %}active{% endif %}">Alerts</a>
     <a href="/device-events" class="{% if request.url.path.startswith('/device-events') %}active{% endif %}">Events</a>
     <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}">Settings</a>

@@ -469,6 +469,15 @@ class TestPages:
         assert '<span class="pill warn" title="UniFi has a newer firmware for it">update</span>' in page
         assert KEY not in page
 
+    def test_its_integrations_page(self, site, fake):
+        site.post("/settings/credentials", data={
+            "kind": "unifi", "name": "unifi", "device_id": "1", "host": fake.host, "api_key": KEY})
+        site.post("/settings/credentials/1/trust", data={"fingerprint": fake.fingerprint})
+        page = flat(site.get("/integrations/unifi").text)
+        assert "<h2>unifi</h2>" in page and 'on <a href="/devices/1">gw</a> ·' in page
+        assert '<section class="card pve-card unifi-card" id="unifi-1">' in page
+        assert "3 of 4 devices online" in page and KEY not in page
+
     def test_a_bad_key_says_why_and_keeps_what_was_typed(self, site):
         response = site.post("/settings/credentials", data={
             "kind": "unifi", "name": "unifi", "device_id": "1", "host": "", "api_key": "a b"})

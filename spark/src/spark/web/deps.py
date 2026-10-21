@@ -163,6 +163,11 @@ async def require_user(
         name = await prefs.get_timezone(session)
         request.state.tz_name = name
         request.state.tz = prefs.zone_of(name)
+        # The sidebar's Integrations menu (base.html), three small counts.
+        # Not for the live refresh: it swaps #live and keeps the sidebar.
+        if not background(request):
+            from .. import integrations
+            request.state.integrations = await integrations.menu(session)
         return user
     if await setup_required(session):
         raise RedirectException("/setup")

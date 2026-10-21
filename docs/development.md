@@ -35,6 +35,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
+| Integrations — a sidebar menu with a line per kind set up, and a page per kind listing every one | ✅ working |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 | Availability report — per target and the internet, unreachable and planned apart, CSV | ✅ working |
@@ -159,6 +160,7 @@ spark/
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
     unifi.py            the UniFi Network Integration API: an API key over pinned HTTPS, GET only; the UniFi card
+    integrations.py     the kinds under Integrations (TrueNAS, Proxmox, UniFi, Hermes), how many of each, the sidebar's menu
     servicemap.py       the network map: the tree, each device's status, the services list
     diagram.py          the map's Diagram view: where each box goes, top-down; lines coloured by trouble below
     hierarchy.py        a device's place: parents, loops refused, "is anything above it down"
@@ -188,12 +190,14 @@ spark/
       snmp.py           the SNMP collector
     web/                routes and dependencies
       routes_device_page.py  the per-device page
+      routes_integrations.py  /integrations and a page per kind: every one of it, with its device's cards
+      integration_cards.py  an integration's cards, built one way for its device's page and its Integrations page
       routes_heartbeat.py  /hb/<token>: the pings, with no session, rate-limited
       routes_device_events.py  /device-events: traps and syslog, the listeners' state, the rules
       routes_credentials.py  Settings → Credentials
       routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
-    templates/          Jinja templates
+    templates/          Jinja templates; `_integrations.html` holds the API, Storage, Proxmox, UniFi and Hermes cards
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
@@ -239,6 +243,7 @@ spark/
     test_truenas_health.py  pool topology, disks and alerts in the shapes a real 25.10 box returns; drive and TrueNAS alerts
     test_proxmox.py     the Proxmox client against a TLS fake: nothing sent before Trust; parsing; guest, storage and SMART alerts; the card
     test_unifi.py       the UniFi client against a TLS fake: nothing sent before Trust; paging; 9.x and 10.x answers read alike; the card
+    test_integrations.py  the sidebar's Integrations menu, with none and with some; each kind's page; Test and Watch come back to it
     test_internet.py    the Internet card: up/degraded/down and why, the alert after two checks, gateway, off; no real network
     test_service_map.py  the tree, statuses, search, placing devices, alerts quiet below a down device
     test_merge.py       merging duplicates; sweeps afterwards count the address as the kept device
@@ -319,6 +324,17 @@ Things that will bite you if you don't know them:
   sits behind the top of `<main>`, so a page's heading sits on the picture. The
   sidebar links stay plain `<a>` text: their icons are CSS masks keyed on the
   `href` in `app.css`, so a new page adds its icon there, not in the template.
+  The one exception is Integrations, a `<details>` whose `<summary>` wears the
+  links' dress; below 861px it hides, and a plain link to `/integrations`
+  stands in, since the top bar there scrolls sideways and has no room to drop
+  down.
+- **A new integration** (Docker is the next) is an entry in
+  `integrations.KINDS` and `ABOUT`, a count in `integrations.counts()`, its
+  cards in `templates/_integrations.html` built by `web/integration_cards.py`,
+  and a branch in `routes_integrations.integration_page`. The menu and the
+  list then find it with nothing else to change. Its cards take `listed`, so
+  on its Integrations page each one is named and links its device, and its
+  forms' `back` returns there.
   Panels are `.card` (the chamfered frame is drawn by `::before`/`::after`, so
   a card must not use those itself); stat tiles are `.stat`.
 - **A page brought into SPARK 2 has a page class and a tag.** `page-dash`,

@@ -727,6 +727,17 @@ class TestPages:
         site.post(f"/settings/credentials/{ident}/watch", data={"vmid": "103", "on": "0"})
         assert run(_row(ident)).options == {"watched": [], "labels": {}}
 
+    def test_its_integrations_page(self, site, db, fake):
+        ident = run(_trusted(db, fake.host))
+        page = flat(site.get("/integrations/proxmox").text)
+        assert "<h2>pve</h2>" in page and 'on <a href="/devices/1">hv</a> ·' in page
+        assert f'<section class="card pve-card" id="guests-{ident}">' in page
+        assert "3 of 4 guests running" in page
+        response = site.post(f"/settings/credentials/{ident}/watch",
+                             data={"vmid": "103", "on": "1", "back": "/integrations/proxmox"})
+        assert response.headers["location"] == f"/integrations/proxmox#guests-{ident}"
+        assert 'class="btn-quiet is-watched is-toggle"' in site.get("/integrations/proxmox").text
+
     def test_watching_something_gone_can_be_undone(self, site, db, fake):
         ident = run(_trusted(db, fake.host))
         watch(ident, 555)

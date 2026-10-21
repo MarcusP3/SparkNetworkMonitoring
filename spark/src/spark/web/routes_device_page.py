@@ -16,16 +16,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import alerts, credentials, hierarchy, identity, limits, maintenance, merge, snmp_alerts, storage, topology
-from .. import proxmox_health, suppressions, truenas_health, unifi
 from .. import charts, events, receiver
 from .. import scheduler as scheduler_module
 from .. import snmp_history as history
-from ..checks import hermes
 from ..discovery.oui import is_locally_administered
 from ..discovery.services import services_for
 from ..models import (
-    CheckResult,
-    CheckType,
     DeviceEvent,
     ROLE_LABELS,
     AlertIncident,
@@ -42,6 +38,7 @@ from ..models import (
     utcnow,
 )
 from ..config import Config
+from . import integration_cards
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
 router = APIRouter()
@@ -291,62 +288,14 @@ async def device_page(
     suggested = await identity.suggestions(session)
     discovery, placed = await topology.suggestions(session)
     snmp_read = (await identity.reports(session)).read_at.get(device.id)
-    now = utcnow()
-    apis = [dict(a, ago=_ago(a["row"].last_checked_at, now))
-            for a in await credentials.for_device(session, device)]
-    rules = await snmp_alerts.load(session)
-    hot = float(rules.get("drive_celsius") or 50)
-    api_storage = next((v for a in apis if (v := truenas_health.view(a["row"], hot=hot))), None)
-    # Proxmox: its host, guests, storage and drives, under its API card.
-    line = (await suppressions.for_device(session, device.id)).line(
-        "pool_space", float(rules.get("pool_space_percent") or 85))
-    for a in apis:
-        a["pve"] = proxmox_health.view(a["row"], line=line)
-    # UniFi: the devices it manages, each linked to its SPARK page by MAC,
-    # or by address for one SPARK knows by IP alone (a routed VLAN).
-    if any(a["row"].kind == "unifi" for a in apis):
-        known = (await session.execute(
-            select(Device.id, Device.mac, Device.primary_ip).where(Device.ignored.is_(False))
-            .order_by(Device.id))).all()
-        macs = {mac: ident for ident, mac, _ in known if mac}
-        ips: dict[str, int] = {}
-        for ident, mac, ip in known:
-            if ip and not mac:
-                ips.setdefault(ip, ident)
-        live = {ident for ident, _, _ in known}
-        for ident, ip in (await session.execute(
-                select(DeviceAddress.device_id, DeviceAddress.ip))).all():
-            if ident in live:
-                ips.setdefault(ip, ident)
-        for a in apis:
-            a["unifi"] = unifi.view(a["row"], macs=macs, ips=ips)
-    # Hermes Agent running on it: each Hermes target that belongs to this
-    # device, made from it or at its address (checks/hermes.py).
-    from .routes_targets import devices_for, every
-    hermes_targets = list((await session.execute(
-        select(Target).where(Target.check_type == CheckType.HERMES).order_by(Target.name))).scalars())
-    owners = await devices_for(session, hermes_targets)
-    hermes_cards = []
-    for t in hermes_targets:
-        if t.id not in owners or owners[t.id].id != device.id:
-            continue
-        card = hermes.view(t.readings)
-        last = await session.scalar(select(CheckResult).where(CheckResult.target_id == t.id)
-                                    .order_by(CheckResult.ts.desc()).limit(1))
-        hermes_cards.append({
-            "target": t, "hermes": card, "every": every(t.interval_seconds), "last": last,
-            # The last check got no answer as Hermes: what is below is older.
-            "stale": bool(card and card["read_at"] and last and last.ts > card["read_at"]
-                          + timedelta(seconds=1)),
-        })
-    # And the ones the port scan found that no Hermes check reads yet: read
-    # every 5 minutes without being asked, with Watch to alert on it.
-    from .. import hermes_scan
-    unwatched = {s.id for s, _ in await hermes_scan.found(session)}
-    for card in hermes_scan.cards([s for s in services if s.id in unwatched], device.primary_ip):
-        # A TCP check on the port already: Watch turns it into this one.
-        card["upgrade"] = await hermes_scan.tcp_check(session, card["service"], device)
-        hermes_cards.append(card)
+    # Its API credentials and what they read (integration_cards.py): one
+    # Storage card for a TrueNAS's drives and alerts; Proxmox and UniFi
+    # under their API cards.
+    apis = await integration_cards.api_cards(session, await credentials.for_device(session, device))
+    api_storage = next((a["truenas"] for a in apis if a["truenas"]), None)
+    # Hermes Agent running on it: each Hermes check made from it or at its
+    # address, and each dashboard the port scan found on it.
+    hermes_cards = await integration_cards.hermes_cards(session, device)
 
     return templates.TemplateResponse(
         request,

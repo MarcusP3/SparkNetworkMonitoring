@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased — Integrations (2026-10-21)
+
+### Added
+
+- **Integrations**, in the sidebar between Services and Alerts. It drops
+  down to one line for each kind set up: TrueNAS, Proxmox and UniFi once
+  there is a credential for one, Hermes once there is a Hermes check or the
+  port scan has found a Hermes dashboard. Two of a kind are one line, with
+  the count beside it. Under them, **Add an integration…** opens Settings →
+  Credentials at its Add form; with nothing set up, that is the only line,
+  as **Add credentials in Settings**. It is open on its own pages.
+- **A page for each kind** (`/integrations/truenas` and so on) listing every
+  one of it by name, with the cards its device's page shows: the API card,
+  then the Storage card for a TrueNAS (with its pools' space when its device
+  is polled over SNMP), the Proxmox card, the UniFi card, or the Hermes
+  card. Each names its device, with a link, or the address it reads when it
+  has none, so a credential with no device is no longer shown nowhere.
+  Test, Watch on a Proxmox guest and Watch on a found Hermes come back to
+  the page. **Add another** opens the Add form with the kind chosen (for
+  Hermes, Targets → Add target).
+- **`/integrations`**: each kind set up, how many, and how many are not
+  connected. On a phone or a narrow window, where the sidebar is a top bar
+  that scrolls sideways, the Integrations link goes here instead of
+  dropping down.
+- Settings → Credentials takes `?add` to open its Add form, and
+  `?add=<kind>` to open it at that kind.
+
+### Changed
+
+- The device page's API, Storage, Proxmox, UniFi and Hermes cards moved to
+  `templates/_integrations.html`, and what they are built from to
+  `web/integration_cards.py`, so a device's page and its Integrations page
+  show the same cards. Nothing on the device page changed.
+- With the menu open, the sidebar's links keep their height: the picture
+  under them gives way, and on a short screen the sidebar scrolls, rather
+  than Settings sliding under the picture.
+
+### Tests
+
+- `test_integrations.py`: the menu with none and with some, two of a kind
+  as one line, open on its pages; every TrueNAS on its page, with and
+  without a device; Test and a found Hermes's Watch coming back; the empty
+  pages; `?add`. Proxmox's and UniFi's pages, and Watch on a guest coming
+  back, beside their cards in `test_proxmox.py` and `test_unifi.py`.
+- Tried in a browser with the test fakes for all four kinds (two TrueNAS,
+  a Hermes check and a found Hermes): the menu, each page, the list, the
+  Add form opening at its kind, and the phone width's top bar.
+
+### Known, unfixed
+
+- On a phone (640px and narrower) the top bar's Dashboard and Network map
+  links are empty: `.shell .nav .nav-short { display: none; }` hides the
+  short labels ("Home", "Map") that the phone rule switches to. It predates
+  this change.
+
 ## Unreleased — a dashboard that ends where it should (2026-10-21)
 
 ### Fixed

@@ -29,7 +29,8 @@ Linux VM · **Storage** one SQLite file
   battery for twenty seconds between two polls. Off until you switch it on.
 - **Talks to TrueNAS, Proxmox and UniFi** over their own APIs: drive health,
   pools, TrueNAS alerts, VMs and containers, SMART, UniFi devices and
-  clients — read-only, certificate-pinned.
+  clients — read-only, certificate-pinned, each kind on its own page under
+  Integrations.
 - **Draws the map.** A searchable network map built from switch MAC tables,
   with services on their own tab; alerts stay quiet below a device that is down.
 - **Watches your internet connection**: three providers' resolvers, DNS

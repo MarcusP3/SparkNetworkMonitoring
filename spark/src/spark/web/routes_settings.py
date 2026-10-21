@@ -589,6 +589,7 @@ async def settings_section(
     request: Request,
     section: str,
     saved: str = "",
+    add: str | None = None,
     session: AsyncSession = Depends(get_session),
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
@@ -596,13 +597,20 @@ async def settings_section(
     """One Settings sub-page. An unknown name goes to the first one.
 
     Suppressions takes ?device=&rule=&detail= to fill in its form, from the
-    Suppress link beside an incident on the dashboard."""
+    Suppress link beside an incident on the dashboard. Credentials takes
+    ?add to open its Add form, and ?add=<kind> to open it at that kind,
+    from Integrations."""
     if section in MOVED:
         query = request.url.query
         return redirect(MOVED[section] + (f"?{query}" if query else ""))
     if section not in SECTION_URLS or section == "subnets":
         return redirect("/settings")
-    return await _render(request, session, config, user, section=section)
+    from .. import credentials
+
+    cred_form = None
+    if section == "credentials" and add is not None:
+        cred_form = {"kind": add if add in credentials.KINDS else ""}
+    return await _render(request, session, config, user, section=section, cred_form=cred_form)
 
 
 @router.get("/alerts/rules")

@@ -11,6 +11,7 @@ How each part of SPARK works, page by page. Deploying, upgrading and backing up 
 - [Alerts](#alerts)
 - [Events: traps and syslog](#events-traps-and-syslog)
 - [SNMP](#snmp)
+- [Integrations](#integrations)
 - [Credentials](#credentials)
 - [Backup and restore](#backup-and-restore)
 
@@ -127,7 +128,9 @@ without a sign-in, so SPARK does not show them. It shows the
 last answer; when the last check or read got none it says so and what it
 got instead. SPARK keeps only what the card
 shows, never the paths and process details Hermes adds on a loopback bind,
-and reads at most 256 KB of an answer.
+and reads at most 256 KB of an answer. Every Hermes card, checked or found,
+is also under [Integrations](#integrations) → Hermes, each named and with a
+link to its device.
 
 ### Heartbeats
 
@@ -936,6 +939,31 @@ not measuring quite the same thing.
 
 ---
 
+## Integrations
+
+**Integrations**, in the sidebar between Services and Alerts, drops down to
+a line for each kind SPARK reads through its own API: TrueNAS, Proxmox and
+UniFi once there is a credential for one (Settings → Credentials), and
+Hermes once there is a Hermes check or the port scan has found a Hermes
+dashboard. Two of a kind are still one line, with how many beside it. Below
+them, **Add an integration…** opens Settings → Credentials at its Add form.
+With nothing set up, the menu has only that line, as **Add credentials in
+Settings**. It opens by itself on the Integrations pages.
+
+Each line opens a page with every one of that kind, by name, and the cards
+its device's page shows: the API card (connected or not, Test, Settings)
+and, under it, a TrueNAS's Storage card, a Proxmox's guests, storage and
+drives, a UniFi's devices; for Hermes, its card. Each says which device it
+is on, with a link, or the address it reads when it has no device. Test,
+Watch on a Proxmox guest and Watch on a found Hermes bring you back to the
+page. **Add another** at the top opens Settings → Credentials at its Add
+form, with the kind chosen (for Hermes, Targets → Add target).
+
+On a phone or a narrow window the sidebar is a top bar that scrolls
+sideways, with no room to drop down, so **Integrations** there opens
+`/integrations`: every kind set up, how many of each, and how many are not
+connected.
+
 ## Credentials
 
 Settings → Credentials holds keys for devices' own APIs — TrueNAS, Proxmox
@@ -949,7 +977,8 @@ shows there once it is given a device. One without a device still connects
 and is checked, but its card shows on no device page: its row under
 Settings → Credentials carries a **No device** note, and the API filter
 says how many it is leaving out. Choose the device under **Edit** on the
-credential.
+credential. Every credential, with or without a device, is also listed under
+[Integrations](#integrations), on its kind's page.
 
 ### TrueNAS
 

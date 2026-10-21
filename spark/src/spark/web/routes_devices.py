@@ -673,6 +673,10 @@ async def scan_ports_now(
     return redirect(_back(back))
 
 
+# Integrations -> Hermes, where a found dashboard also has Watch.
+HERMES_PAGE = "/integrations/hermes"
+
+
 @router.post("/devices/services/{service_id}/watch")
 async def watch_service(
     service_id: ItemId,
@@ -716,7 +720,7 @@ async def watch_service(
         if tcp.enabled:
             scheduler_module.schedule_target(tcp)
             await scheduler_module.run_now(tcp.id)
-        return redirect(f"{here}#hermes-{tcp.id}" if back == here else "/targets")
+        return redirect(f"{back}#hermes-{tcp.id}" if back in (here, HERMES_PAGE) else "/targets")
     if existing is not None:
         return redirect("/targets")
 
@@ -741,8 +745,9 @@ async def watch_service(
     events.publish({"kind": "created", "target_id": target.id})
     scheduler_module.schedule_target(target)
     await scheduler_module.run_now(target.id)
-    # From its card on the device's page, back to that page; else Targets.
-    return redirect(f"{here}#hermes-{target.id}" if back == here else "/targets")
+    # From its card on the device's page, or on Integrations -> Hermes, back
+    # there; else Targets.
+    return redirect(f"{back}#hermes-{target.id}" if back in (here, HERMES_PAGE) else "/targets")
 
 
 @router.post("/devices/scan")
