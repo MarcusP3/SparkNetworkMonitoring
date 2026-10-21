@@ -87,9 +87,11 @@ up, and nothing else either:
   type `hermes`, the dashboard's address — `host:9119` (9119 is assumed when
   none is given) or its URL behind a proxy.
 
-A port you watched before Hermes checks existed keeps its TCP check: set
-its type to `hermes` on the target's Edit page. To stop SPARK asking at all,
-take 9119 off the scan's list.
+A port already watched by a TCP check (watched before SPARK knew Hermes,
+or added by hand at the same address) still gets the found card, which
+names that check; **Watch** on it turns that check into the Hermes check,
+keeping its name, history and incidents, and an interval you chose. To stop
+SPARK asking at all, take 9119 off the scan's list.
 
 The dashboard listens only on `127.0.0.1` unless started with `--host`
 (`hermes dashboard --host 0.0.0.0`), so SPARK on another machine needs that.

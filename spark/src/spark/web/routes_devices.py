@@ -687,7 +687,9 @@ async def watch_service(
     whether the service answers, and a host that pings while its database is
     dead is exactly the outage you wanted to catch. On 9119, or a service
     named for Hermes, it asks first: an answer as Hermes makes the check that
-    reads its gateway and platforms, and anything else stays TCP.
+    reads its gateway and platforms, and anything else stays TCP. A TCP check
+    already on that port, Hermes answering, becomes the Hermes check, its
+    history kept (hermes_scan.make_hermes).
     """
     service = await session.get(Service, service_id)
     if service is None:
@@ -696,16 +698,28 @@ async def watch_service(
     if device is None or not device.primary_ip:
         return redirect("/devices")
 
-    existing = await session.scalar(
-        select(Target).where(Target.service_id == service.id)
-    )
-    if existing is not None:
-        return redirect("/targets")
-
+    from .. import hermes_scan
     from ..checks import hermes
     from .routes_targets import default_interval
 
     address = f"{device.primary_ip}:{service.port}"
+    here = f"/devices/{device.id}"
+    existing = await session.scalar(
+        select(Target).where(Target.service_id == service.id)
+    )
+    tcp = await hermes_scan.tcp_check(session, service, device)
+    if tcp is not None and hermes.likely(service.port, service.name) \
+            and await hermes.answers_as_hermes(address):
+        hermes_scan.make_hermes(tcp, service, device)
+        await session.commit()
+        events.publish({"kind": "updated", "target_id": tcp.id})
+        if tcp.enabled:
+            scheduler_module.schedule_target(tcp)
+            await scheduler_module.run_now(tcp.id)
+        return redirect(f"{here}#hermes-{tcp.id}" if back == here else "/targets")
+    if existing is not None:
+        return redirect("/targets")
+
     label = service.name or f"port {service.port}"
     kind = CheckType.TCP
     if hermes.likely(service.port, service.name) and await hermes.answers_as_hermes(address):
@@ -728,8 +742,7 @@ async def watch_service(
     scheduler_module.schedule_target(target)
     await scheduler_module.run_now(target.id)
     # From its card on the device's page, back to that page; else Targets.
-    return redirect(f"/devices/{device.id}#hermes-{target.id}" if back == f"/devices/{device.id}"
-                    else "/targets")
+    return redirect(f"{here}#hermes-{target.id}" if back == here else "/targets")
 
 
 @router.post("/devices/scan")

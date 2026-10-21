@@ -31,7 +31,8 @@ from spark.checks.net import run_check
 from spark.discovery.ports import port_name
 from spark.engine import runner
 from spark.main import create_app
-from spark.models import CheckType, Device, HealthStatus, Notification, Service, Target, utcnow
+from spark.models import (CheckResult, CheckType, Device, HealthStatus, Notification, Service, Target,
+                          utcnow)
 
 from test_alerts import _config
 from test_credentials import flat
@@ -605,6 +606,67 @@ class TestFoundByTheScan:
         page = flat(site.get("/devices/1").text)
         assert f'id="hermes-{tid}"' in page and "hermes-found" not in page, "one card, the check's"
         assert run(hermes_scan.read_due(utcnow() + timedelta(hours=1))) == 0, "and the job lets it be"
+
+    def tcp(self, address: str, *, service_id: int | None, interval: int = 15) -> int:
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                d = await s.scalar(select(Device).where(Device.primary_ip == "127.0.0.1"))
+                t = Target(name="agent-vm Hermes", check_type=CheckType.TCP, address=address,
+                           params={"port": 1}, device_id=d.id if service_id else None,
+                           service_id=service_id, interval_seconds=interval,
+                           status=HealthStatus.UP)
+                s.add(t)
+                await s.flush()
+                s.add(CheckResult(target_id=t.id, status=HealthStatus.UP, detail="connected"))
+                return t.id
+        return run(go())
+
+    def results(self, target_id: int) -> list[str]:
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return [r.detail for r in (await s.execute(select(CheckResult).where(
+                    CheckResult.target_id == target_id).order_by(CheckResult.id))).scalars()]
+        return run(go())
+
+    def test_a_tcp_check_on_the_port_is_offered_and_turned(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        tid = self.tcp(server, service_id=sid)
+        run(hermes_scan.read_due())
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-found-{sid}"' in page, "a TCP check does not hide the card"
+        assert ("Watched by a TCP check, " f'<a href="/targets/{tid}/edit">agent-vm Hermes</a>, '
+                "which knows only that the port is open.") in page
+        assert "Turn its TCP check, agent-vm Hermes, into a Hermes check, keeping its history" in page
+        moved = site.post(f"/devices/services/{sid}/watch", data={"back": "/devices/1"})
+        assert moved.headers["location"] == f"/devices/1#hermes-{tid}", "the same target"
+        t = the_target(tid)
+        assert (t.check_type, t.address, t.params, t.interval_seconds) == (CheckType.HERMES, server, {}, 60)
+        assert t.readings["version"] == "0.21.3", "checked straight away"
+        assert self.results(tid)[0] == "connected" and len(self.results(tid)) == 2, "history kept"
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-{tid}"' in page and "hermes-found" not in page
+
+    def test_a_chosen_interval_stays(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        tid = self.tcp(server, service_id=sid, interval=300)
+        site.post(f"/devices/services/{sid}/watch", data={"back": "/devices/1"})
+        assert the_target(tid).interval_seconds == 300
+
+    def test_one_made_by_hand_at_the_address_too(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        tid = self.tcp(server, service_id=None)
+        site.post(f"/devices/services/{sid}/watch", data={"back": "/devices/1"})
+        t = the_target(tid)
+        assert t.check_type == CheckType.HERMES and t.service_id == sid and t.device_id == 1
+        assert the_target_for(sid) == tid, "not a second target"
+
+    def test_not_hermes_leaves_the_tcp_check_alone(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        tid = self.tcp(server, service_id=sid)
+        answer.update(body=b'{"status": "ok"}')
+        moved = site.post(f"/devices/services/{sid}/watch", data={"back": "/devices/1"})
+        assert moved.headers["location"] == "/targets"
+        assert the_target(tid).check_type == CheckType.TCP and the_target(tid).params == {"port": 1}
 
     def test_anywhere_else_back_goes_to_targets(self, site, server, answer):
         sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")

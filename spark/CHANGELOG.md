@@ -35,6 +35,11 @@
   the page. Something else on the port is asked every 15 minutes and shows
   nothing. Kept on the service (`service.readings`, migration 30), trimmed
   as a check's are.
+- **A TCP check already on the port becomes the Hermes check** when Watch
+  is pressed on the card (it says so, and names the check): same target,
+  name, history and incidents; TCP's 15 s becomes a minute, a chosen
+  interval stays. One added by hand at the same address counts too. If
+  Hermes does not answer, the TCP check is left as it is.
 
 ### Changed
 

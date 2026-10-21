@@ -109,6 +109,34 @@ async def read_due(now: datetime | None = None) -> int:
         return 0
 
 
+async def tcp_check(session: AsyncSession, service: Service, device: Device) -> Target | None:
+    """The TCP check already watching this port, if one is: made by Watch
+    before it knew Hermes, or by hand at the same address."""
+    made = await session.scalar(select(Target).where(Target.service_id == service.id))
+    if made is not None:
+        return made if made.check_type == CheckType.TCP else None
+    return await session.scalar(select(Target).where(
+        Target.check_type == CheckType.TCP,
+        Target.address == f"{device.primary_ip}:{service.port}",
+        (Target.device_id == device.id) | Target.device_id.is_(None)).order_by(Target.id).limit(1))
+
+
+def make_hermes(target: Target, service: Service, device: Device) -> None:
+    """A TCP check becomes the Hermes check, keeping its id, its name, its
+    history and its incidents. An interval left at TCP's default takes
+    Hermes's; one somebody chose stays."""
+    from .web.routes_targets import default_interval
+
+    if target.interval_seconds == default_interval(CheckType.TCP):
+        target.interval_seconds = default_interval(CheckType.HERMES)
+    target.check_type = CheckType.HERMES
+    target.address = f"{device.primary_ip}:{service.port}"
+    target.params = {}              # a TCP check's port is in the address now
+    target.readings = None
+    target.service_id = service.id
+    target.device_id = target.device_id or device.id
+
+
 def cards(services: list[Service]) -> list[dict]:
     """The Hermes cards for a device's found dashboards: those that have
     answered as Hermes at least once."""
