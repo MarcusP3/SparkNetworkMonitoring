@@ -97,6 +97,7 @@ WELL_KNOWN: dict[int, str] = {
     9000: "portainer",
     9090: "prometheus",
     9100: "printer / node-exporter",
+    9119: "hermes dashboard",
     9200: "elasticsearch",
     9443: "portainer (https)",
     27017: "mongodb",

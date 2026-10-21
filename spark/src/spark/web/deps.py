@@ -24,6 +24,11 @@ TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
+
+def _hermes_likely(port: int, name: str | None) -> bool:
+    from ..checks.hermes import likely
+    return likely(port, name)
+
 # A row id in a URL. Out of range is "not found" (main.py turns the
 # validation error into a 404 page) rather than an OverflowError from SQLite.
 ItemId = Annotated[int, PathParam(ge=1, le=limits.MAX_ID)]
@@ -91,6 +96,8 @@ def _local(context, when, fmt: str = "%b %-d, %H:%M") -> str:  # type: ignore[no
 templates.env.filters["local"] = _local
 templates.env.globals["asset_version"] = _asset_version()
 templates.env.globals["app_version"] = _app_version()
+# What Watch on a service will ask about first, for its button (checks/hermes.py).
+templates.env.globals["hermes_likely"] = _hermes_likely
 
 
 class RedirectException(Exception):

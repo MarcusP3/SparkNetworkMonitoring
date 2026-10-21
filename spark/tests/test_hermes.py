@@ -27,9 +27,10 @@ from spark import db as D
 from spark.checks import hermes
 from spark.checks.base import CheckSpec
 from spark.checks.net import run_check
+from spark.discovery.ports import port_name
 from spark.engine import runner
 from spark.main import create_app
-from spark.models import CheckType, Device, HealthStatus, Notification, Target, utcnow
+from spark.models import CheckType, Device, HealthStatus, Notification, Service, Target, utcnow
 
 from test_alerts import _config
 from test_credentials import flat
@@ -441,6 +442,70 @@ class TestInSpark:
         site.post(f"/targets/{tid}/edit", data={"name": "Hermes", "check_type": "hermes",
                                                  "address": "127.0.0.1:1", "params": ""})
         assert the_target(tid).readings is None
+
+
+class TestWatchAService:
+    """Watch on a discovered service: a Hermes check when a Hermes dashboard
+    answers there, a TCP check for anything else."""
+
+    def service(self, port: int, name: str | None) -> int:  # type: ignore[no-untyped-def]
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                d = await s.scalar(select(Device).where(Device.primary_ip == "127.0.0.1"))
+                if d is None:
+                    d = Device(mac="aa:00:00:00:00:61", primary_ip="127.0.0.1",
+                               friendly_name="agent-vm", last_seen=utcnow())
+                    s.add(d)
+                    await s.flush()
+                svc = Service(device_id=d.id, port=port, name=name, state="open", last_seen=utcnow())
+                s.add(svc)
+                await s.flush()
+                return svc.id
+        return run(go())
+
+    def watched(self, site, service_id: int) -> Target:  # type: ignore[no-untyped-def]
+        assert site.post(f"/devices/services/{service_id}/watch").status_code == 303
+
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                row = await s.scalar(select(Target).where(Target.service_id == service_id))
+                s.expunge(row)
+                return row
+        return run(go())
+
+    def test_the_scan_names_9119(self):
+        assert port_name(9119) == "hermes dashboard"
+
+    def test_a_hermes_dashboard_gets_a_hermes_check(self, site, server, answer):
+        port = int(server.rsplit(":", 1)[1])
+        t = self.watched(site, self.service(port, "hermes dashboard"))
+        assert (t.check_type, t.name, t.address, t.interval_seconds) == (
+            CheckType.HERMES, "agent-vm Hermes", server, 60)
+        assert the_target(t.id).readings["version"] == "0.21.3", "checked straight away"
+
+    def test_something_else_on_its_port_stays_tcp(self, site, server, answer):
+        answer.update(body=b'{"status": "ok"}')
+        port = int(server.rsplit(":", 1)[1])
+        t = self.watched(site, self.service(port, "hermes dashboard"))
+        assert (t.check_type, t.name) == (CheckType.TCP, "agent-vm hermes dashboard")
+
+    def test_other_services_are_not_asked(self, site, server, answer):
+        port = int(server.rsplit(":", 1)[1])
+        t = self.watched(site, self.service(port, "grafana"))
+        assert t.check_type == CheckType.TCP and t.interval_seconds == 15
+        assert "path" not in answer, "nothing was sent to it"
+
+    def test_the_button_says_what_it_will_make(self, site, server, answer):
+        port = int(server.rsplit(":", 1)[1])
+        self.service(port, "hermes dashboard")
+        self.service(5000, "synology dsm")
+        page = site.get("/services").text
+        assert f"(a Hermes check if Hermes answers, else a TCP check, on port {port})" in page
+        assert "(TCP check on port 5000)" in page
+
+    def test_likely(self):
+        assert hermes.likely(9119, None) and hermes.likely(8080, "My Hermes")
+        assert not hermes.likely(8080, "http-alt")
 
 
 def test_migration_29_from_a_version_28_database():

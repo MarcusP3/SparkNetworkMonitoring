@@ -97,7 +97,7 @@
           <td class="actions">
             {% if not r.target %}
             <form method="post" action="/devices/services/{{ r.service.id }}/watch">
-              <button type="submit" class="btn-quiet" title="Watch this service (TCP check on port {{ r.service.port }})">Watch</button>
+              <button type="submit" class="btn-quiet" title="Watch this service ({{ 'a Hermes check if Hermes answers, else a TCP check,' if hermes_likely(r.service.port, r.service.name) else 'TCP check' }} on port {{ r.service.port }})">Watch</button>
             </form>
             {% endif %}
           </td>
@@ -135,7 +135,7 @@
           </div>
           {% if r.state %}{{ state_pill(r.state) }}{% else %}
           <form method="post" action="/devices/services/{{ r.service.id }}/watch">
-            <button type="submit" class="btn-quiet" title="Watch this service (TCP check on port {{ r.service.port }})">Watch</button>
+            <button type="submit" class="btn-quiet" title="Watch this service ({{ 'a Hermes check if Hermes answers, else a TCP check,' if hermes_likely(r.service.port, r.service.name) else 'TCP check' }} on port {{ r.service.port }})">Watch</button>
           </form>
           {% endif %}
         </li>

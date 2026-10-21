@@ -23,6 +23,10 @@
   a loopback bind. At most 256 KB of an answer is read.
 - An answer of "Invalid Host header" is explained: Hermes only answers to
   the address its dashboard listens on, or its `dashboard.public_url`.
+- **The port scan knows 9119** as *hermes dashboard* (one more built-in
+  port), and **Watch** on a service there, or one named for Hermes, asks
+  `/api/status` first (3 s): an answer as Hermes makes a Hermes check, once
+  a minute; anything else stays the TCP check Watch has always made.
 
 ### Changed
 

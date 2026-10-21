@@ -679,11 +679,14 @@ async def watch_service(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
-    """Turn a discovered service into a TCP target.
+    """Turn a discovered service into a TCP target -- or a Hermes check,
+    when it is a Hermes Agent's dashboard (checks/hermes.py).
 
     A TCP check rather than a ping: the point of watching a service is to know
     whether the service answers, and a host that pings while its database is
-    dead is exactly the outage you wanted to catch.
+    dead is exactly the outage you wanted to catch. On 9119, or a service
+    named for Hermes, it asks first: an answer as Hermes makes the check that
+    reads its gateway and platforms, and anything else stays TCP.
     """
     service = await session.get(Service, service_id)
     if service is None:
@@ -698,13 +701,21 @@ async def watch_service(
     if existing is not None:
         return redirect("/targets")
 
+    from ..checks import hermes
+    from .routes_targets import default_interval
+
+    address = f"{device.primary_ip}:{service.port}"
     label = service.name or f"port {service.port}"
+    kind = CheckType.TCP
+    if hermes.likely(service.port, service.name) and await hermes.answers_as_hermes(address):
+        kind, label = CheckType.HERMES, "Hermes"
     target = Target(
         name=f"{device.display_name} {label}",
-        check_type=CheckType.TCP,
-        address=f"{device.primary_ip}:{service.port}",
+        check_type=kind,
+        address=address,
         device_id=device.id,
         service_id=service.id,
+        interval_seconds=default_interval(kind),
         status=HealthStatus.UNKNOWN,
     )
     session.add(target)

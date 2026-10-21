@@ -75,6 +75,13 @@ on the Targets page with the dashboard's address: `host:9119` (9119 is the
 dashboard's port, and is assumed when none is given), or its URL behind a
 proxy. It is checked once a minute unless you tune it.
 
+Or let the port scan find it: 9119 is on the scan's list as *hermes
+dashboard*, and **Watch** on that service asks it first. An answer as Hermes
+makes a Hermes check; anything else gets the TCP check any watched service
+gets. So does a service you name for Hermes on another port. A port you
+already watched before keeps its TCP check: set its type to `hermes` on the
+target's Edit page.
+
 The dashboard listens only on `127.0.0.1` unless started with `--host`
 (`hermes dashboard --host 0.0.0.0`), so SPARK on another machine needs that.
 Hermes also refuses an address it was not started on: bound to one address,

@@ -509,7 +509,7 @@
                     class="service-form">
                 <button type="submit"
                         class="pill service{% if entry.concern %} warn{% endif %}"
-                        title="{% if entry.concern %}{{ entry.concern }} — {% endif %}Watch this service (TCP check on port {{ service.port }})">
+                        title="{% if entry.concern %}{{ entry.concern }} — {% endif %}Watch this service ({{ 'a Hermes check if Hermes answers, else a TCP check,' if hermes_likely(service.port, service.name) else 'TCP check' }} on port {{ service.port }})">
                   {% if service.name %}{{ service.name }} {% endif %}{{ service.port }}
                 </button>
               </form>

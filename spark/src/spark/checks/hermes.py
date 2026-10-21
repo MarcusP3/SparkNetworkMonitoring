@@ -103,6 +103,17 @@ async def check_hermes(spec: CheckSpec) -> CheckOutcome:
     return outcome
 
 
+def likely(port: int, name: str | None) -> bool:
+    """Worth asking whether a discovered service is Hermes: its port, or its name."""
+    return port == DEFAULT_PORT or "hermes" in (name or "").lower()
+
+
+async def answers_as_hermes(address: str, timeout: float = 3.0) -> bool:
+    """Whether a Hermes dashboard answers there: what Watch asks before it
+    makes a Hermes check rather than a TCP one."""
+    return (await check_hermes(CheckSpec(address=address, timeout_seconds=timeout))).readings is not None
+
+
 async def _read(response: Any, limit: int) -> tuple[bytes, bool]:
     """Up to `limit` bytes of the body, and whether that was all of it."""
     chunks: list[bytes] = []
