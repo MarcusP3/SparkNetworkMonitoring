@@ -433,7 +433,7 @@ class TestPage:
         assert '<a href="/device-events" class="active">Events</a>' in page
         assert page.count('<span class="pill neutral">off</span>') == 2
         assert "events.traps: true in spark.yaml to listen" in page
-        assert "No rules yet" in page and "+ A UPS went on battery" in page
+        assert "No event alerts yet" in page and "+ A UPS went on battery" in page
 
     def test_events_listed_and_filtered(self, site):
         def recent(query: str = "") -> str:   # the Recent card, not the presets below it
@@ -473,10 +473,10 @@ class TestPage:
         site.post("/device-events/rules/1/toggle")
         assert '<span class="pill neutral">off</span></td>' in flat(site.get("/device-events").text)
         site.post("/device-events/rules/1/delete")
-        assert "No rules yet" in site.get("/device-events").text
+        assert "No event alerts yet" in site.get("/device-events").text
 
     @pytest.mark.parametrize("over, message", [
-        ({"name": " "}, "Give the rule a name"),
+        ({"name": " "}, "Give the alert a name"),
         ({"source": "email"}, "traps, syslog or either"),
         ({"device_id": "99"}, "Choose a device"),
         ({"max_severity": "9"}, "severity from the list"),

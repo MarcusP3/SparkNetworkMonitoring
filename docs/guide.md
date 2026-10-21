@@ -674,23 +674,27 @@ device's page has an **Events** card with its latest eight. This is for
 alerting on what matters, not a log store: send the firehose somewhere
 built for it, and SPARK only what is worth knowing.
 
-**Rules** turn events into alerts: a name (what the alert says), traps,
-syslog or either, one device or any, text it must contain (in its title,
-text or trap OID, any case), and a severity it must be at least. Four
-presets start you off: a UPS on battery, a link going down, syslog errors
-and worse, and failed sign-ins (`failed password`, as sshd writes it). A
-rule that would match everything from everywhere is refused.
+**Event alerts** are optional, and only ever add: every event is kept and
+listed whether or not one matches, and the rest of SPARK's alerts (Alerts →
+Rules) are not affected. With none, events are shown and nothing is sent.
+Add one for each kind of event you want a message about: a name (what the
+alert says), traps, syslog or either, one device or any, text it must
+contain (in its title, text or trap OID, any case), and a severity it must
+be at least. Four presets start you off: a UPS on battery, a link going
+down, syslog errors and worse, and failed sign-ins (`failed password`, as
+sshd writes it). One that would match everything from everywhere is
+refused.
 
 - The first match opens an incident (source **Event** under Alerts) and
   sends one message: "nas: Failed sign-ins".
 - Matches while it is open are counted on it ("(14 so far)"), not sent.
-- Once none has come for the rule's **quiet minutes** it closes, and
+- Once none has come for its **quiet minutes** it closes, and
   "— quiet again" is sent, with how many and over how long, if recovery
   messages are on.
 - A muted device's events open their incident and send nothing; under a
   maintenance window nothing is sent until the window ends, and then only
   if it is still open. Quiet hours hold them like any other alert.
-- Switching a rule off stops it matching; removing it closes its open
+- Switching one off stops it matching; removing it closes its open
   incidents within a minute, without a message.
 
 ---

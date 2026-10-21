@@ -11,7 +11,8 @@
       <p class="page-tag">Monitoring</p>
       <h1>Events</h1>
       <p class="page-sub">SNMP traps and syslog from your devices: what a poll a minute misses, like a UPS
-        that ran on battery for twenty seconds. Rules below turn the ones that matter into alerts.</p>
+        that ran on battery for twenty seconds. Every one is kept and listed here; Event alerts, below, are for
+        the ones you want a message about.</p>
     </div>
   </div>
 
@@ -106,14 +107,16 @@
   </div>
 
   <section class="card" id="rules">
-    <div class="card-head"><div><h2>Rules</h2>
-      <p class="card-sub">Which events are worth an alert. The first match opens an incident and sends one
-        message; more while it is open are counted on it; it ends, and says so, once none has come for the
-        rule's quiet minutes. Muted devices and maintenance windows hold these like any other alert.</p></div></div>
+    <div class="card-head"><div><h2>Event alerts</h2>
+      <p class="card-sub">Optional, and only ever adds: the events above are kept and listed whether or not one
+        matches here, and the rest of SPARK's alerts (<a href="/alerts/rules#rules">Alerts → Rules</a>) are not
+        touched. Add one for each kind of event you want a message about. The first match opens an incident
+        and sends one message; more while it is open are counted on it; it ends, and says so, once none has
+        come for its quiet minutes. Muted devices and maintenance windows hold these like any other alert.</p></div></div>
     {% if rules %}
     <div class="table-scroll">
     <table class="table compact">
-      <thead><tr><th>Rule</th><th>Matches</th><th>Quiet after</th><th></th></tr></thead>
+      <thead><tr><th>Alert</th><th>Matches</th><th>Quiet after</th><th></th></tr></thead>
       <tbody>
         {% for r in rules %}
         <tr class="{{ 'is-quiet' if not r.enabled }}">
@@ -133,8 +136,8 @@
     </table>
     </div>
     {% else %}
-      <p class="muted small">No rules yet: events are kept and shown, and nothing is sent. Start from one of these,
-        or make your own below.</p>
+      <p class="muted small">No event alerts yet: every event is still kept and listed above, but none of them
+        sends a message. Start from one of these, or add your own below.</p>
     {% endif %}
     <div class="row-form event-presets">
       {% for p in presets %}{% if p.name not in rules | map(attribute='name') | list %}
@@ -145,7 +148,7 @@
       {% endif %}{% endfor %}
     </div>
 
-    <h3 class="sub-title" id="add">Make a rule</h3>
+    <h3 class="sub-title" id="add">Add an event alert</h3>
     {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
     {% set f = form %}
     <form method="post" action="/device-events/rules" class="maint-form">
@@ -168,7 +171,7 @@
         </select></label>
       <label class="stack-field"><span class="muted small">Quiet after (minutes)</span>
         <input type="number" name="quiet_minutes" min="1" max="1440" required value="{{ f.quiet_minutes or 30 }}"></label>
-      <div class="form-actions"><button type="submit" class="btn-primary">Add rule</button></div>
+      <div class="form-actions"><button type="submit" class="btn-primary">Add alert</button></div>
     </form>
   </section>
 </div>

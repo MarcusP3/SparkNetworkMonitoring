@@ -42,7 +42,7 @@ class RuleError(ValueError):
 async def _check_rule(session: AsyncSession, *, name: str, source: str, device_id: str,
                       contains: str, max_severity: str, quiet_minutes: str) -> dict:
     if not name.strip():
-        raise RuleError("Give the rule a name: it is what the alert says.")
+        raise RuleError("Give the alert a name: it is what the message says.")
     if source not in ("any", *receiver.SOURCES):
         raise RuleError("Choose traps, syslog or either.")
     device = None

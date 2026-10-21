@@ -24,6 +24,14 @@
 - An answer of "Invalid Host header" is explained: Hermes only answers to
   the address its dashboard listens on, or its `dashboard.public_url`.
 
+### Changed
+
+- The Events page's **Rules** card is now **Event alerts** ("Add an event
+  alert", "Add alert"), and says what "Rules" left open: it is optional and
+  only adds alerts. Every event is kept and listed whether or not one
+  matches, and Alerts → Rules is not touched. Words only; the table, routes
+  and anchor are unchanged.
+
 ### Known, unfixed
 
 - The card is on the device's page only: a Hermes target whose address is
