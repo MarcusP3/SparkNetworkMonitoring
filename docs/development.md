@@ -325,7 +325,9 @@ Things that will bite you if you don't know them:
   `page-targets` and so on scope its rules, and `<p class="page-tag">` over the
   `<h1>` replaces the old page icon. Filtering and sorting a list happens in
   the browser over the rows the server sent (data attributes on each `<tr>`),
-  with state kept outside `#live` and re-applied on `spark:live-updated`;
+  with state kept outside `#live` and re-applied on `spark:live-updated`
+  (state that only the old `#live` holds, like a list's scroll position, is
+  read on `spark:live-updating`, just before the swap);
   controls that only work with scripts start `hidden data-js-only`.
 
 

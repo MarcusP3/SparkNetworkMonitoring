@@ -450,7 +450,9 @@ alert rule, starred ports and the mute list; **Suppressions** quiets one rule
 on one device. (Both used to be under Settings; old links still land.)
 **Maintenance** holds alerts while you work on a device (below), and
 **Channels** sends them to ntfy, email or a webhook as well as Discord. The
-dashboard keeps the newest ten, with **All alerts →** to this page.
+dashboard keeps the newest ten, with **All alerts →** to this page. Its card
+is as tall as the network overview beside it (a little taller when that is
+short), and the ten scroll inside it.
 
 **Availability** (Alerts → Availability) says how much of a range each target
 was up: the last 24 hours, 7, 30 or 90 days, a year, this month or last

@@ -143,6 +143,9 @@
           var doc = new DOMParser().parseFromString(html, 'text/html');
           var next = doc.getElementById('live');
           if (!next) return;
+          // For a page that reads its state out of #live before it goes (the
+          // dashboard's incidents list, scrolled inside its card).
+          document.dispatchEvent(new CustomEvent('spark:live-updating'));
           live.innerHTML = next.innerHTML;
           // Mark rows whose status actually moved, so a change that happens
           // while you are looking elsewhere is not silently absorbed.
@@ -262,6 +265,7 @@
         .then(function (html) {
           var next = new DOMParser().parseFromString(html, 'text/html').getElementById('live');
           if (!next) { window.location.reload(); return; }
+          document.dispatchEvent(new CustomEvent('spark:live-updating'));
           live.innerHTML = next.innerHTML;
           document.dispatchEvent(new CustomEvent('spark:live-updated'));
         })

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — a dashboard that ends where it should (2026-10-21)
+
+### Fixed
+
+- **The dashboard's Recent incidents card made the page scroll far past
+  everything else.** Ten SNMP alerts, each with its full cause, ran to some
+  two thousand pixels beside a network overview a fifth of that. The card
+  now takes the overview's height, or 34rem where the overview is shorter,
+  and the ten scroll inside it; the list's foot fades, so a cut-off entry
+  reads as more below. With no incidents the card sizes itself, as before.
+- A live refresh, or Acknowledge and Undo, rebuilds the page's `#live`
+  region; the incidents list now stays where it was scrolled to rather than
+  going back to the top. `base.html` fires `spark:live-updating` before the
+  swap, beside the `spark:live-updated` it already fired after it.
+
+### Tests
+
+- Tried in a browser at desktop and phone widths: the card stops 34rem down
+  with three subnets beside it, the list scrolls, and its position survives
+  both a live refresh and an Acknowledge.
+
 ## Unreleased — pages that never finish loading (2026-10-20)
 
 ### Fixed
