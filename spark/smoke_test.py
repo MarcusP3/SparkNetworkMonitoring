@@ -338,6 +338,11 @@ def main() -> int:
                 check("rows carry identity and status for the swap",
                       'data-target-id=' in r.text and 'data-status=' in r.text)
                 check("EventSource is wired up", "new EventSource('/events')" in r.text)
+                # One stream per browser: per tab, six tabs used up the
+                # browser's connections and the seventh page never loaded.
+                check("tabs share one stream",
+                      "navigator.locks.request('spark-events'" in r.text
+                      and "new BroadcastChannel('spark-events')" in r.text)
                 r = client.get("/")
                 check("dashboard has a live region too",
                       'id="live"' in r.text and 'data-target-id=' in r.text)

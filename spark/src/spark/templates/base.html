@@ -117,7 +117,9 @@
 
     function refresh() {
       if (inFlight) return;          // a burst of changes is still one fetch
-      if (beingEdited()) {           // come back when they have finished
+      // A tab nobody is looking at refetches once, when it is looked at,
+      // rather than once per change while it sits in the background.
+      if (document.hidden || beingEdited()) {   // come back later
         deferred = true;
         return;
       }
@@ -161,11 +163,55 @@
     // A deferred refresh is not dropped, only postponed -- otherwise a page
     // left with a half-typed name in it never updates again.
     setInterval(function () { if (deferred) refresh(); }, 3000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && deferred) refresh();
+    });
 
+    // One stream per browser, not per tab. Over HTTP/1.1 a browser opens at
+    // most six connections to a site, and a stream keeps one for as long as
+    // its page is open: with six SPARK tabs open the seventh page never
+    // loads, and with a few open, clicking quickly through the menu stalls
+    // on whichever request is left waiting for a connection. So one tab
+    // holds the stream and passes each change on to the others. A Web Lock
+    // picks which: it is held until that page goes away, and then the next
+    // tab in line takes it and opens a stream of its own. Without those two
+    // APIs (older browsers) every tab has a stream, as before.
+    //
     // EventSource reconnects on its own if the server restarts, so there is no
-    // retry logic here on purpose.
-    var source = new EventSource('/events');
-    source.addEventListener('change', refresh);
+    // retry logic here on purpose. A stream shut for good (a 401: signed out)
+    // lets go of the lock, so another tab can try.
+    if (!navigator.locks || !window.BroadcastChannel) {
+      new EventSource('/events').addEventListener('change', refresh);
+      return;
+    }
+    var channel = new BroadcastChannel('spark-events');
+    channel.onmessage = refresh;
+    var queued = null, stop = null;
+    function lead() {
+      queued = new AbortController();
+      navigator.locks.request('spark-events', { signal: queued.signal }, function () {
+        return new Promise(function (release) {
+          var source = new EventSource('/events');
+          source.addEventListener('change', function () {
+            channel.postMessage('change');
+            refresh();
+          });
+          source.addEventListener('error', function () {
+            if (source.readyState === EventSource.CLOSED) release();
+          });
+          stop = function () { source.close(); release(); };
+        });
+      }).catch(function () { /* left the queue: see pagehide */ });
+    }
+    lead();
+    // Kept by the browser for Back and Forward, a page is not gone, and would
+    // sit on the lock (or in the queue for it) with nothing to show for it.
+    window.addEventListener('pagehide', function (e) {
+      if (!e.persisted) return;
+      queued.abort();
+      if (stop) { stop(); stop = null; }
+    });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) lead(); });
   })();
 </script>
 {% if user %}

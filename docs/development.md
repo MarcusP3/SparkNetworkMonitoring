@@ -378,11 +378,20 @@ network, discovered whether or not you care. A target is a decision to watch
 something. Merge them and you either monitor everything you find (noise) or lose
 the inventory of what you chose to ignore.
 
-**Live updates push, they do not poll.** `/events` holds one connection per
-open tab and the check runner publishes on state transitions only. Polling
+**Live updates push, they do not poll.** `/events` holds a connection open
+and the check runner publishes on state transitions only. Polling
 costs a request per tab per interval forever and is still late; publishing on
 every check would refetch the page once per check per tab, which turns a
 monitor into load on the thing being monitored.
+
+**One `/events` stream per browser, not per tab** (`base.html`). Over
+HTTP/1.1 a browser opens at most six connections to a site, and a stream
+holds one for as long as its page is open, so six SPARK tabs left the
+seventh page loading forever. The tabs pick one of themselves with a Web
+Lock to hold the stream and pass each change on over a `BroadcastChannel`;
+when that tab goes, the next in line takes over. A hidden tab refetches
+once when it is looked at, not once per change. HTTP/2 would also lift the
+limit, but needs a new dependency (`zttp`) and works only over HTTPS.
 
 **History is downsampled, never deleted outright.** Raw results for 7 days,
 5-minute buckets for 90, hourly for 2 years, with per-status counts kept at

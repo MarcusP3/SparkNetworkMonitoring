@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — pages that never finish loading (2026-10-20)
+
+### Fixed
+
+- **With several SPARK tabs open, a page could load forever**, most often
+  when clicking quickly through the menu; stopping the load and clicking
+  again got it going. Every open page held a live-update stream (`/events`)
+  for as long as it was open, and over HTTP/1.1 a browser opens at most six
+  connections to a site: with six tabs open the seventh page waited for one
+  of them to let go, which they never did. Now one tab holds the stream and
+  passes each change on to the others (a Web Lock picks which, a
+  `BroadcastChannel` carries the changes), and when it closes the next tab
+  takes over. One connection per browser, however many tabs. Browsers
+  without those two APIs keep a stream per tab, as before.
+- A tab in the background no longer refetches its page on every change; it
+  refetches once, when it is looked at again. Rows that changed meanwhile
+  are still marked.
+
+### Tests
+
+- The smoke test checks that pages share the stream. The rest was tried in a
+  browser: eight tabs open on one connection, a change reached every tab,
+  closing the tab that held the stream handed it on, and a hidden tab caught
+  up when shown.
+
 ## Unreleased — Hermes Agent (2026-10-20)
 
 ### Added
