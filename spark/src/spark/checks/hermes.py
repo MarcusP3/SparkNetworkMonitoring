@@ -148,6 +148,22 @@ def _int(value: Any) -> int | None:
     return None
 
 
+def _time(value: Any) -> datetime | None:
+    """An RFC 3339 time as Hermes writes them, or None."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        when = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def _age(value: Any, now: datetime) -> int | None:
+    when = _time(value)
+    return max(0, int((now - when).total_seconds())) if when else None
+
+
 def _label(key: str) -> str:
     """telegram -> Telegram; a profile's own, alpha:discord -> Discord (alpha)."""
     profile, _, name = key.rpartition(":")
@@ -165,8 +181,13 @@ def platforms(status: dict) -> list[dict]:
         if not isinstance(entry, dict):
             continue
         state = (_text(entry.get("state") or entry.get("status"), 24) or "unknown").lower()
+        since = _time(entry.get("updated_at"))
+        retrying = _time(entry.get("retrying_since"))
         rows.append({"key": _text(key, 64), "label": _label(str(key))[:80], "state": state,
-                     "error": _text(entry.get("error_message") or entry.get("error_code"))})
+                     "error": _text(entry.get("error_message") or entry.get("error_code")),
+                     "since": since.isoformat() if since else None,
+                     "retrying_since": retrying.isoformat() if retrying else None,
+                     "attention": entry.get("needs_attention") is True})
     return rows
 
 
@@ -245,19 +266,28 @@ def judge(status: dict, latency_ms: float | None = None) -> CheckOutcome:
 
 def summary(status: dict, now: datetime | None = None) -> dict:
     """What the card shows, and nothing else the answer carried."""
+    now = now or datetime.now(timezone.utc)
     down, warn = problems(status)
     memory = status.get("memory") if isinstance(status.get("memory"), dict) else {}
     disk = status.get("disk") if isinstance(status.get("disk"), dict) else {}
     components = status.get("components") if isinstance(status.get("components"), dict) else {}
+    dashboard = components.get("dashboard") if isinstance(components.get("dashboard"), dict) else {}
+    profiles = status.get("profiles") if isinstance(status.get("profiles"), list) else []
+    running = status.get("gateway_running") is True
     used = disk.get("used_percent")
     return {
-        "read_at": (now or datetime.now(timezone.utc)).isoformat(),
+        "read_at": now.isoformat(),
         "version": _text(status.get("version"), 32),
         "release_date": _text(status.get("release_date"), 32),
         "overall": _text(status.get("overall"), 16),
-        "gateway": {"running": status.get("gateway_running") is True,
+        "gateway": {"running": running,
                     "state": _text(status.get("gateway_state"), 24),
-                    "exit_reason": _text(status.get("gateway_exit_reason"))},
+                    "exit_reason": _text(status.get("gateway_exit_reason")),
+                    # How old its heartbeat was when SPARK read it.
+                    "heartbeat_age_s": _age(status.get("gateway_updated_at"), now) if running else None,
+                    "mode": _text(status.get("gateway_mode"), 16),
+                    "profiles": [p for p in (_text(x, 40) for x in profiles[:20]) if p],
+                    "busy": status.get("gateway_busy") is True},
         "sessions": _int(status.get("active_sessions")),
         "agents": _int(status.get("active_agents")),
         "platforms": platforms(status),
@@ -265,7 +295,12 @@ def summary(status: dict, now: datetime | None = None) -> dict:
                          if isinstance(components.get("storage"), dict) else None, 16),
         "memory": {"pressure": _text(memory.get("pressure"), 16),
                    "available_mb": _int(memory.get("system_available_mb")),
-                   "total_mb": _int(memory.get("system_total_mb"))},
+                   "total_mb": _int(memory.get("system_total_mb")),
+                   "swap_used_mb": _int(memory.get("swap_used_mb")),
+                   "boot_unclean": memory.get("last_boot_unclean") is True,
+                   "boot_oom": memory.get("last_boot_suspected_oom") is True},
+        "dashboard": {"status": _text(dashboard.get("status"), 16),
+                      "errors": _int(dashboard.get("recent_unhandled_errors"))},
         "disk": {"pressure": _text(disk.get("pressure"), 16),
                  "free_mb": _int(disk.get("free_mb")), "total_mb": _int(disk.get("total_mb")),
                  "used_percent": round(float(used), 1) if isinstance(used, (int, float))
@@ -304,12 +339,28 @@ def view(readings: dict | None) -> dict | None:
         read_at = datetime.fromisoformat(readings["read_at"])
     except (TypeError, ValueError):
         read_at = None
+    from ..engine.state import human_duration
+
+    words = []
+    if gateway.get("heartbeat_age_s") is not None:
+        words.append(f"heartbeat {human_duration(gateway['heartbeat_age_s'])} old")
+    if readings.get("agents"):
+        words.append(f"{readings['agents']} agent{'s' if readings['agents'] != 1 else ''} working")
+    profiles = gateway.get("profiles") or []
+    if len(profiles) > 1:
+        words.append(f"{len(profiles)} profiles" + (f", {gateway['mode']}" if gateway.get("mode") else ""))
+    if not gateway.get("running") and gateway.get("exit_reason"):
+        words.append(gateway["exit_reason"])
     return {
         **readings,
         "read_at": read_at,
         "gateway_state": state,
         "gateway_pill": _pill(state if gateway.get("running") else "stopped"),
-        "platforms": [dict(p, pill=_pill(p.get("state"))) for p in readings.get("platforms") or []],
+        "gateway_words": words,
+        "platforms": [dict(p, pill=_pill(p.get("state")), since_at=_time(p.get("since")),
+                           retrying_at=_time(p.get("retrying_since")))
+                      for p in readings.get("platforms") or []],
+        "dashboard_pill": _pill((readings.get("dashboard") or {}).get("status")),
         "storage_pill": _pill(readings.get("storage")),
         "memory_pill": _pill((readings.get("memory") or {}).get("pressure")),
         "disk_pill": _pill((readings.get("disk") or {}).get("pressure")),

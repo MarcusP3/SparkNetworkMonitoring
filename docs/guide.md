@@ -115,9 +115,15 @@ what went wrong.
 - **Up** otherwise: "Hermes 0.21.3: gateway running, 2 of 2 platforms
   connected, 1 active session".
 
-The **Hermes** card, on the page of the device it runs on: what is wrong,
-the gateway, each platform with its error, storage, memory and disk, the
-Nous sign-in when it has one, and a config migration waiting. It shows the
+The **Hermes** card, on the page of the device it runs on: what is wrong;
+the gateway, with how old its heartbeat was, the agents working and its
+profiles; each platform with its error, or since when it has been connected
+or retrying, and Hermes's own *needs attention*; storage; the dashboard and
+its recent errors; memory (with swap in use, and whether the last start
+followed an unclean shutdown or an out-of-memory kill) and disk; the Nous
+sign-in when it has one; and a config migration waiting. Cron jobs, model
+logins, reply counts, usage limits and uptime are not in what Hermes answers
+without a sign-in, so SPARK does not show them. It shows the
 last answer; when the last check or read got none it says so and what it
 got instead. SPARK keeps only what the card
 shows, never the paths and process details Hermes adds on a loopback bind,

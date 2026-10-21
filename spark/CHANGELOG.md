@@ -35,6 +35,11 @@
   the page. Something else on the port is asked every 15 minutes and shows
   nothing. Kept on the service (`service.readings`, migration 30), trimmed
   as a check's are.
+- **More on the Hermes card**, all from the open `/api/status`: the
+  gateway's heartbeat age, agents working and profiles (and the multiplex
+  mode); each platform's connected-or-retrying since, and *needs
+  attention*; a Dashboard row with its recent errors; swap in use, and an
+  unclean last shutdown or an out-of-memory kill before the last start.
 - **A found Hermes port always has its card**: *reading* until the first
   answer, then Hermes's status, or why SPARK could not read it (the error,
   the URL it asked, and `--host 0.0.0.0`), tried every 5 minutes. Only an
@@ -57,6 +62,10 @@
 
 ### Known, unfixed
 
+- Cron jobs, model logins (ChatGPT, Codex) and their expiry, reply counts,
+  usage limits and gateway uptime are not shown: Hermes gives them only to a
+  signed-in dashboard (one login, with full access) or on its own machine
+  (`hermes usage --json`). Decided against holding that login.
 - The card is on the device's page only: a Hermes target whose address is
   no device SPARK knows shows its state and reason on the Targets list but
   has no card.

@@ -16,7 +16,7 @@ import json
 import re
 import socket
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -180,6 +180,62 @@ class TestVerdict:
              "memory": None, "disk": 7, "active_sessions": "many", "gateway_heartbeat_stale_s": True}
         assert verdict(s) == ("up", "Hermes: gateway running")
         hermes.summary(s)
+
+
+class TestOpenStatusDetails:
+    """What the open /api/status says beyond the verdict, for the card."""
+
+    NOW = datetime(2026, 10, 20, 13, 0, 27, tzinfo=timezone.utc)
+
+    def detailed(self) -> dict:
+        s = status(gateway_updated_at="2026-10-20T13:00:00+00:00", gateway_mode="multiplex",
+                   profiles=["default", "work", "lab"], active_agents=1, gateway_busy=True)
+        s["gateway_platforms"]["discord"] = {"state": "retrying", "error_message": "1006",
+                                             "updated_at": "2026-10-20T12:58:00Z",
+                                             "retrying_since": "2026-10-20T12:58:00Z",
+                                             "needs_attention": True}
+        s["memory"].update(swap_used_mb=1900, last_boot_unclean=True, last_boot_suspected_oom=True)
+        s["components"]["dashboard"] = {"status": "ok", "recent_unhandled_errors": 2,
+                                        "last_error_at": None, "selftest": "unknown"}
+        return s
+
+    def test_kept(self):
+        kept = hermes.summary(self.detailed(), now=self.NOW)
+        g = kept["gateway"]
+        assert (g["heartbeat_age_s"], g["mode"], g["profiles"], g["busy"]) == (
+            27, "multiplex", ["default", "work", "lab"], True)
+        discord = kept["platforms"][0]
+        assert discord["retrying_since"] == "2026-10-20T12:58:00+00:00" and discord["attention"]
+        assert kept["memory"]["swap_used_mb"] == 1900 and kept["memory"]["boot_oom"]
+        assert kept["dashboard"] == {"status": "ok", "errors": 2}
+
+    def test_no_heartbeat_when_it_is_not_running(self):
+        s = status(gateway_running=False, gateway_state="stopped",
+                   gateway_updated_at="2026-10-20T12:00:00Z")
+        assert hermes.summary(s, now=self.NOW)["gateway"]["heartbeat_age_s"] is None
+
+    def test_odd_times_are_ignored(self):
+        s = status(gateway_updated_at=1760000000.5)
+        s["gateway_platforms"]["telegram"]["updated_at"] = "yesterday"
+        kept = hermes.summary(s, now=self.NOW)
+        assert kept["gateway"]["heartbeat_age_s"] is None and kept["platforms"][1]["since"] is None
+
+    def test_the_words(self):
+        card = hermes.view(hermes.summary(self.detailed(), now=self.NOW))
+        assert card["gateway_words"] == ["heartbeat 27s old", "1 agent working", "3 profiles, multiplex"]
+        assert card["platforms"][0]["retrying_at"] == datetime(2026, 10, 20, 12, 58, tzinfo=timezone.utc)
+
+    def test_on_the_card(self, site, server, answer):
+        here = device_at("127.0.0.1")
+        answer.update(body=json.dumps(self.detailed()).encode())
+        check(add(site, server))
+        page = flat(site.get(f"/devices/{here}").text)
+        assert "1 agent working · 3 profiles, multiplex" in page and "heartbeat " in page
+        assert '<span class="pill warn">needs attention</span>' in page
+        assert "1006 · retrying since Oct 20, 12:58" in page
+        assert "connected since Oct 20, 13:00" in page
+        assert "1900 MB of swap in use" in page and "its last start followed an out-of-memory kill" in page
+        assert "<td>Dashboard</td>" in page and "2 recent errors" in page
 
 
 class TestSummary:

@@ -382,14 +382,23 @@
         <thead><tr><th>Part</th><th>State</th><th>Detail</th></tr></thead>
         <tbody>
           <tr><td>Gateway</td><td><span class="pill {{ h.gateway_pill }}">{{ h.gateway_state | replace('_', ' ') }}</span></td>
-            <td class="small">{% if h.agents %}{{ h.agents }} agent{{ 's' if h.agents != 1 }} working{% elif h.gateway.exit_reason %}{{ h.gateway.exit_reason }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
+            <td class="small">{% if h.gateway_words %}{{ h.gateway_words | join(' · ') }}{% else %}<span class="muted">—</span>{% endif %}</td></tr>
           {% for p in h.platforms %}
-          <tr class="{% if p.pill == 'neutral' %}is-quiet{% endif %}"><td>{{ p.label }}</td><td><span class="pill {{ p.pill }}">{{ p.state }}</span></td>
-            <td class="small">{{ p.error or '' }}</td></tr>
+          <tr class="{% if p.pill == 'neutral' %}is-quiet{% endif %}"><td>{{ p.label }}</td><td><span class="pill {{ p.pill }}">{{ p.state }}</span>{% if p.attention %} <span class="pill warn">needs attention</span>{% endif %}</td>
+            <td class="small">{% if p.error %}{{ p.error }}{% if p.retrying_at %} · retrying since {{ p.retrying_at | local('%b %-d, %H:%M') }}{% endif %}
+              {%- elif p.retrying_at %}retrying since {{ p.retrying_at | local('%b %-d, %H:%M') }}
+              {%- elif p.since_at %}{{ p.state }} since {{ p.since_at | local('%b %-d, %H:%M') }}{% endif %}</td></tr>
           {% endfor %}
           <tr><td>Storage</td><td><span class="pill {{ h.storage_pill }}">{{ h.storage or 'unknown' }}</span></td><td class="small muted">its session database</td></tr>
+          {% if h.dashboard and h.dashboard.status %}
+          <tr><td>Dashboard</td><td><span class="pill {{ h.dashboard_pill }}">{{ h.dashboard.status }}</span></td>
+            <td class="small">{% if h.dashboard.errors %}{{ h.dashboard.errors }} recent error{{ 's' if h.dashboard.errors != 1 }}{% else %}<span class="muted">no recent errors</span>{% endif %}</td></tr>
+          {% endif %}
           <tr><td>Memory</td><td><span class="pill {{ h.memory_pill }}">{{ h.memory.pressure or 'unknown' }}</span></td>
-            <td class="small">{% if h.memory.available_mb is not none %}{{ h.memory.available_mb }} MB free{% if h.memory.total_mb %} of {{ h.memory.total_mb }} MB{% endif %}{% endif %}</td></tr>
+            <td class="small">{% if h.memory.available_mb is not none %}{{ h.memory.available_mb }} MB free{% if h.memory.total_mb %} of {{ h.memory.total_mb }} MB{% endif %}{% endif %}
+              {%- if h.memory.swap_used_mb %} · {{ h.memory.swap_used_mb }} MB of swap in use{% endif %}
+              {%- if h.memory.boot_oom %} · <span class="pill warn">its last start followed an out-of-memory kill</span>
+              {%- elif h.memory.boot_unclean %} · <span class="pill warn">its last shutdown was not clean</span>{% endif %}</td></tr>
           <tr><td>Disk</td><td><span class="pill {{ h.disk_pill }}">{{ h.disk.pressure or 'unknown' }}</span></td>
             <td class="small">{% if h.disk.free_mb is not none %}{{ h.disk.free_mb }} MB free{% if h.disk.used_percent is not none %}, {{ h.disk.used_percent }}% used{% endif %}{% endif %}</td></tr>
           {% if h.nous_words %}
