@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from spark import db as D
+from spark import hermes_scan
 from spark.checks import hermes
 from spark.checks.base import CheckSpec
 from spark.checks.net import run_check
@@ -506,6 +507,147 @@ class TestWatchAService:
     def test_likely(self):
         assert hermes.likely(9119, None) and hermes.likely(8080, "My Hermes")
         assert not hermes.likely(8080, "http-alt")
+
+
+class TestFoundByTheScan:
+    """A dashboard the port scan found is read without anyone asking, and
+    shown on its device (hermes_scan.py)."""
+
+    service = TestWatchAService.service
+    watched = TestWatchAService.watched
+
+    def readings(self, service_id: int) -> dict | None:
+        async def go():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return (await s.get(Service, service_id)).readings
+        return run(go())
+
+    def test_when_it_is_asked(self):
+        now = utcnow()
+        ago = lambda minutes: (now - timedelta(minutes=minutes)).isoformat()  # noqa: E731
+        assert hermes_scan.due(None, now) and hermes_scan.due({"tried_at": "nonsense"}, now)
+        assert not hermes_scan.due({"tried_at": ago(4), "read_at": ago(4)}, now)
+        assert hermes_scan.due({"tried_at": ago(6), "read_at": ago(6)}, now)
+        assert not hermes_scan.due({"tried_at": ago(10)}, now), "never Hermes: every 15 minutes"
+        assert hermes_scan.due({"tried_at": ago(16)}, now)
+
+    def test_read_kept_and_kept_through_a_failure(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        now = utcnow()
+        assert run(hermes_scan.read_due(now)) == 1
+        first = self.readings(sid)
+        assert first["version"] == "0.21.3" and first["read_at"] == first["tried_at"] == now.isoformat()
+        assert run(hermes_scan.read_due(now + timedelta(minutes=1))) == 0, "not due yet"
+        answer.update(code=500, body=b"{}")
+        later = now + timedelta(minutes=6)
+        assert run(hermes_scan.read_due(later)) == 1
+        kept = self.readings(sid)
+        assert kept["version"] == "0.21.3" and kept["read_at"] == now.isoformat()
+        assert kept["tried_at"] == later.isoformat() and kept["error"] == "HTTP 500 from /api/status"
+
+    def test_not_hermes_leaves_no_card(self, site, server, answer):
+        answer.update(body=b'{"status": "ok"}')
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        run(hermes_scan.read_due())
+        assert set(self.readings(sid)) == {"tried_at", "error"}
+        assert "hermes-found" not in site.get("/devices/1").text
+
+    def test_what_it_leaves_alone(self, site, server, answer):
+        port = int(server.rsplit(":", 1)[1])
+        self.service(port, "grafana")
+        assert run(hermes_scan.read_due()) == 0 and "path" not in answer
+        watched = self.service(9119, "hermes dashboard")
+
+        async def mark():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                s.add(Target(name="h", check_type=CheckType.HERMES, address="127.0.0.1:9119",
+                             service_id=watched))
+                (await s.get(Service, watched)).state = "open"
+        run(mark())
+        assert run(hermes_scan.read_due()) == 0, "a Hermes check reads it already"
+
+        async def close():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                d = await s.scalar(select(Device))
+                s.add(Service(device_id=d.id, port=port + 1 if port < 65535 else 1,
+                              name="hermes dashboard", state="closed"))
+                s.add(Device(mac="aa:00:00:00:00:62", primary_ip="10.9.9.8", ignored=True,
+                             last_seen=utcnow()))
+        run(close())
+        assert run(hermes_scan.read_due()) == 0, "closed ports are not asked"
+
+    def test_the_card_without_a_target(self, site, server, answer):
+        port = int(server.rsplit(":", 1)[1])
+        sid = self.service(port, "hermes dashboard")
+        run(hermes_scan.read_due())
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-found-{sid}"' in page and '<span class="pill dot status-up">up</span>' in page
+        assert f"found on port {port} by the port scan, read every 5 min" in page
+        assert f'action="/devices/services/{sid}/watch"' in page
+        assert "Shown, not alerted on." in page and "<td>Telegram</td>" in page
+
+    def test_the_card_says_when_it_stopped_answering(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        now = utcnow()
+        run(hermes_scan.read_due(now - timedelta(minutes=6)))
+        answer.update(code=500, body=b"{}")
+        run(hermes_scan.read_due(now))
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-found-{sid}"' in page and "not answering</span>" in page
+        assert "Last read: HTTP 500 from /api/status. Below is what it said" in page
+
+    def test_watch_from_the_card_comes_back_to_a_checked_card(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        run(hermes_scan.read_due())
+        moved = site.post(f"/devices/services/{sid}/watch", data={"back": "/devices/1"})
+        tid = the_target_for(sid)
+        assert moved.status_code == 303 and moved.headers["location"] == f"/devices/1#hermes-{tid}"
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-{tid}"' in page and "hermes-found" not in page, "one card, the check's"
+        assert run(hermes_scan.read_due(utcnow() + timedelta(hours=1))) == 0, "and the job lets it be"
+
+    def test_anywhere_else_back_goes_to_targets(self, site, server, answer):
+        sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
+        moved = site.post(f"/devices/services/{sid}/watch", data={"back": "https://elsewhere.test/"})
+        assert moved.headers["location"] == "/targets"
+
+    def test_the_job_runs_every_minute(self, site):
+        from spark import scheduler as scheduler_module
+        job = scheduler_module._scheduler.get_job(hermes_scan.JOB_ID)
+        assert job is not None and job.name == "Hermes dashboards"
+
+
+def the_target_for(service_id: int) -> int:
+    async def go():  # type: ignore[no-untyped-def]
+        async with D.session_scope() as s:
+            return await s.scalar(select(Target.id).where(Target.service_id == service_id))
+    return run(go())
+
+
+def test_migration_30_from_a_version_29_database():
+    async def go():  # type: ignore[no-untyped-def]
+        config = _config()
+        D.init_engine(config)
+        await D.init_db(config)
+        async with D.session_scope() as s:
+            await s.execute(text("ALTER TABLE service DROP COLUMN readings"))
+            await D._set_version(s, 29)
+        await D.close_engine()
+        D.init_engine(config)
+        await D.init_db(config)
+        async with D.session_scope() as s:
+            d = Device(mac="aa:00:00:00:00:71", primary_ip="10.0.0.5", last_seen=utcnow())
+            s.add(d)
+            await s.flush()
+            s.add(Service(device_id=d.id, port=9119, readings={"tried_at": "x"}))
+        async with D.session_scope() as s:
+            row = await s.scalar(select(Service))
+            version = await D._get_version(s)
+        await D.close_engine()
+        return row.readings, version
+
+    readings, version = asyncio.run(go())
+    assert readings == {"tried_at": "x"} and version == D.CURRENT_VERSION >= 30
 
 
 def test_migration_29_from_a_version_28_database():

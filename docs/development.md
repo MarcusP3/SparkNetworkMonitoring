@@ -154,6 +154,7 @@ spark/
     maintenance.py      maintenance windows: alerts held while one is on, what is still broken sent when it ends
     availability.py     how much of a range each target was up, from incidents and the check history
     receiver.py         SNMP traps and syslog: the UDP listeners, parsing, known senders only, the rules that alert
+    hermes_scan.py      Hermes dashboards the port scan found: read every 5 minutes for the device's card, unasked
     truenas_health.py   drive health and TrueNAS's alerts over the API: the alerts, the Storage card
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
@@ -201,7 +202,7 @@ spark/
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
     test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
-    test_hermes.py      Hermes Agent: the verdict on its status, a real local server, the alert, the card, migration 29
+    test_hermes.py      Hermes Agent: the verdict on its status, a real local server, the alert, the card, found by the scan, migrations 29-30
     test_receiver.py    traps and syslog: parsing, real UDP on loopback, strangers and rate limits, rules to alerts, the page; the image's capabilities agree with compose
     test_events.py      what live updates publish, and what they stay quiet about
     test_discovery.py   device identity across DHCP churn, ARP parsing, OUI

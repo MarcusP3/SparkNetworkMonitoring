@@ -67,20 +67,29 @@ attached.
 
 ### Hermes Agent
 
-The `hermes` check watches a [Hermes Agent](https://hermes-agent.nousresearch.com/)
+SPARK reads a [Hermes Agent](https://hermes-agent.nousresearch.com/)
 through its dashboard's `/api/status`, which Hermes answers without sign-in
 for exactly this: version, gateway, messaging platforms, health and
-pressure, no conversations and no secrets. So it needs no credential. Add it
-on the Targets page with the dashboard's address: `host:9119` (9119 is the
-dashboard's port, and is assumed when none is given), or its URL behind a
-proxy. It is checked once a minute unless you tune it.
+pressure, no conversations and no secrets. So there is no credential to set
+up, and nothing else either:
 
-Or let the port scan find it: 9119 is on the scan's list as *hermes
-dashboard*, and **Watch** on that service asks it first. An answer as Hermes
-makes a Hermes check; anything else gets the TCP check any watched service
-gets. So does a service you name for Hermes on another port. A port you
-already watched before keeps its TCP check: set its type to `hermes` on the
-target's Edit page.
+- **Found by the port scan.** 9119, the dashboard's port, is on the scan's
+  list as *hermes dashboard*. Once the scan finds it open, SPARK asks it
+  within a minute, and if it answers as Hermes the device's page has a
+  **Hermes** card, read every 5 minutes. A port that answers as something
+  else is asked again every 15 minutes and shows nothing. A port you named
+  for Hermes on the scan's list is asked too, whatever its number.
+- **Alerted on once you watch it.** The found card is shown, not alerted on.
+  **Watch** on it (or on the service, on Services or Devices) makes a
+  `hermes` check: once a minute, with the alerts below, and the card then
+  comes from the check.
+- **Or by hand**, for a Hermes the scan cannot see: Targets → Add target,
+  type `hermes`, the dashboard's address — `host:9119` (9119 is assumed when
+  none is given) or its URL behind a proxy.
+
+A port you watched before Hermes checks existed keeps its TCP check: set
+its type to `hermes` on the target's Edit page. To stop SPARK asking at all,
+take 9119 off the scan's list.
 
 The dashboard listens only on `127.0.0.1` unless started with `--host`
 (`hermes dashboard --host 0.0.0.0`), so SPARK on another machine needs that.
@@ -101,11 +110,11 @@ what went wrong.
 - **Up** otherwise: "Hermes 0.21.3: gateway running, 2 of 2 platforms
   connected, 1 active session".
 
-On the page of the device it runs on (by its address, as for any target)
-there is a **Hermes** card: what is wrong, the gateway, each platform with
-its error, storage, memory and disk, the Nous sign-in when it has one, and a
-config migration waiting. It shows the last answer; when the last check got
-none it says so and what it got instead. SPARK keeps only what the card
+The **Hermes** card, on the page of the device it runs on: what is wrong,
+the gateway, each platform with its error, storage, memory and disk, the
+Nous sign-in when it has one, and a config migration waiting. It shows the
+last answer; when the last check or read got none it says so and what it
+got instead. SPARK keeps only what the card
 shows, never the paths and process details Hermes adds on a loopback bind,
 and reads at most 256 KB of an answer.
 

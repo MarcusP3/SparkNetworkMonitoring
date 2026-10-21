@@ -27,6 +27,14 @@
   port), and **Watch** on a service there, or one named for Hermes, asks
   `/api/status` first (3 s): an answer as Hermes makes a Hermes check, once
   a minute; anything else stays the TCP check Watch has always made.
+- **A Hermes the scan finds shows on its device with nothing set up**
+  (`hermes_scan.py`): an open 9119, or a port named for Hermes, is asked
+  within a minute and then every 5 minutes, and an answer as Hermes is its
+  device's Hermes card ("found on port 9119 by the port scan"). Shown, not
+  alerted on: **Watch** on the card makes the alerting check and returns to
+  the page. Something else on the port is asked every 15 minutes and shows
+  nothing. Kept on the service (`service.readings`, migration 30), trimmed
+  as a check's are.
 
 ### Changed
 

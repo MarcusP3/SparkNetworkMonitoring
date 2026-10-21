@@ -443,6 +443,10 @@ class Service(Base, TimestampMixin):
     last_seen: Mapped[datetime | None] = mapped_column(UTCDateTime)
     ignored: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # A Hermes dashboard the scan found: what it last said, for its device's
+    # card, and when it was last asked (hermes_scan.py; migration 30).
+    readings: Mapped[dict | None] = mapped_column(JSON)
+
     device = relationship("Device", back_populates="services")
     targets = relationship("Target", back_populates="service")
 

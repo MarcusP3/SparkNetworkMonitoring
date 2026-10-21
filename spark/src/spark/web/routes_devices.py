@@ -676,6 +676,7 @@ async def scan_ports_now(
 @router.post("/devices/services/{service_id}/watch")
 async def watch_service(
     service_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(require_user),
 ):
@@ -726,7 +727,9 @@ async def watch_service(
     events.publish({"kind": "created", "target_id": target.id})
     scheduler_module.schedule_target(target)
     await scheduler_module.run_now(target.id)
-    return redirect("/targets")
+    # From its card on the device's page, back to that page; else Targets.
+    return redirect(f"/devices/{device.id}#hermes-{target.id}" if back == f"/devices/{device.id}"
+                    else "/targets")
 
 
 @router.post("/devices/scan")

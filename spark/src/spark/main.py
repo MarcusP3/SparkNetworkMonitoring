@@ -207,6 +207,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         scheduler_module.schedule_internet(config)
         scheduler_module.schedule_maintenance(config)
         scheduler_module.schedule_events(config)
+        scheduler_module.schedule_hermes()
         # SNMP traps and syslog, if spark.yaml asks for them (receiver.py).
         from . import receiver
 

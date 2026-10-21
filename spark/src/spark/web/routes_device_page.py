@@ -339,6 +339,11 @@ async def device_page(
             "stale": bool(card and card["read_at"] and last and last.ts > card["read_at"]
                           + timedelta(seconds=1)),
         })
+    # And the ones the port scan found that no Hermes check reads yet: read
+    # every 5 minutes without being asked, with Watch to alert on it.
+    from .. import hermes_scan
+    unwatched = {s.id for s, _ in await hermes_scan.found(session)}
+    hermes_cards += hermes_scan.cards([s for s in services if s.id in unwatched])
 
     return templates.TemplateResponse(
         request,

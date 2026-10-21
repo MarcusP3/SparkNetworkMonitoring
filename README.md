@@ -19,9 +19,9 @@ Linux VM · **Storage** one SQLite file
 - **Checks what matters.** Ping, TCP, HTTP(S) and DNS checks with hysteresis,
   incidents, and dependency suppression — one alert for the switch, not thirty.
   Heartbeats for the jobs nothing can poll: a backup that calls in when it
-  has run, and is missed when it does not. A Hermes Agent check: its
-  gateway, its messaging platforms and its health. An availability report says how
-  much of the month each was up.
+  has run, and is missed when it does not. A Hermes Agent the port scan
+  finds shows its gateway, messaging platforms and health, unasked. An
+  availability report says how much of the month each was up.
 - **Reads your gear over SNMP.** CPU, memory, temperature, interface traffic,
   storage and history charts per device, v2c and v3.
 - **Hears what your gear says.** SNMP traps and syslog from devices it knows,

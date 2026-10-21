@@ -584,6 +584,26 @@ def schedule_events(config) -> bool:  # type: ignore[no-untyped-def]
     return True
 
 
+def schedule_hermes() -> bool:
+    """Hermes dashboards the port scan found, asked when due (hermes_scan.py)."""
+    from .hermes_scan import JOB_ID, TICK_SECONDS, read_due
+
+    scheduler = _scheduler
+    if scheduler is None:
+        return False
+    scheduler.add_job(
+        read_due,
+        "interval",
+        seconds=TICK_SECONDS,
+        id=JOB_ID,
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        name="Hermes dashboards",
+    )
+    return True
+
+
 def snmp_next_runs() -> dict[int, datetime]:
     """When each device's next poll is due, keyed by SNMP list row id."""
     scheduler = _scheduler

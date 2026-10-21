@@ -466,7 +466,18 @@ async def _add_target_readings(session: AsyncSession) -> None:
         await session.execute(text("ALTER TABLE target ADD COLUMN readings JSON"))
 
 
-CURRENT_VERSION = 29
+@migration(30, "Hermes dashboards the port scan found: what they last said")
+async def _add_service_readings(session: AsyncSession) -> None:
+    """A column, so tolerant of it already being there (see migration 4)."""
+    connection = await session.connection()
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("service")}
+    )
+    if "readings" not in existing:
+        await session.execute(text("ALTER TABLE service ADD COLUMN readings JSON"))
+
+
+CURRENT_VERSION = 30
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:
