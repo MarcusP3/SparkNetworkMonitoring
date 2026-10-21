@@ -343,7 +343,7 @@ async def device_page(
     # every 5 minutes without being asked, with Watch to alert on it.
     from .. import hermes_scan
     unwatched = {s.id for s, _ in await hermes_scan.found(session)}
-    for card in hermes_scan.cards([s for s in services if s.id in unwatched]):
+    for card in hermes_scan.cards([s for s in services if s.id in unwatched], device.primary_ip):
         # A TCP check on the port already: Watch turns it into this one.
         card["upgrade"] = await hermes_scan.tcp_check(session, card["service"], device)
         hermes_cards.append(card)

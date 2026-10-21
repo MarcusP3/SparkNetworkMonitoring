@@ -108,7 +108,7 @@ def likely(port: int, name: str | None) -> bool:
     return port == DEFAULT_PORT or "hermes" in (name or "").lower()
 
 
-async def answers_as_hermes(address: str, timeout: float = 3.0) -> bool:
+async def answers_as_hermes(address: str, timeout: float = 10.0) -> bool:
     """Whether a Hermes dashboard answers there: what Watch asks before it
     makes a Hermes check rather than a TCP one."""
     return (await check_hermes(CheckSpec(address=address, timeout_seconds=timeout))).readings is not None

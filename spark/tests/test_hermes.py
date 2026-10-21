@@ -529,8 +529,14 @@ class TestFoundByTheScan:
         assert hermes_scan.due(None, now) and hermes_scan.due({"tried_at": "nonsense"}, now)
         assert not hermes_scan.due({"tried_at": ago(4), "read_at": ago(4)}, now)
         assert hermes_scan.due({"tried_at": ago(6), "read_at": ago(6)}, now)
-        assert not hermes_scan.due({"tried_at": ago(10)}, now), "never Hermes: every 15 minutes"
-        assert hermes_scan.due({"tried_at": ago(16)}, now)
+        assert not hermes_scan.due({"tried_at": ago(4)}, now) and hermes_scan.due({"tried_at": ago(6)}, now), \
+            "not answering yet: every 5 minutes too"
+        other = {"tried_at": ago(10), "not_hermes": True}
+        assert not hermes_scan.due(other, now), "something else on the port: every 15 minutes"
+        assert hermes_scan.due({**other, "tried_at": ago(16)}, now)
+        assert hermes_scan.not_hermes("not a Hermes dashboard: the answer is not JSON")
+        assert hermes_scan.not_hermes("HTTP 404 from /api/status")
+        assert not hermes_scan.not_hermes("ConnectError: All connection attempts failed")
 
     def test_read_kept_and_kept_through_a_failure(self, site, server, answer):
         sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
@@ -550,7 +556,11 @@ class TestFoundByTheScan:
         answer.update(body=b'{"status": "ok"}')
         sid = self.service(int(server.rsplit(":", 1)[1]), "hermes dashboard")
         run(hermes_scan.read_due())
-        assert set(self.readings(sid)) == {"tried_at", "error"}
+        assert self.readings(sid)["not_hermes"] is True
+        assert "hermes-found" not in site.get("/devices/1").text
+        answer.update(code=404, body=b"{}")
+        run(hermes_scan.read_due(utcnow() + timedelta(minutes=16)))
+        assert self.readings(sid)["not_hermes"] is True, "no /api/status: not Hermes either"
         assert "hermes-found" not in site.get("/devices/1").text
 
     def test_what_it_leaves_alone(self, site, server, answer):
@@ -576,6 +586,26 @@ class TestFoundByTheScan:
                              last_seen=utcnow()))
         run(close())
         assert run(hermes_scan.read_due()) == 0, "closed ports are not asked"
+
+    def test_a_card_from_the_moment_it_is_found(self, site, server, answer):
+        sid = self.service(9119, "hermes dashboard")
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-found-{sid}"' in page and '<span class="pill neutral">reading</span>' in page
+        assert "Found on port 9119 by the port scan: SPARK is asking it for its status." in page
+        assert f'action="/devices/services/{sid}/watch"' not in page, "nothing to watch yet"
+
+    def test_a_card_that_says_why_it_cannot_read(self, site):
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        sid = self.service(port, "Hermes")
+        run(hermes_scan.read_due())
+        assert self.readings(sid)["not_hermes"] is False
+        page = flat(site.get("/devices/1").text)
+        assert f'id="hermes-found-{sid}"' in page and "not answering</span>" in page
+        assert "SPARK could not read it: ConnectError" in page
+        assert f"<code>http://127.0.0.1:{port}/api/status</code>" in page
+        assert "hermes dashboard --host 0.0.0.0" in page and "Shown, not alerted on" not in page
 
     def test_the_card_without_a_target(self, site, server, answer):
         port = int(server.rsplit(":", 1)[1])
@@ -677,6 +707,8 @@ class TestFoundByTheScan:
         from spark import scheduler as scheduler_module
         job = scheduler_module._scheduler.get_job(hermes_scan.JOB_ID)
         assert job is not None and job.name == "Hermes dashboards"
+        assert (job.next_run_time - utcnow()).total_seconds() <= hermes_scan.FIRST_TICK_SECONDS + 1, \
+            "first asks soon after SPARK starts"
 
 
 def the_target_for(service_id: int) -> int:

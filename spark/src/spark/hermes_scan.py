@@ -7,10 +7,14 @@ as the Hermes card on its device's page, as an API card is: nothing to set
 up. Nothing alerts from this. Watch on the card makes it a Hermes check,
 which does, and from then on the check reads it instead of this job.
 
-Every 5 minutes once it has answered as Hermes, every 15 while it never
-has (another app on 9119, or a Hermes listening only to itself): a port
-that is not Hermes costs one request a quarter of an hour. Take 9119 off
-the scan's list and the scan stops finding it, and this stops asking.
+The card is there from the moment the scan finds the port: "reading" until
+the first answer, and when SPARK cannot read it, what went wrong, so a
+found Hermes is never just missing. Only a port that answers as something
+else (not Hermes's status, or no /api/status at all) has no card.
+
+Every 5 minutes, answered or not; every 15 for a port that answered as
+something else. Take 9119 off the scan's list and the scan stops finding
+it, and this stops asking.
 """
 
 from __future__ import annotations
@@ -32,9 +36,12 @@ log = logging.getLogger(__name__)
 
 JOB_ID = "hermes:read"
 TICK_SECONDS = 60
+FIRST_TICK_SECONDS = 10           # soon after SPARK starts, not a minute on
 EVERY = timedelta(minutes=5)
-UNTIL_IT_ANSWERS = timedelta(minutes=15)
-TIMEOUT_SECONDS = 5.0
+NOT_HERMES_EVERY = timedelta(minutes=15)
+# In the background, so it can wait: a Hermes that has been idle can take
+# seconds over its first status, and a short wait would miss it every time.
+TIMEOUT_SECONDS = 20.0
 AT_ONCE = 8
 
 
@@ -45,12 +52,20 @@ def _when(value: object) -> datetime | None:
         return None
 
 
+def not_hermes(detail: str | None) -> bool:
+    """An answer, but not a Hermes dashboard's: another app on the port."""
+    return bool(detail) and (detail.startswith("not a Hermes dashboard")
+                             or detail.startswith("HTTP 404"))
+
+
 def due(readings: dict | None, now: datetime) -> bool:
     """Whether to ask again: never asked, or its wait is up."""
-    tried = _when((readings or {}).get("tried_at"))
+    readings = readings or {}
+    tried = _when(readings.get("tried_at"))
     if tried is None:
         return True
-    return now - tried >= (EVERY if (readings or {}).get("read_at") else UNTIL_IT_ANSWERS)
+    other = not readings.get("read_at") and readings.get("not_hermes")
+    return now - tried >= (NOT_HERMES_EVERY if other else EVERY)
 
 
 async def _watched(session: AsyncSession) -> tuple[set[int], set[str]]:
@@ -93,7 +108,7 @@ async def read_due(now: datetime | None = None) -> int:
         # Asked outside any transaction: a slow dashboard holds no lock.
         outcomes = await asyncio.gather(*(ask(address) for _, address in todo))
         async with session_scope() as session:
-            for (service_id, _), outcome in zip(todo, outcomes):
+            for (service_id, address), outcome in zip(todo, outcomes):
                 service = await session.get(Service, service_id)
                 if service is None:
                     continue
@@ -102,11 +117,16 @@ async def read_due(now: datetime | None = None) -> int:
                     service.readings = {**outcome.readings, "read_at": stamp, "tried_at": stamp}
                 else:              # what it said last time stays, with why not now
                     service.readings = {**(service.readings or {}), "tried_at": stamp,
-                                        "error": outcome.detail}
+                                        "error": outcome.detail,
+                                        "not_hermes": not_hermes(outcome.detail)}
+                    if not service.readings.get("read_at") and not service.readings["not_hermes"]:
+                        log.info("%s looks like a Hermes dashboard but did not answer: %s",
+                                 address, outcome.detail)
         return len(todo)
     except Exception:  # noqa: BLE001 - a job that raises is logged by APScheduler every minute
         log.exception("Reading Hermes dashboards failed")
         return 0
+
 
 
 async def tcp_check(session: AsyncSession, service: Service, device: Device) -> Target | None:
@@ -137,16 +157,24 @@ def make_hermes(target: Target, service: Service, device: Device) -> None:
     target.device_id = target.device_id or device.id
 
 
-def cards(services: list[Service]) -> list[dict]:
-    """The Hermes cards for a device's found dashboards: those that have
-    answered as Hermes at least once."""
+def cards(services: list[Service], address: str | None = None) -> list[dict]:
+    """The Hermes cards for a device's found dashboards: every one but a
+    port that answered as something else. Before its first answer the card
+    says it is reading, or why it cannot."""
     out = []
     for service in services:
-        view = hermes.view(service.readings)
-        if view is None:
-            continue
         readings = service.readings or {}
-        tried, read = _when(readings.get("tried_at")), view["read_at"]
+        view = hermes.view(readings)
+        tried = _when(readings.get("tried_at"))
+        if view is None:
+            if readings.get("not_hermes"):
+                continue
+            out.append({"service": service, "hermes": None, "every": "5 min",
+                        "reading": tried is None, "failed": tried is not None,
+                        "tried_at": tried, "error": readings.get("error"),
+                        "address": f"{address}:{service.port}"})
+            continue
+        read = view["read_at"]
         failed = bool(readings.get("error") and tried and read and tried > read)
         out.append({"service": service, "hermes": view, "every": "5 min",
                     "failed": failed, "error": readings.get("error") if failed else None})

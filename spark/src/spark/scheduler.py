@@ -586,7 +586,7 @@ def schedule_events(config) -> bool:  # type: ignore[no-untyped-def]
 
 def schedule_hermes() -> bool:
     """Hermes dashboards the port scan found, asked when due (hermes_scan.py)."""
-    from .hermes_scan import JOB_ID, TICK_SECONDS, read_due
+    from .hermes_scan import FIRST_TICK_SECONDS, JOB_ID, TICK_SECONDS, read_due
 
     scheduler = _scheduler
     if scheduler is None:
@@ -595,6 +595,7 @@ def schedule_hermes() -> bool:
         read_due,
         "interval",
         seconds=TICK_SECONDS,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=FIRST_TICK_SECONDS),
         id=JOB_ID,
         replace_existing=True,
         max_instances=1,

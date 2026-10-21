@@ -35,6 +35,12 @@
   the page. Something else on the port is asked every 15 minutes and shows
   nothing. Kept on the service (`service.readings`, migration 30), trimmed
   as a check's are.
+- **A found Hermes port always has its card**: *reading* until the first
+  answer, then Hermes's status, or why SPARK could not read it (the error,
+  the URL it asked, and `--host 0.0.0.0`), tried every 5 minutes. Only an
+  answer that is not Hermes's (no status, or a 404) hides it. The first read
+  is 10 s after SPARK starts, and waits up to 20 s for an answer; Watch waits
+  10 s before settling for TCP.
 - **A TCP check already on the port becomes the Hermes check** when Watch
   is pressed on the card (it says so, and names the check): same target,
   name, history and incidents; TCP's 15 s becomes a minute, a chosen

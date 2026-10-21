@@ -331,6 +331,7 @@
           {% if t %}
             {% set status = t.status.value if t.status.value is defined else t.status %}
             {% if t.enabled %}<span class="pill dot status-{{ status }}">{{ status }}</span>{% else %}<span class="pill neutral">paused</span>{% endif %}
+          {% elif c.reading %}<span class="pill neutral">reading</span>
           {% elif c.failed %}<span class="pill dot status-down">not answering</span>
           {% elif h.down %}<span class="pill dot status-down">down</span>
           {% elif h.warn %}<span class="pill dot status-degraded">degraded</span>
@@ -340,14 +341,18 @@
             {% if h.sessions is not none %}{{ h.sessions }} active session{{ 's' if h.sessions != 1 }} ·{% endif %}
             {% if t %}{{ t.name }}, checked every {{ c.every }}{% else %}found on port {{ svc.port }} by the port scan, read every {{ c.every }}{% endif %};
             last read {{ h.read_at | local('%b %-d, %H:%M %Z') }}.
-          {% else %}
+          {% elif t %}
             {{ t.name }}, checked every {{ c.every }}: not read yet.
+          {% elif c.reading %}
+            Found on port {{ svc.port }} by the port scan: SPARK is asking it for its status.
+          {% else %}
+            Found on port {{ svc.port }} by the port scan, asked every {{ c.every }}; last asked {{ c.tried_at | local('%b %-d, %H:%M %Z') }}.
           {% endif %}
         </p>
       </div>
       <div class="head-actions">
         {% if t %}<a class="btn-quiet" href="/targets/{{ t.id }}/edit">Edit target</a>
-        {% else %}
+        {% elif h %}
         <form method="post" action="/devices/services/{{ svc.id }}/watch">
           <input type="hidden" name="back" value="/devices/{{ svc.device_id }}">
           <button type="submit" class="btn-quiet" title="{{ 'Turn its TCP check, %s, into a Hermes check, keeping its history' % c.upgrade.name if c.upgrade else 'Alert when it goes down: makes it a Hermes check' }}">Watch</button>
@@ -357,8 +362,13 @@
     </div>
     {% if t and c.last and (c.stale or not h) and c.last.detail %}
       <p class="small snmp-error">Last check: {{ c.last.detail }}{% if h %}. Below is what it said last time it answered.{% endif %}</p>
-    {% elif c.failed %}
+    {% elif c.failed and h %}
       <p class="small snmp-error">Last read: {{ c.error }}. Below is what it said last time it answered.</p>
+    {% elif c.failed %}
+      <p class="small snmp-error">SPARK could not read it: {{ c.error }}.</p>
+      <p class="muted small">Hermes's dashboard answers other machines only when started with
+        <code>hermes dashboard --host 0.0.0.0</code> (or the address SPARK uses), and SPARK asks
+        <code>http://{{ c.address }}/api/status</code>. It tries again every {{ c.every }}.</p>
     {% endif %}
     {% if h %}
       {% if h.down or h.warn %}
@@ -392,7 +402,8 @@
       {% if h.config_behind %}<p class="muted small">Its config is at version {{ h.config.current }}; this Hermes expects {{ h.config.latest }}, so it has a config migration waiting.</p>{% endif %}
       {% if not h.platforms %}<p class="muted small">No messaging platforms are set up, or the gateway is not running to report them.</p>{% endif %}
     {% endif %}
-    {% if not t and c.upgrade %}<p class="muted small">Watched by a TCP check, <a href="/targets/{{ c.upgrade.id }}/edit">{{ c.upgrade.name }}</a>, which knows only that the port is open. <strong>Watch</strong> makes it the Hermes check, keeping its history.</p>
+    {% if not h %}
+    {% elif not t and c.upgrade %}<p class="muted small">Watched by a TCP check, <a href="/targets/{{ c.upgrade.id }}/edit">{{ c.upgrade.name }}</a>, which knows only that the port is open. <strong>Watch</strong> makes it the Hermes check, keeping its history.</p>
     {% elif not t %}<p class="muted small">Shown, not alerted on. <strong>Watch</strong> makes it a Hermes check: down, and back up, alert like any target.</p>{% endif %}
   </section>
 {% endmacro %}

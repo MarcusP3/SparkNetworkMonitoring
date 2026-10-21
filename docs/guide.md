@@ -74,11 +74,14 @@ pressure, no conversations and no secrets. So there is no credential to set
 up, and nothing else either:
 
 - **Found by the port scan.** 9119, the dashboard's port, is on the scan's
-  list as *hermes dashboard*. Once the scan finds it open, SPARK asks it
-  within a minute, and if it answers as Hermes the device's page has a
-  **Hermes** card, read every 5 minutes. A port that answers as something
-  else is asked again every 15 minutes and shows nothing. A port you named
-  for Hermes on the scan's list is asked too, whatever its number.
+  list as *hermes dashboard*. Once the scan finds it open, the device's page
+  has a **Hermes** card at once: *reading* until SPARK has asked it (within
+  a minute, and ten seconds after SPARK starts), then what Hermes says, read
+  every 5 minutes. If SPARK cannot read it, the card says why and what
+  address it asked, and keeps trying every 5 minutes. Only a port that
+  answers as something else (no Hermes status there) has no card, and is
+  asked again every 15 minutes. A port you named for Hermes on the scan's
+  list counts too, whatever its number.
 - **Alerted on once you watch it.** The found card is shown, not alerted on.
   **Watch** on it (or on the service, on Services or Devices) makes a
   `hermes` check: once a minute, with the alerts below, and the card then
