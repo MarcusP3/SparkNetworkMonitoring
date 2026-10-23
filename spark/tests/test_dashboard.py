@@ -143,6 +143,15 @@ class TestNumbers:
             assert not stat_card(html, name)[0] & {"is-warn", "is-bad"}, name
 
 
+class TestTileLinks:
+    @pytest.mark.parametrize("status, incident", [
+        (HealthStatus.UP, False), (HealthStatus.DOWN, True)])
+    def test_open_incidents_opens_firing_now(self, page, status, incident):
+        """The same list as Alerts -> Firing now, red or not."""
+        html = page(status, open_incident=incident)
+        assert re.search(r'<a class="stat s-inc[^"]*" href="/alerts#firing"', html)
+
+
 class TestNetworkOverview:
     def test_counts_the_devices_on_each_subnet(self, page):
         html = page(HealthStatus.UP, routed=True, devices=("172.16.20.5", "172.16.20.6", "198.51.100.7"))

@@ -74,14 +74,15 @@
     </div>
 
     {# Red only for what no one is on: one acknowledged or under
-       maintenance still counts, but it is not news. #}
-    <div class="stat s-inc{% if stats.unhandled %} is-bad{% endif %}" title="Still unresolved{% if stats.handled %}, {{ stats.handled }}{% endif %}">
+       maintenance still counts, but it is not news. The same list as
+       Alerts -> Firing now, so it opens that. #}
+    <a class="stat s-inc{% if stats.unhandled %} is-bad{% endif %}" href="/alerts#firing" title="Still unresolved{% if stats.handled %}, {{ stats.handled }}{% endif %}">
       <span class="stat-head">
         <span class="stat-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4.5h11l-2 3.5 2 3.5H5"/></svg></span>
         <span class="stat-name">Open incidents</span>
       </span>
       <span class="stat-value">{{ stats.open_incidents }}</span>
-    </div>
+    </a>
   </section>
 
   <div class="dash-grid">

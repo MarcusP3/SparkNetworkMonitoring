@@ -484,7 +484,7 @@ ports, storage, a device that stopped answering SNMP, an API credential that
 stopped working, a drive with errors, TrueNAS's own alerts. Each shows where
 it came from (Target, SNMP, Port, Storage, API, TrueNAS), links to its
 device, and stays *ongoing* until the rule clears. **Open incidents** counts
-both kinds. They are recorded even for a muted device (the problem was real;
+both kinds; on the dashboard, the tile opens Alerts → Firing now. They are recorded even for a muted device (the problem was real;
 only the message is held back), but not while a rule is switched off.
 
 **Acknowledging** an incident says you have seen it and are dealing with

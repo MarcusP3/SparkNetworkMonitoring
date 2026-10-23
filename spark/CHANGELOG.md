@@ -36,9 +36,13 @@
 - With the menu open, the sidebar's links keep their height: the picture
   under them gives way, and on a short screen the sidebar scrolls, rather
   than Settings sliding under the picture.
+- The dashboard's **Open incidents** tile opens Alerts → Firing now, the
+  list it counts, as the Devices, Services and Monitored tiles open theirs.
 
 ### Tests
 
+- `test_dashboard.py`: the Open incidents tile links to `/alerts#firing`,
+  red or not.
 - `test_integrations.py`: the menu with none and with some, two of a kind
   as one line, open on its pages; every TrueNAS on its page, with and
   without a device; Test and a found Hermes's Watch coming back; the empty
