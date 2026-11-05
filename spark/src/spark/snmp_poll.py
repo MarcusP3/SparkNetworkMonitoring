@@ -43,12 +43,13 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import alerts, snmp_alerts
+from . import alerts, custom_metrics, snmp_alerts
 from .collectors import SnmpCollector
 from .collectors.base import DeviceHealth, InterfaceStat
 from .db import get_setting, session_scope
 from .models import (
     Device,
+    SnmpCustomMetric,
     SnmpDevice,
     SnmpHealthSample,
     SnmpInterface,
@@ -237,12 +238,15 @@ async def record_poll(
     *,
     interval: int,
     duration_ms: int | None = None,
+    custom: dict[int, custom_metrics.Reading] | None = None,
 ) -> SnmpPoll:
     """Write one poll's result. Separate from the network so tests can feed it.
 
     A poll that was not answered changes only the poll row and adds a health
     sample marked unreachable. Interface rows keep their last reading, and the
-    gap rule decides whether the next answer can be compared with it.
+    gap rule decides whether the next answer can be compared with it; custom
+    metrics keep their last reading too. `custom`: each custom metric's
+    reading, by its id (custom_metrics.read).
     """
     poll = await session.get(SnmpPoll, row_id)
     if poll is None:
@@ -366,6 +370,10 @@ async def record_poll(
             errors={iface.id: per_minute for iface, rates in pending
                     if (per_minute := rates.errors_per_minute()) is not None},
         )
+    # Custom metrics: kept, and their rules decided, in this same transaction.
+    if custom:
+        await custom_metrics.record(session, row_id=row_id, device=device, readings=custom,
+                                    now=now, interval=interval)
     return poll
 
 
@@ -407,10 +415,16 @@ async def _poll(config, row_id: int) -> bool | None:  # type: ignore[no-untyped-
             unsealed_error = None
         except SecretUnavailable as exc:
             credential, unsealed_error = None, str(exc)
+        wanted = [(mid, oid) for mid, oid in (await session.execute(
+            select(SnmpCustomMetric.id, SnmpCustomMetric.oid)
+            .where(SnmpCustomMetric.snmp_device_id == row_id)
+            .order_by(SnmpCustomMetric.id)
+        )).all()]
 
     # ---- 2: ask (no connection held) ----
     started = time.monotonic()
     interfaces: list[InterfaceStat] = []
+    custom: dict[int, custom_metrics.Reading] = {}
     if credential is None:
         health = DeviceHealth(error=unsealed_error or "This device has no address to ask.")
     else:
@@ -419,6 +433,8 @@ async def _poll(config, row_id: int) -> bool | None:  # type: ignore[no-untyped-
             health = await collector.collect_health(inventory=False)
             if health.reachable:
                 interfaces = await collector.collect_interfaces()
+                if wanted:
+                    custom = await custom_metrics.read(collector, wanted)
         finally:
             await collector.close()
     now = utcnow()
@@ -430,6 +446,6 @@ async def _poll(config, row_id: int) -> bool | None:  # type: ignore[no-untyped-
             return None  # taken off the list while we were asking
         await record_poll(
             session, row_id, health, interfaces, now,
-            interval=interval, duration_ms=duration_ms,
+            interval=interval, duration_ms=duration_ms, custom=custom,
         )
     return health.reachable

@@ -2803,3 +2803,27 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
   .integration-list a { grid-template-columns: auto minmax(0, 1fr) auto; }
   .integration-about { grid-column: 2 / -1; grid-row: 2; }
 }
+
+/* Custom SNMP metrics, on the device page (custom_metrics.py). A row per
+   metric whose Edit opens its form full width underneath, rather than in a
+   table cell too narrow for seven fields. */
+.metric-list { border: 1px solid var(--border); border-radius: 10px; margin: 1rem 0; }
+.metric-row + .metric-row { border-top: 1px solid var(--border); }
+.metric-row > summary {
+  list-style: none; cursor: pointer;
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  gap: .25rem 1rem; align-items: center; padding: .6rem .85rem;
+}
+.metric-row > summary::-webkit-details-marker { display: none; }
+.metric-row[open] > summary { border-bottom: 1px solid var(--border); }
+.metric-row > form { margin: 0; padding: 0 .85rem; }
+.metric-row > form .row-form { margin-bottom: .85rem; }
+.metric-oid { display: block; overflow-wrap: anywhere; }
+.metric-edit { pointer-events: none; }
+@media (max-width: 640px) {
+  .metric-row > summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .metric-row > summary .metric-rule { grid-column: 1 / -1; }
+}
+.extend-import { margin: 1rem 0 0; }
+.extend-import input[type="text"] { width: 100%; min-width: 5rem; }
+.extend-import .btn-primary { margin: .75rem .75rem 0 0; }

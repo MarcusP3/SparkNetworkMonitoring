@@ -881,6 +881,63 @@ History follows the **same retention as checks**: raw samples for a week, then
 five-minute averages *and peaks* for 90 days, then hourly for two years. Same
 settings, same nightly job.
 
+### Custom metrics
+
+For anything a device reports that SPARK does not collect on its own — a
+GPU's memory through net-snmp's `extend`, a UPS's minutes of runtime, a
+sensor in a vendor MIB — add the OID on the device's page, under **Custom
+metrics**. Each one is read in the device's regular poll (no extra schedule,
+no extra connection), charted over the same ranges as Health, kept on the
+same retention, and can alert. Up to 20 per device.
+
+- **Name**, **OID** and optionally a **unit** (MiB, %, °C, W…). The OID is
+  numeric — SPARK does not load MIBs, so translate names first with
+  `snmptranslate -On`.
+- **Scale** multiplies what the device sends: 0.001 turns mW into W,
+  0.0009765625 (1/1024) turns MiB into GiB. Values are stored as the device
+  sent them and scaled when shown or compared, so fixing a wrong scale fixes
+  the history too.
+- **Gauges only.** A value is used as read. A counter (a value that only goes
+  up) would chart as a climbing line; rates from counters are not done yet.
+- **Numbers or text.** Text is read up to its first number, so `"28416"` is
+  28416 and `"31 C"` is 31. Text with no number (`"n/a"`) shows as an error on
+  that metric and leaves a gap; the rest of the poll is unaffected.
+- **Alert** above or below a value (in scaled units) held for a number of
+  minutes, through the same channels, mutes, maintenance windows and quiet
+  hours as every other rule. It fires once, and clears when the value is back
+  across the line by 5% of it — an alert at 45,000 MiB clears at 42,750 — so a
+  value hovering on the line is one alert, not one every few minutes. Changing
+  a metric's OID, scale or rule starts its count again; renaming it does not.
+  Incidents are listed under the SNMP source.
+
+**Import from a net-snmp extend** saves typing OIDs. On a Linux host, a script
+that prints one number per line:
+
+```bash
+#!/bin/sh
+# /usr/local/bin/gpu-stats (chmod 755)
+/usr/bin/nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu,power.draw \
+  --format=csv,noheader,nounits | tr -d ' ' | tr ',' '\n'
+```
+
+and one line in `/etc/snmp/snmpd.conf`, then `systemctl restart snmpd`:
+
+```
+extend gpu /usr/local/bin/gpu-stats
+```
+
+On the device page, **Import from a net-snmp extend**, enter `gpu` and
+**Read its output**. SPARK asks the device for that extend's lines
+(NET-SNMP-EXTEND-MIB `nsExtendOutLine`) and lists them with what each reads
+now; name the ones to keep, give each a unit and scale, and **Add the named
+lines**. Set alerts on each afterwards with **Edit**. snmpd runs the script
+when it is asked, so keep it quick — well under the poll's 3-second timeout.
+The profile has to be allowed to read the extend MIB: a v2c `rocommunity` or
+v3 `rouser` without a view restriction is.
+
+Charts start at zero, so a metric that goes negative draws its negative
+stretch along the bottom.
+
 ### Find out what your gear actually supports, from the command line
 
 Vendor SNMP documentation is unreliable, and prosumer switches frequently omit

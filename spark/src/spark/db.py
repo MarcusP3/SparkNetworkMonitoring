@@ -42,6 +42,9 @@ from .models import (
     Notification,
     Setting,
     SnmpAddress,
+    SnmpCustomMetric,
+    SnmpCustomRollup,
+    SnmpCustomSample,
     SnmpDevice,
     SnmpHealthRollup,
     SnmpHealthSample,
@@ -477,7 +480,16 @@ async def _add_service_readings(session: AsyncSession) -> None:
         await session.execute(text("ALTER TABLE service ADD COLUMN readings JSON"))
 
 
-CURRENT_VERSION = 30
+@migration(31, "Custom SNMP metrics: OIDs chosen per device, their history and rules")
+async def _add_custom_metrics(session: AsyncSession) -> None:
+    """Tables only, from model metadata with `checkfirst`: metric first, its
+    samples and rollups after, for their foreign keys."""
+    connection = await session.connection()
+    for model in (SnmpCustomMetric, SnmpCustomSample, SnmpCustomRollup):
+        await connection.run_sync(model.__table__.create, checkfirst=True)
+
+
+CURRENT_VERSION = 31
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

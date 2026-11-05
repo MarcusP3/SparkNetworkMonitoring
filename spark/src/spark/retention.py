@@ -196,15 +196,46 @@ _SNMP_IF_WIDER = """
 """
 
 
+# Custom metrics (custom_metrics.py): one raw value per poll, folded to its
+# average, lowest and highest. Samples are only answered polls, so the wider
+# fold weights by samples alone.
+_SNMP_CUSTOM_RAW = """
+    INSERT OR IGNORE INTO snmp_custom_rollup
+        (metric_id, bucket_start, bucket_seconds, samples,
+         value_avg, value_min, value_max)
+    SELECT
+        metric_id, {bucket}, :width, COUNT(*), AVG(value), MIN(value), MAX(value)
+    FROM snmp_custom_sample
+    WHERE ts < :cutoff
+    GROUP BY metric_id, {bucket}
+"""
+
+_SNMP_CUSTOM_WIDER = """
+    INSERT OR IGNORE INTO snmp_custom_rollup
+        (metric_id, bucket_start, bucket_seconds, samples,
+         value_avg, value_min, value_max)
+    SELECT
+        metric_id, {bucket}, :width, SUM(samples),
+        SUM(value_avg * samples)
+          / NULLIF(SUM(CASE WHEN value_avg IS NOT NULL THEN samples END), 0),
+        MIN(value_min), MAX(value_max)
+    FROM snmp_custom_rollup
+    WHERE bucket_seconds = :src AND bucket_start < :cutoff
+    GROUP BY metric_id, {bucket}
+"""
+
+
 async def _snmp_retention(session: AsyncSession, raw_cutoff, five_cutoff,
                           hourly_cutoff) -> dict:
-    """Fold, then delete, for both SNMP series. Same order rule as checks."""
+    """Fold, then delete, for every SNMP series. Same order rule as checks."""
     out: dict = {}
     series = (
         ("health", "snmp_health_sample", "snmp_health_rollup",
          _SNMP_HEALTH_RAW, _SNMP_HEALTH_WIDER),
         ("interfaces", "snmp_interface_sample", "snmp_interface_rollup",
          _SNMP_IF_RAW, _SNMP_IF_WIDER),
+        ("custom", "snmp_custom_sample", "snmp_custom_rollup",
+         _SNMP_CUSTOM_RAW, _SNMP_CUSTOM_WIDER),
     )
     raw_bucket = _BUCKET.format(column="ts")
     wide_bucket = _BUCKET.format(column="bucket_start")

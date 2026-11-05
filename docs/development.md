@@ -31,6 +31,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Hysteresis, incident tracking, dependency suppression | ✅ working |
 | Target management UI (`/targets`) | ✅ working |
 | SNMP collection — profiles, Test, scheduled polling, history, device pages with charts | ✅ working |
+| Custom SNMP metrics — any numeric OID per device, net-snmp `extend` import, charts, above/below alerts | ✅ working (gauges only; counters as rates not yet) |
 | Alerting (Discord, ntfy, email, webhooks) — down/recovered, SNMP silence, new devices, quiet hours, acknowledging incidents, maintenance windows, starred ports slower than usual or erroring, pools and disks filling up | ✅ working |
 | Docker inventory — container lists via a read-only socket proxy | ❌ not yet |
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
@@ -142,6 +143,7 @@ spark/
     snmp_poll.py        scheduled SNMP polling; counters to rates, wraps and resets
     snmp_history.py     SNMP history as chart-sized series, across raw and rollups
     snmp_discover.py    Find SNMP devices: try the profiles, suggest what answers
+    custom_metrics.py   custom SNMP metrics: OIDs chosen per device, read in the poll, extend import, their alerts
     prefs.py            preferences: time zone (the `local` filter's formatting), sign-in timeout
     limits.py           how long any input may be, the largest request, the largest id
     alerts.py           deciding what to alert on; the mute list; the outbox and dispatcher
@@ -236,6 +238,7 @@ spark/
     test_alerts.py      what is sent and what is not; retries, rate limits, quiet hours
     test_channels.py    ntfy, email and a webhook beside Discord: a copy each, on its own; what each gets; sealed; the tab
     test_snmp_alerts.py  thresholds held for their time, no flapping, starred ports, the mute list
+    test_custom_metrics.py  custom metrics: text read as numbers, scale on read, one bad OID fails only itself, rules, retention, migration 31, the card, a real extend
     test_port_health.py  starred ports slower than usual or erroring: held, cleared, accepted, suppressed; the form
     test_storage.py     TrueNAS and hrStorage parsing (from a real 25.10 box), storage alerts, the Storage card
     test_space_trend.py time until full: an hourly sample, the fitted line, the alert, thinning; the Full in column
@@ -265,7 +268,7 @@ spark/
     test_no_homelab_details.py  no real host names or address scheme in anything shipped
     test_input_limits.py  impossible ids, oversized fields and bodies, nan, blank names; injection stays inert
     test_watch_selected.py  tick devices and watch them all; skips, duplicates, junk, first checks queued
-    local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3
+    local_agent.sh      throwaway net-snmp agent on 127.0.0.1:11161, v2c and v3, with a test `extend`
 ```
 
 No npm, no bundler, no Alembic. Clone it and read it top to bottom.
@@ -362,6 +365,7 @@ Things that will bite you if you don't know them:
 | 4d | Docker inventory — read-only socket proxy | next |
 | 5 | Network map and Services — tree and filterable list views | ✅ done (Docker containers join it with 4d) |
 | 6 | SNMP — credentials, Test, polling, history, device pages | ✅ done |
+| 6b | Custom SNMP metrics — chosen OIDs, `extend` import, charts, alerts | ✅ done (gauges; counters later) |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | ✅ done (ahead of 4d, 5, 7) |
 

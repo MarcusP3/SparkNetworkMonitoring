@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import alerts, credentials, hierarchy, identity, limits, maintenance, merge, snmp_alerts, storage, topology
+from .. import alerts, credentials, custom_metrics, hierarchy, identity, limits, maintenance, merge, snmp_alerts, storage, topology
 from .. import charts, events, receiver
 from .. import scheduler as scheduler_module
 from .. import snmp_history as history
@@ -29,6 +29,7 @@ from ..models import (
     Device,
     DeviceAddress,
     DeviceRole,
+    SnmpCustomMetric,
     SnmpDevice,
     SnmpInterface,
     SnmpPoll,
@@ -38,6 +39,7 @@ from ..models import (
     utcnow,
 )
 from ..config import Config
+from ..vault import vault_for
 from . import integration_cards
 from .deps import ItemId, get_config, get_session, redirect, require_user, templates
 
@@ -107,6 +109,63 @@ def _health_charts(health: history.HealthHistory, zone: dict) -> list[dict]:
     return out
 
 
+def _custom_entries(metrics, histories: dict, window: history.Window,  # type: ignore[no-untyped-def]
+                    zone: dict) -> list[dict]:
+    """Each custom metric with its chart, scaled for display. A metric with
+    a below-the-line rule draws its lowest values as the second line rather
+    than its highest: the dips are what it alerts on."""
+    out = []
+    for metric in metrics:
+        hist = histories.get(metric.id)
+        scale = metric.scale or 1.0
+
+        def scaled(values):  # type: ignore[no-untyped-def]
+            return [None if v is None else v * scale for v in values]
+
+        def fmt(value, unit=metric.unit):  # type: ignore[no-untyped-def]
+            return custom_metrics.fmt_value(value, unit)
+
+        below = metric.alert_op == "below"
+        rule = None
+        if metric.alert_op is not None and metric.alert_value is not None:
+            rule = (f"Alerts when {metric.alert_op} {fmt(metric.alert_value)} "
+                    f"for {metric.alert_minutes} minute{'s' if metric.alert_minutes != 1 else ''}")
+        entry = {"metric": metric, "rule": rule, "now": fmt(metric.current),
+                 "svg": None, "peak": None, "low": None}
+        if hist is not None and hist.has_data:
+            series = history.Series(avg=scaled(hist.series.avg), peak=scaled(hist.series.peak))
+            low = scaled(hist.low)
+            second = low if below else series.peak
+            top = max(v for v in series.avg + series.peak if v is not None)
+            if metric.alert_value is not None:
+                top = max(top, metric.alert_value)
+            y_max = (100.0 if metric.unit == "%" and top <= 100
+                     else charts.nice_max(top * 1.1, floor=1e-6) if top > 0 else 1.0)
+            shown = history.Series(avg=series.avg, peak=second)
+            draw_second = any(p is not None and a is not None and abs(p - a) > abs(a) * 0.001 + 1e-12
+                              for a, p in zip(series.avg, second))
+            entry["svg"] = charts.chart(
+                [charts.Line(series.avg, second if draw_second else None, fill=True)],
+                window, y_max=y_max, fmt=fmt, title=metric.name,
+                describe=_describe_custom(shown, fmt, "lowest" if below else "peak"), **zone,
+            )
+            entry["peak"] = fmt(series.overall_peak())
+            entry["low"] = fmt(min((v for v in low if v is not None), default=None))
+        out.append(entry)
+    return out
+
+
+def _describe_custom(series: history.Series, fmt, word: str):  # type: ignore[no-untyped-def]
+    def describe(i: int) -> str:
+        avg, other = series.avg[i], series.peak[i]
+        if avg is None and other is None:
+            return ""
+        if other is not None and avg is not None and abs(other - avg) > abs(avg) * 0.001 + 1e-12:
+            return f"{fmt(avg)} average · {fmt(other)} {word}"
+        return fmt(avg if avg is not None else other)
+    return describe
+
+
 def _state(iface: SnmpInterface, last_ok) -> tuple[str, str]:  # type: ignore[no-untyped-def]
     """(label, pill kind) for an interface's status.
 
@@ -167,6 +226,8 @@ async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
     window = history.Window.ending(now, range_name)
 
     health = await history.health_history(session, row.id, window)
+    metrics = await custom_metrics.metrics_for(session, row.id)
+    custom_hist = await history.custom_history(session, [m.id for m in metrics], window)
     interfaces = list(
         (await session.execute(
             select(SnmpInterface)
@@ -212,6 +273,7 @@ async def _snmp_section(session: AsyncSession, device: Device, range_name: str,
         "window": window,
         "health": health,
         "health_charts": _health_charts(health, zone),
+        "custom_metrics": _custom_entries(metrics, custom_hist, window, zone),
         "answered": health.answered_fraction,
         "interfaces": entries,
         "up": sum(1 for e in entries if e["state"] == "up"),
@@ -260,10 +322,19 @@ async def device_page(
     config: Config = Depends(get_config),
     user: User = Depends(require_user),
 ):
+    return await _render(request, session, config, user, device_id, range_name=range,
+                         port=port, merged=merged)
+
+
+async def _render(request: Request, session: AsyncSession, config: Config, user: User,
+                  device_id: int, *, range_name: str = "", port: str = "", merged: str = "",
+                  custom: dict | None = None, status_code: int = 200):  # type: ignore[no-untyped-def]
+    """The device page. `custom`: the custom metric forms' state to show
+    again -- an error, what was typed, an extend's lines to name."""
     device = await session.get(Device, device_id)
     if device is None:
         return redirect("/devices")
-    range_name = history.parse_range(range)
+    range_name = history.parse_range(range_name)
     port_id = limits.as_id(port) if port else None
 
     services = (await services_for(session, [device.id])).get(device.id, [])
@@ -352,7 +423,13 @@ async def device_page(
             # Drive health and TrueNAS's alerts, for the Storage card.
             "api_storage": api_storage,
             "back": request.url.path + (f"?{request.url.query}" if request.url.query else ""),
+            # Custom SNMP metrics: the forms' state after a POST that failed
+            # or asked for an extend's lines (custom_metrics.py).
+            "custom": custom or {},
+            "alert_ops": [("", "No alert"), ("above", "Above"), ("below", "Below")],
+            "custom_max": custom_metrics.MAX_PER_DEVICE,
         },
+        status_code=status_code,
     )
 
 
@@ -674,6 +751,8 @@ async def remove_device(
     for incident in (await session.execute(select(AlertIncident).where(
             AlertIncident.device_id == device_id, AlertIncident.closed_at.is_(None)))).scalars():
         incident.closed_at, incident.resolution = now, snmp_alerts.GONE
+    if polled is not None:
+        await custom_metrics.forget_device(session, polled)
     await session.delete(device)
     await session.commit()
     for target_id in target_ids:
@@ -684,3 +763,164 @@ async def remove_device(
         await apply_snmp_schedule(session, config)
     events.publish({"kind": "device-removed", "device_id": device_id})
     return redirect("/devices")
+
+
+# --------------------------------------------------------------------------
+# Custom SNMP metrics (custom_metrics.py)
+# --------------------------------------------------------------------------
+
+CUSTOM_ANCHOR = "#custom-metrics"
+
+
+async def _polled_row(session: AsyncSession, device_id: int) -> SnmpDevice | None:
+    return await session.scalar(select(SnmpDevice).where(SnmpDevice.device_id == device_id))
+
+
+async def _metric_of(session: AsyncSession, device_id: int, metric_id: int):  # type: ignore[no-untyped-def]
+    row = await _polled_row(session, device_id)
+    metric = await session.get(SnmpCustomMetric, metric_id) if row else None
+    return metric if metric is not None and metric.snmp_device_id == row.id else None
+
+
+def _to_custom(device_id: int, back: str) -> str:
+    return _back_to_device(device_id, back) + CUSTOM_ANCHOR
+
+
+@router.post("/devices/{device_id}/custom")
+async def add_custom_metric(
+    request: Request,
+    device_id: ItemId,
+    name: str = Form("", max_length=limits.NAME),
+    oid: str = Form("", max_length=limits.ADDRESS),
+    unit: str = Form("", max_length=limits.SHORT),
+    scale: str = Form("1", max_length=limits.SHORT),
+    alert_op: str = Form("", max_length=limits.SHORT),
+    alert_value: str = Form("", max_length=limits.SHORT),
+    alert_minutes: str = Form("5", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Add one custom metric to a polled device. Read from the next poll."""
+    form = custom_metrics.MetricInput(name, oid, unit, scale, alert_op, alert_value,
+                                      alert_minutes)
+    row = await _polled_row(session, device_id)
+    if row is None:
+        return redirect(f"/devices/{device_id}")
+    try:
+        await custom_metrics.add_metric(session, row.id, form)
+    except custom_metrics.MetricError as exc:
+        return await _render(request, session, config, user, device_id,
+                             custom={"error": str(exc), "add": form}, status_code=400)
+    await session.commit()
+    return redirect(_to_custom(device_id, back))
+
+
+@router.post("/devices/{device_id}/custom/{metric_id}")
+async def edit_custom_metric(
+    request: Request,
+    device_id: ItemId,
+    metric_id: ItemId,
+    name: str = Form("", max_length=limits.NAME),
+    oid: str = Form("", max_length=limits.ADDRESS),
+    unit: str = Form("", max_length=limits.SHORT),
+    scale: str = Form("1", max_length=limits.SHORT),
+    alert_op: str = Form("", max_length=limits.SHORT),
+    alert_value: str = Form("", max_length=limits.SHORT),
+    alert_minutes: str = Form("5", max_length=limits.SHORT),
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Change a metric. A changed rule starts counting again from nothing."""
+    metric = await _metric_of(session, device_id, metric_id)
+    if metric is None:
+        return redirect(f"/devices/{device_id}")
+    form = custom_metrics.MetricInput(name, oid, unit, scale, alert_op, alert_value,
+                                      alert_minutes)
+    try:
+        await custom_metrics.update_metric(session, metric, form)
+    except custom_metrics.MetricError as exc:
+        return await _render(request, session, config, user, device_id,
+                             custom={"error": str(exc), "edit_id": metric_id, "edit": form},
+                             status_code=400)
+    await session.commit()
+    return redirect(_to_custom(device_id, back))
+
+
+@router.post("/devices/{device_id}/custom/{metric_id}/delete")
+async def delete_custom_metric(
+    device_id: ItemId,
+    metric_id: ItemId,
+    back: str = Form("", max_length=limits.URL),
+    session: AsyncSession = Depends(get_session),
+    _user: User = Depends(require_user),
+):
+    """Remove a metric and its history. A standing alert closes as no longer watched."""
+    metric = await _metric_of(session, device_id, metric_id)
+    if metric is not None:
+        await custom_metrics.delete_metric(session, metric)
+        await session.commit()
+    return redirect(_to_custom(device_id, back))
+
+
+@router.post("/devices/{device_id}/custom-extend")
+async def read_custom_extend(
+    request: Request,
+    device_id: ItemId,
+    extend: str = Form("", max_length=limits.NAME),
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Ask the device for one net-snmp extend's output, to name its lines.
+
+    Synchronous, like Test: an explicit button, bounded by the profile's
+    timeout, and the read transaction ends before the network.
+    """
+    row = await _polled_row(session, device_id)
+    if row is None:
+        return redirect(f"/devices/{device_id}")
+    name = extend.strip()
+    try:
+        lines = await custom_metrics.read_extend(session, vault_for(config), row.id, name)
+    except custom_metrics.MetricError as exc:
+        return await _render(request, session, config, user, device_id,
+                             custom={"error": str(exc), "extend": name}, status_code=400)
+    taken = {m.oid for m in await custom_metrics.metrics_for(session, row.id)}
+    return await _render(request, session, config, user, device_id,
+                         custom={"extend": name, "lines": lines, "taken": taken})
+
+
+@router.post("/devices/{device_id}/custom-import")
+async def import_custom_extend(
+    request: Request,
+    device_id: ItemId,
+    session: AsyncSession = Depends(get_session),
+    config: Config = Depends(get_config),
+    user: User = Depends(require_user),
+):
+    """Add the extend lines that were given a name. Unnamed lines are skipped."""
+    row = await _polled_row(session, device_id)
+    if row is None:
+        return redirect(f"/devices/{device_id}")
+    data = await request.form()
+    extend = str(data.get("extend", ""))[:limits.NAME]
+    count = custom_metrics.MAX_PER_DEVICE * 4
+
+    def column(key: str, size: int) -> list[str]:
+        return [str(v)[:size] for v in data.getlist(key)[:count]]
+
+    oids, names, units, scales = (column("oid", limits.ADDRESS), column("name", limits.NAME),
+                                  column("unit", limits.SHORT), column("scale", limits.SHORT))
+    forms = [custom_metrics.MetricInput(name=n, oid=o, unit=u, scale=sc or "1")
+             for o, n, u, sc in zip(oids, names, units, scales) if n.strip()]
+    try:
+        await custom_metrics.import_lines(session, row.id, forms)
+    except custom_metrics.MetricError as exc:
+        return await _render(request, session, config, user, device_id,
+                             custom={"error": str(exc), "extend": extend}, status_code=400)
+    await session.commit()
+    return redirect(f"/devices/{device_id}{CUSTOM_ANCHOR}")

@@ -25,6 +25,7 @@ from ..models import AlertIncident, Incident, MaintenanceWindow, Target, utcnow
 # proxmox_health, internet).
 SOURCES = {
     "cpu": "SNMP", "memory": "SNMP", "temperature": "SNMP", "snmpdown": "SNMP",
+    "custom": "SNMP",
     "port": "Port", "busy": "Port", "speed": "Port", "errors": "Port",
     "pool": "Storage", "space": "Storage", "drive": "Storage", "trend": "Storage",
     "api": "API", "apidrive": "TrueNAS", "tnalert": "TrueNAS",

@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — Custom SNMP metrics (2026-11-05)
+
+### Added
+
+- **Custom metrics** on a polled device's page: any numeric OID, with a
+  name, unit and scale, read in the device's regular poll (one GET, ten OIDs
+  at a time, on the engine the poll already has) and charted over 1h, 24h,
+  7d and 30d like Health. Up to 20 per device. Values are gauges; text is
+  read up to its first number, so net-snmp `extend` output ("28416",
+  "10.50") and DisplayString readings work. A value that is not a number is
+  an error on that metric only, and the poll carries on.
+- **Alerts** on a custom metric: above or below a value, held for a number
+  of minutes, cleared 5% back across the line. Decided in the poll's
+  transaction through `snmp_alerts.step`, like the built-in thresholds;
+  mutes, maintenance, quiet hours and channels apply. Kinds
+  `custom_metric` and `custom_metric_ok`; incident keys `custom:<id>`,
+  listed under SNMP.
+- **Import from a net-snmp extend**: enter the extend's name, SPARK walks
+  its `nsExtendOutLine` rows and lists them with their current values; name
+  the lines to keep and they are added in one go (all or none).
+- Retention folds custom samples into five-minute and hourly rollups that
+  keep the average, lowest and highest, on the same aligned cutoffs as the
+  other SNMP series.
+- `tests/local_agent.sh` runs an `extend` called `sparkgpu` (five numbers
+  and a line of text), so the live tests cover a real extend.
+
+### Changed
+
+- Migration 31 adds `snmp_custom_metric`, `snmp_custom_sample` and
+  `snmp_custom_rollup`. Tables only, so it runs on startup with nothing to
+  do by hand. No new dependency; no rebuild needed beyond the usual
+  `docker compose up -d --build` for new code.
+- Removing a device, or taking it off the SNMP list, drops its custom
+  metrics' alert state as well as the metrics (SQLite reuses a deleted row's
+  id, and a new metric must not inherit a standing alert).
+
+### Known, unfixed
+
+- Counters (values that only go up) are stored as read, not as rates.
+- Charts start at zero; a negative stretch draws along the bottom.
+- Custom metrics have no per-device suppression or global on/off in Alerts →
+  Rules: each metric's own rule is its switch.
+
 ## Unreleased — Integrations (2026-10-21)
 
 ### Added

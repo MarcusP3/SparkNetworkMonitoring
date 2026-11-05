@@ -310,3 +310,68 @@ async def traffic_history(session: AsyncSession, interface_ids: list[int],
         )
         for iid, acc in accs.items()
     }
+
+
+# --------------------------------------------------------------------------
+# Custom metrics
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class CustomHistory:
+    """One custom metric across the window, raw (unscaled): average, highest
+    and lowest per bucket. `peak` is the highest; `low` the lowest."""
+
+    series: Series
+    low: list[float | None]
+
+    @property
+    def has_data(self) -> bool:
+        return self.series.has_data
+
+    def overall_low(self) -> float | None:
+        values = [v for v in self.low if v is not None]
+        return min(values) if values else None
+
+
+async def custom_history(session: AsyncSession, metric_ids: list[int],
+                         window: Window) -> dict[int, CustomHistory]:
+    """Several metrics at once: one query per table, not one per metric."""
+    if not metric_ids:
+        return {}
+    accs = {mid: _Acc(window.count) for mid in metric_ids}
+    lows: dict[int, list[float | None]] = {mid: [None] * window.count for mid in metric_ids}
+    ids = ",".join(str(int(mid)) for mid in metric_ids)
+    params = {"start": window.start_epoch, "width": window.width, "since": window.since}
+
+    def low(mid: int, i: int, value: float | None) -> None:
+        if value is None or not 0 <= i < window.count:
+            return
+        current = lows[mid][i]
+        lows[mid][i] = value if current is None else min(current, value)
+
+    raw = await session.execute(text(f"""
+        SELECT metric_id, {_INDEX.format(column="ts")} AS i,
+               COUNT(value), AVG(value), MAX(value), MIN(value)
+        FROM snmp_custom_sample
+        WHERE metric_id IN ({ids}) AND ts >= :since
+        GROUP BY metric_id, i
+    """), params)
+    for mid, i, n, avg, high, lowest in raw.all():
+        accs[mid].add(i, avg, n, high)
+        low(mid, i, lowest)
+
+    rolled = await session.execute(text(f"""
+        SELECT metric_id, {_INDEX.format(column="bucket_start")} AS i,
+               SUM(CASE WHEN value_avg IS NOT NULL THEN samples END),
+               SUM(value_avg * samples), MAX(value_max), MIN(value_min)
+        FROM snmp_custom_rollup
+        WHERE metric_id IN ({ids}) AND bucket_start >= :since
+          AND bucket_seconds IN (:five, :hour)
+        GROUP BY metric_id, i
+    """), {**params, "five": FIVE_MINUTES, "hour": ONE_HOUR})
+    for mid, i, weight, total, high, lowest in rolled.all():
+        accs[mid].add(i, total / weight if weight else None, weight, high)
+        low(mid, i, lowest)
+
+    return {mid: CustomHistory(series=accs[mid].series(), low=lows[mid]) for mid in metric_ids}

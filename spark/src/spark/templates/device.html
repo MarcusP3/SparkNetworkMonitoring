@@ -161,6 +161,184 @@
     {% endif %}
   </section>
 
+  {# Custom SNMP metrics (custom_metrics.py): OIDs chosen for this device,
+     read in the same poll, charted and alerted on like health. #}
+  {% macro metric_fields(f, prefix) %}
+    <div class="snmp-grid">
+      <label class="inline-field">
+        <span class="muted small">Name</span>
+        <input type="text" name="name" maxlength="64" required autocomplete="off"
+               value="{{ f.name or '' }}" placeholder="GPU memory used">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">OID (numeric)</span>
+        <input type="text" name="oid" maxlength="255" required autocomplete="off" class="mono"
+               value="{{ f.oid or '' }}" placeholder="1.3.6.1.4.1.2021.10.1.3.1">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Unit</span>
+        <input type="text" name="unit" maxlength="16" autocomplete="off"
+               value="{{ f.unit or '' }}" placeholder="MiB, %, °C, W">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Scale (multiply by)</span>
+        <input type="text" name="scale" maxlength="32" inputmode="decimal" autocomplete="off"
+               value="{{ (f.scale | int if f.scale == f.scale | int else f.scale) if f.scale is number else (f.scale or 1) }}">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Alert</span>
+        <select name="alert_op">
+          {% for value, label in alert_ops %}
+          <option value="{{ value }}" {% if (f.alert_op or '') == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="inline-field">
+        <span class="muted small">Alert at (scaled)</span>
+        <input type="text" name="alert_value" maxlength="32" inputmode="decimal" autocomplete="off"
+               value="{{ f.alert_value if f.alert_value is not none else '' }}">
+      </label>
+      <label class="inline-field">
+        <span class="muted small">For minutes</span>
+        <input type="number" name="alert_minutes" class="narrow" min="1" max="1440"
+               value="{{ f.alert_minutes or 5 }}">
+      </label>
+    </div>
+  {% endmacro %}
+
+  <section class="card" id="custom-metrics">
+    <div class="card-head">
+      <span class="card-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg></span>
+      <div>
+        <h2>Custom metrics</h2>
+        <p class="card-sub">
+          Any numeric OID this device answers, read in every poll: a GPU through a
+          net-snmp <code>extend</code>, a UPS's runtime, a vendor sensor.
+          {% if snmp.custom_metrics %}{{ snmp.custom_metrics | length }} of {{ custom_max }}.{% endif %}
+        </p>
+      </div>
+    </div>
+
+    {% if custom.error %}<p class="alert error" role="alert">{{ custom.error }}</p>{% endif %}
+
+    {% set with_charts = snmp.custom_metrics | selectattr('svg') | list %}
+    {% if with_charts %}
+    <div class="chart-grid">
+      {% for c in with_charts %}
+      <div class="chart-card">
+        <div class="chart-title">
+          <span>{{ c.metric.name }}</span>
+          <span class="chart-figures"><span class="muted">now</span> {{ c.now }}
+            {% if c.metric.alert_op == 'below' %}<span class="muted">· lowest</span> {{ c.low }}
+            {% else %}<span class="muted">· peak</span> {{ c.peak }}{% endif %}</span>
+        </div>
+        {{ c.svg }}
+        {% if c.rule %}<p class="muted small">{{ c.rule }}.</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if snmp.custom_metrics %}
+    {# One row per metric; Edit opens its form at full width underneath. #}
+    <div class="metric-list">
+      {% for c in snmp.custom_metrics %}
+      {% set m = c.metric %}
+      <details class="metric-row" {% if custom.edit_id == m.id %}open{% endif %}>
+        <summary>
+          <span class="metric-name">{{ m.name }}
+            <span class="mono muted small metric-oid">{{ m.oid }}{% if m.scale != 1 %} × {{ m.scale }}{% endif %}</span></span>
+          <span class="metric-now">
+            {% if m.last_error %}<span class="warn-text small">{{ m.last_error }}</span>
+            {% elif m.last_read_at %}{{ c.now }}
+            {% else %}<span class="muted small">waiting for a poll</span>{% endif %}
+          </span>
+          <span class="metric-rule small {% if not c.rule %}muted{% endif %}">{{ c.rule or 'No alert' }}</span>
+          <span class="btn-quiet metric-edit">Edit</span>
+        </summary>
+        <form method="post" action="/devices/{{ device.id }}/custom/{{ m.id }}" class="snmp-form">
+          <input type="hidden" name="back" value="{{ back }}">
+          {{ metric_fields(custom.edit if custom.edit_id == m.id else m, 'edit') }}
+          <div class="row-form">
+            <button type="submit" class="btn-quiet">Save {{ m.name }}</button>
+            <button type="submit" class="btn-quiet danger" form="remove-metric-{{ m.id }}"
+                    title="Remove this metric and its history">Remove</button>
+          </div>
+        </form>
+        <form method="post" action="/devices/{{ device.id }}/custom/{{ m.id }}/delete" id="remove-metric-{{ m.id }}">
+          <input type="hidden" name="back" value="{{ back }}">
+        </form>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if snmp.custom_metrics | length < custom_max %}
+    <details class="add-profile" {% if custom.extend is defined %}open{% endif %}>
+      <summary class="sub-title">Import from a net-snmp extend</summary>
+      <p class="muted small">
+        The name after <code>extend</code> in the device's <code>snmpd.conf</code>.
+        SPARK reads its output now, one line per value, and you name the lines to keep.
+      </p>
+      <form method="post" action="/devices/{{ device.id }}/custom-extend" class="row-form">
+        <label class="inline-field">
+          <span class="muted small">Extend name</span>
+          <input type="text" name="extend" maxlength="64" required autocomplete="off"
+                 value="{{ custom.extend or '' }}" placeholder="gpu">
+        </label>
+        <button type="submit" class="btn-quiet">Read its output</button>
+      </form>
+      {% if custom.lines %}
+      <form method="post" action="/devices/{{ device.id }}/custom-import" class="extend-import">
+        <input type="hidden" name="extend" value="{{ custom.extend }}">
+        <div class="table-scroll">
+        <table class="table compact">
+          <thead><tr><th>Line</th><th>Reads</th><th>Name (blank to skip)</th><th>Unit</th><th>Scale</th></tr></thead>
+          <tbody>
+            {% for line in custom.lines %}
+            <tr>
+              <td class="num">{{ line.line }}</td>
+              <td class="mono small">{{ line.text }}{% if line.value is none %} <span class="warn-text small">not a number</span>{% endif %}</td>
+              {% if line.oid in custom.taken %}
+              <td colspan="3" class="muted small">Already added.</td>
+              {% else %}
+              <td><input type="hidden" name="oid" value="{{ line.oid }}">
+                  <input type="text" name="name" maxlength="64" autocomplete="off"
+                         aria-label="Name for line {{ line.line }}"></td>
+              <td><input type="text" name="unit" maxlength="16" class="narrow" autocomplete="off"
+                         aria-label="Unit for line {{ line.line }}"></td>
+              <td><input type="text" name="scale" maxlength="32" class="narrow" value="1"
+                         inputmode="decimal" aria-label="Scale for line {{ line.line }}"></td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <button type="submit" class="btn-primary">Add the named lines</button>
+        <span class="muted small">Alerts can be set on each one afterwards, with Edit.</span>
+      </form>
+      {% endif %}
+    </details>
+
+    <details class="add-profile" {% if custom.add %}open{% endif %}>
+      <summary class="sub-title">Add an OID</summary>
+      <form method="post" action="/devices/{{ device.id }}/custom" class="snmp-form">
+        <input type="hidden" name="back" value="{{ back }}">
+        {{ metric_fields(custom.add or {}, 'add') }}
+        <p class="muted small">
+          Numbers, or text that starts with one (<code>"31 C"</code> reads as 31). Values are
+          gauges, shown as read and multiplied by the scale: 0.001 turns mW into W, 1/1024 is 0.0009765625.
+          An alert clears once the value is 5% of the line back on the right side of it.
+        </p>
+        <button type="submit" class="btn-primary">Add metric</button>
+      </form>
+    </details>
+    {% else %}
+      <p class="muted small">This device has the most custom metrics SPARK reads from one device ({{ custom_max }}).</p>
+    {% endif %}
+  </section>
+
   {% set st = snmp.storage %}
   {% if st.pools or st.drives or st.filesystems or api_storage %}{{ storage_card(st, api_storage) }}{% endif %}
 

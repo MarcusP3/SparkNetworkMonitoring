@@ -23,7 +23,9 @@ Linux VM · **Storage** one SQLite file
   finds shows its gateway, messaging platforms and health, unasked. An
   availability report says how much of the month each was up.
 - **Reads your gear over SNMP.** CPU, memory, temperature, interface traffic,
-  storage and history charts per device, v2c and v3.
+  storage and history charts per device, v2c and v3 — plus any numeric OID
+  you add yourself (a GPU through net-snmp `extend`, a UPS's runtime), charted
+  and alerted on.
 - **Hears what your gear says.** SNMP traps and syslog from devices it knows,
   with rules that turn the ones that matter into alerts — the UPS that ran on
   battery for twenty seconds between two polls. Off until you switch it on.

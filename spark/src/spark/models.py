@@ -1228,6 +1228,105 @@ class StorageSample(Base):
     used_bytes: Mapped[int] = mapped_column(BigInteger)
 
 
+# ---------------------------------------------------------------------------
+# Custom SNMP metrics
+#
+# OIDs a person chose, read in the regular poll: anything the built-in
+# collection does not know about -- a GPU through net-snmp's `extend`, a UPS's
+# runtime, a sensor in a vendor MIB. Gauges only: the value is read as it is,
+# never turned into a rate (custom_metrics.py, migration 31).
+# ---------------------------------------------------------------------------
+
+
+class CustomAlertOp(enum.StrEnum):
+    ABOVE = "above"
+    BELOW = "below"
+
+
+class SnmpCustomMetric(Base, TimestampMixin):
+    """One OID to read from one polled device, with its name, unit and scale,
+    an optional threshold rule, and the last thing it read.
+
+    The value is stored as the device gave it and multiplied by `scale` when
+    it is shown or compared, so correcting a wrong scale corrects the history
+    too, rather than leaving every earlier point off by the old factor.
+    """
+
+    __tablename__ = "snmp_custom_metric"
+    __table_args__ = (
+        UniqueConstraint("snmp_device_id", "oid", name="uq_snmp_custom_metric_oid"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    snmp_device_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_device.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    oid: Mapped[str] = mapped_column(String(255))       # numeric, no leading dot
+    unit: Mapped[str | None] = mapped_column(String(16))
+    scale: Mapped[float] = mapped_column(Float, default=1.0)
+
+    # The threshold rule. No operator means no rule.
+    alert_op: Mapped[CustomAlertOp | None] = enum_column(CustomAlertOp, nullable=True)
+    alert_value: Mapped[float | None] = mapped_column(Float)
+    alert_minutes: Mapped[int] = mapped_column(Integer, default=5)
+
+    # The latest answered poll's reading, raw (unscaled). `last_error` says
+    # why the latest answered poll gave no number for this OID.
+    last_value: Mapped[float | None] = mapped_column(Float)
+    last_read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(String(255))
+
+    def scaled(self, raw: float | None) -> float | None:
+        return None if raw is None else raw * (self.scale or 1.0)
+
+    @property
+    def current(self) -> float | None:
+        return self.scaled(self.last_value)
+
+
+class SnmpCustomSample(Base):
+    """One poll's reading of one custom metric, raw. Only numbers are kept:
+    a poll that got none leaves a gap, which the chart shows as one."""
+
+    __tablename__ = "snmp_custom_sample"
+    __table_args__ = (Index("ix_snmp_custom_sample_metric_ts", "metric_id", "ts"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    metric_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_custom_metric.id", ondelete="CASCADE")
+    )
+    ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    value: Mapped[float] = mapped_column(Float)
+
+
+class SnmpCustomRollup(Base):
+    """Downsampled custom metric history, on the 5-minute/hourly ladder.
+
+    Lowest as well as highest: a metric can have an alert for falling below
+    a line (a UPS's minutes of runtime), and an hour's average hides a dip
+    as surely as it hides a spike.
+    """
+
+    __tablename__ = "snmp_custom_rollup"
+    __table_args__ = (
+        UniqueConstraint("metric_id", "bucket_start", "bucket_seconds",
+                         name="uq_snmp_custom_bucket"),
+        Index("ix_snmp_custom_rollup", "metric_id", "bucket_seconds", "bucket_start"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    metric_id: Mapped[int] = mapped_column(
+        ForeignKey("snmp_custom_metric.id", ondelete="CASCADE")
+    )
+    bucket_start: Mapped[datetime] = mapped_column(UTCDateTime)
+    bucket_seconds: Mapped[int] = mapped_column(Integer)
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    value_avg: Mapped[float | None] = mapped_column(Float)
+    value_min: Mapped[float | None] = mapped_column(Float)
+    value_max: Mapped[float | None] = mapped_column(Float)
+
+
 class DeviceEvent(Base):
     """One SNMP trap or syslog message a device sent (receiver.py).
 

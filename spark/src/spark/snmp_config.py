@@ -322,8 +322,11 @@ async def set_device_profile(session: AsyncSession, row_id: int, profile_id: int
 
 
 async def remove_device(session: AsyncSession, row_id: int) -> None:
+    from . import custom_metrics
+
     row = await session.get(SnmpDevice, row_id)
     if row is not None:
+        await custom_metrics.forget_device(session, row_id)
         await session.delete(row)
 
 

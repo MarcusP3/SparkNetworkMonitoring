@@ -9,6 +9,9 @@
 # long as nothing tested it: pysnmp needs the `cryptography` package for v3
 # privacy and disables encryption silently without it.
 #
+# And runs one net-snmp `extend`, "sparkgpu", printing five numbers and a line
+# of text the way a GPU script would -- for the custom metric tests.
+#
 #   ./tests/local_agent.sh start
 #   pytest -q
 #   ./tests/local_agent.sh stop
@@ -30,6 +33,8 @@ case "${1:-start}" in
       exit 1
     }
     rm -rf "$STATE" && mkdir -p "$STATE"
+    printf '#!/bin/sh\nprintf "28416\\n49140\\n7\\n31\\n10.50\\nn/a\\n"\n' > "$STATE/gpu-stats"
+    chmod 755 "$STATE/gpu-stats"
     cat > "$CONF" <<EOF
 agentaddress udp:127.0.0.1:$PORT
 rocommunity sparktest 127.0.0.1
@@ -40,6 +45,7 @@ rouser sparkauth auth
 sysLocation Test Rack
 sysContact spark@example.com
 sysName test-switch-01
+extend sparkgpu /bin/sh $STATE/gpu-stats
 EOF
     SNMP_PERSISTENT_DIR="$STATE" snmpd -C -c "$CONF" -Lf "$LOG" -p "$PID"
     sleep 1
@@ -47,6 +53,7 @@ EOF
     echo "  v2c community: sparktest"
     echo "  v3 user: sparkv3    authPriv  SHA/sparktest-auth  AES/sparktest-priv"
     echo "  v3 user: sparkauth  authNoPriv  SHA/sparktest-auth"
+    echo "  extend: sparkgpu (five numbers and a line of text)"
     ;;
   stop)
     [ -f "$PID" ] && kill "$(cat "$PID")" 2>/dev/null && echo "Stopped" || echo "Not running"
