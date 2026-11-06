@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_cert_trust.html" import cert_trust %}
 {% block content %}
 <div class="page page-settings">
   <div class="page-head">
@@ -946,24 +947,7 @@
         Choose its device under <strong>Edit {{ r.name }}</strong>.
       </p>
       {% endif %}
-      {% if r.pending_sha256 %}
-      <div class="alert {{ 'warn' if r.cert_sha256 else 'info' }} cert-trust">
-        <p>{{ 'A different certificate' if r.cert_sha256 else 'The certificate' }} {{ r.host }} presents, SHA-256:</p>
-        <code class="fingerprint">{{ r.pending_sha256 }}</code>
-        <p class="muted small">{% if r.kind == 'proxmox' %}Compare it with Proxmox: the node → System → Certificates
-          (pveproxy-ssl.pem if there is one, otherwise pve-ssl.pem), or run <code>pvenode cert info</code> on the host.
-          {% elif r.kind == 'unifi' %}Compare it with the certificate your browser shows for the console's own page,
-          <code>https://{{ r.host }}</code>: the padlock → the certificate → its SHA-256 fingerprint.
-          {% else %}Compare it with TrueNAS: System → Certificates, the certificate in use by the web interface.
-          {% endif %}Trust it only if they match. Until then SPARK sends nothing, the key included.</p>
-        <form method="post" action="/settings/credentials/{{ r.id }}/trust">
-          <input type="hidden" name="fingerprint" value="{{ r.pending_sha256 }}">
-          <button type="submit" class="btn-primary">Trust this certificate</button>
-        </form>
-      </div>
-      {% elif r.cert_sha256 %}
-      <p class="muted small">Trusted certificate <code class="fingerprint small">{{ r.cert_sha256[:23] }}…</code></p>
-      {% endif %}
+      {{ cert_trust(r, "/settings/credentials/" ~ r.id ~ "/trust") }}
       <details>
         <summary class="muted small">Edit {{ r.name }}</summary>
         <form method="post" action="/settings/credentials/{{ r.id }}" class="cred-form">

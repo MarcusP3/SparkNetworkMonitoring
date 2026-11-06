@@ -1,0 +1,18 @@
+{# Open items (onboarding.banners): setup not finished, an integration
+   chosen and not added, an integration not connected. Dismiss hides one
+   until it changes. Not on the wizard's own pages for the setup item. #}
+{% set on_welcome = request.url.path.startswith('/welcome') %}
+<div class="banner-stack" role="region" aria-label="Open items">
+  {% for b in request.state.banners if not (on_welcome and b.key == 'setup') %}
+  <div class="banner is-{{ b.tone }}">
+    <span class="banner-text">{{ b.text }}</span>
+    <a class="banner-link" href="{{ b.link }}">{{ b.link_text }}</a>
+    <form method="post" action="/banners/dismiss" class="banner-dismiss">
+      <input type="hidden" name="key" value="{{ b.key }}">
+      <input type="hidden" name="sig" value="{{ b.sig }}">
+      <input type="hidden" name="next" value="{{ request.url.path }}">
+      <button type="submit" class="btn-quiet" aria-label="Dismiss" title="Hide until it changes">Dismiss</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>

@@ -1,9 +1,10 @@
 # Using SPARK
 
-How each part of SPARK works, page by page. Deploying, upgrading and backing up are in the [README](../README.md).
+How each part of SPARK works, page by page. Deploying, upgrading and backing up are in the [README](../README.md). Setting up for the first time? Start with [Getting started](getting-started.md).
 
 ## Contents
 
+- [First-run setup and banners](#first-run-setup-and-banners)
 - [Monitoring](#monitoring)
 - [Internet](#internet)
 - [Network map and Services](#network-map-and-services)
@@ -16,6 +17,54 @@ How each part of SPARK works, page by page. Deploying, upgrading and backing up 
 - [Backup and restore](#backup-and-restore)
 
 ---
+
+## First-run setup and banners
+
+**The setup wizard.** Creating the administrator on a new install opens
+`/welcome`, five steps in order. Each has **Skip for now**; each saves
+exactly what the matching Settings page would, so anything skipped or
+wrong is fixed there later. The steps across the top go back to any of
+them, and `/welcome` stays reachable after setup. An upgrade never sees it.
+
+1. **Subnets.** The networks the SPARK host has an address on are filled
+   in, ticked as directly attached, with a VLAN read from the interface name
+   where it has one (`eth0.30`, `vlan30`). Docker bridges, loopback,
+   link-local, CGNAT and VPN interfaces (Tailscale, WireGuard, ZeroTier) are
+   left out. Blank rows below are for VLANs reached only through a router
+   (leave *Directly attached* unticked for those). A subnet over 1,024 hosts
+   is listed but not ticked. Subnets already listed — from `spark.yaml`, or
+   an earlier visit — can be removed here. **Never scan these** takes
+   addresses or ranges, one per line, as Excluded addresses. One bad row
+   saves nothing, and the page keeps what you typed.
+2. **SNMP.** A v2c community or a v3 user, saved as one profile (*SNMP
+   v2c*, *SNMP v3*). Nothing is asked with it yet.
+3. **Integrations.** Tick TrueNAS, Proxmox or UniFi. With an address and a
+   key (Token ID and Secret for Proxmox), **Connect** fetches the
+   certificate without sending the key, and the page shows the fingerprint
+   and **Trust this certificate**, as Settings → Credentials does. Ticked
+   without a key, it is remembered and a banner keeps asking. There are no
+   devices yet, so each is saved by address; the first scan that finds
+   exactly one device at that address (its main address, another address
+   it has, or its host name) makes it that device's credential. Only the
+   wizard's own credentials are linked this way.
+4. **Alerts.** The Discord webhook, and **Save and send a test**. Other
+   channels are under Alerts → Channels.
+5. **Finish** shows what was set up and starts the first scan. With an
+   SNMP profile, **look for devices that answer SNMP** runs Find SNMP once
+   that scan has finished. It is off unless ticked: with a v2c profile it
+   sends the community, in clear text, to every device found.
+
+**Banners** at the top of every page list what is still open:
+
+| Banner | Until |
+|---|---|
+| SPARK is not fully set up yet | Finish is pressed |
+| You chose *X* during setup but it has no API key yet | A credential of that kind is added |
+| *X* *name* is not connected, with the reason | It connects again |
+
+**Dismiss** hides a banner while it stays as it is. It comes back when it
+is news again: a credential that recovers and later fails again is shown
+again. Dismissals are kept by SPARK, not the browser.
 
 ## Monitoring
 

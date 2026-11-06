@@ -84,6 +84,7 @@
 {% endif %}
 
 <main class="{% if not user %}centered{% endif %}">
+  {% if user and request.state.banners is defined and request.state.banners %}{% include "_banners.html" %}{% endif %}
   {% block content %}{% endblock %}
 </main>
 

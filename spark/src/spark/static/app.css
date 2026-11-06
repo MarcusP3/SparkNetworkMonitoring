@@ -2827,3 +2827,54 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 .extend-import { margin: 1rem 0 0; }
 .extend-import input[type="text"] { width: 100%; min-width: 5rem; }
 .extend-import .btn-primary { margin: .75rem .75rem 0 0; }
+
+/* ---- Open items: banners on every page (onboarding.banners) ---------- */
+.banner-stack {
+  display: flex; flex-direction: column; gap: .4rem;
+  max-width: 1320px; margin: 1rem auto 0; padding: 0 1.5rem;   /* lined up with .page */
+}
+.banner-stack + .page { padding-top: 1.25rem; }
+.banner-stack:empty { display: none; }
+.banner {
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .8rem; border: 1px solid var(--border); border-left-width: 3px;
+  border-radius: var(--radius-sm); background: var(--surface-2); font-size: .875rem;
+}
+.banner.is-info { border-left-color: var(--accent); }
+.banner.is-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.banner-text { flex: 1 1 20rem; }
+.banner-link { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.banner-dismiss { margin: 0; }
+.banner-dismiss .btn-quiet { padding: .2rem .55rem; font-size: .8125rem; }
+
+/* ---- First-run wizard (/welcome) -------------------------------------- */
+.wizard-steps {
+  display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0 0 1rem;
+}
+.wizard-steps a {
+  display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .7rem;
+  border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted);
+  text-decoration: none; font-size: .875rem;
+}
+.wizard-num {
+  display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; border-radius: 50%;
+  background: var(--surface-2); font-size: .75rem; font-weight: 700;
+}
+.wizard-steps .is-current a { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); }
+.wizard-steps .is-current .wizard-num, .wizard-steps .is-done .wizard-num { background: var(--accent); color: var(--accent-contrast); }
+.wizard-steps .is-done a { color: var(--text); }
+.wizard-form { display: flex; flex-direction: column; gap: .9rem; margin-top: .75rem; }
+.wizard-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.wizard-actions form { margin: 0; }
+.wizard-subnets input[type="text"] { width: 100%; min-width: 9rem; }
+.wizard-kind { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .6rem .9rem .8rem; display: flex; flex-direction: column; gap: .55rem; }
+.wizard-kind legend label { display: inline-flex; gap: .45rem; align-items: center; font-weight: 650; }
+.wizard-kind pre { overflow-x: auto; margin: .4rem 0; }
+.wizard-cred { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .6rem .9rem; margin-top: .6rem; }
+.wizard-cred p { margin: .2rem 0; }
+.wizard-summary { margin: .5rem 0 1rem; padding-left: 1.1rem; display: flex; flex-direction: column; gap: .35rem; }
+.check-field { display: flex; gap: .55rem; align-items: flex-start; }
+.check-field .hint { display: block; margin-top: .2rem; }
+.plain-list { list-style: none; padding: 0; margin: .25rem 0 .5rem; }
+html.js-wizard .wizard-snmp.is-v2c .for-v3,
+html.js-wizard .wizard-snmp.is-v3 .for-v2c { display: none; }

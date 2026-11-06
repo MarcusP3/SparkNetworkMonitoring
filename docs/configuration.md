@@ -329,7 +329,9 @@ its log and `/setup` requires it (see [Deploy](../README.md#deploy)). Wrong
 codes count toward the same lockout as wrong passwords, and the database
 itself allows exactly one administrator (a partial unique index on
 `user.is_admin`), so concurrent attempts to claim a fresh install produce one
-account, not several.
+account, not several. Creating the account hands over to the setup wizard
+(`/welcome`, see [Getting started](getting-started.md)); proxy mode has no
+account form, so there open `/welcome` by hand.
 
 **Reverse proxies.** SPARK, not the web server underneath it, decides which
 peers are proxies. `auth.proxy.trusted_proxies` is that list, in **both** auth

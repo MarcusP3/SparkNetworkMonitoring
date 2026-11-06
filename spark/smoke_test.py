@@ -95,10 +95,37 @@ def main() -> int:
                 # Shaped like a real one: setup now refuses anything that is
                 # not a Discord webhook URL (id and token).
                 "discord_webhook_url": "https://discord.com/api/webhooks/1234567890/smoke-test-token"})
-            check("setup succeeds and redirects to dashboard",
-                  r.status_code == 303 and r.headers["location"] == "/",
-                  f"got {r.status_code}")
+            check("setup succeeds and hands over to the wizard",
+                  r.status_code == 303 and r.headers["location"] == "/welcome",
+                  f"got {r.status_code} {r.headers.get('location')}")
             check("session cookie issued", "spark_session" in client.cookies)
+
+            print("\nFirst-run wizard")
+            r = client.get("/welcome")
+            check("wizard starts at subnets",
+                  r.status_code == 303 and r.headers["location"] == "/welcome/subnets")
+            r = client.get("/welcome/subnets")
+            check("subnets step lists the seeded ones",
+                  r.status_code == 200 and "Already listed" in r.text and "192.168.20.0/24" in r.text)
+            check("dashboard banner is not shown on the wizard",
+                  "SPARK is not fully set up yet" not in r.text)
+            r = client.post("/welcome/subnets", data={"action": "next", "cidr": [], "exclude": ""})
+            check("subnets step continues with what is listed",
+                  r.status_code == 303 and r.headers["location"] == "/welcome/snmp", f"got {r.status_code}")
+            r = client.post("/welcome/snmp", data={"action": "skip"})
+            check("SNMP step can be skipped", r.headers.get("location") == "/welcome/integrations")
+            r = client.post("/welcome/integrations", data={"action": "connect", "use": ["unifi"]})
+            check("an integration chosen without a key is accepted", r.status_code == 303)
+            r = client.get("/")
+            check("dashboard shows the open items as banners",
+                  "SPARK is not fully set up yet" in r.text and "You chose UniFi during setup" in r.text)
+            r = client.post("/banners/dismiss", data={"key": "chosen:unifi", "sig": "1", "next": "/"})
+            check("a banner can be dismissed",
+                  r.status_code == 303 and "You chose UniFi" not in client.get("/").text)
+            client.post("/welcome/integrations", data={"action": "next"})
+            r = client.post("/welcome/alerts", data={"action": "next", "webhook": ""})
+            check("alerts step keeps the webhook from setup", r.headers.get("location") == "/welcome/finish")
+            check("finish page renders", "Start the first scan" in client.get("/welcome/finish").text)
 
             r = client.get("/")
             check("dashboard renders when signed in",

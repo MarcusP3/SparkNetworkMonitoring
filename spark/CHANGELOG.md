@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased — First-run wizard and open-item banners (2026-11-05)
+
+Rebuild required (`docker compose up -d --build`): new templates and CSS.
+No new dependency and no migration -- the wizard's state and dismissed
+banners are two rows in the settings table.
+
+### Added
+
+- **A setup wizard after the account (`/welcome`)**, the way an installer
+  asks: a new install no longer lands on an empty dashboard. Five steps,
+  each with Skip, each saving through the same functions Settings uses:
+  - **Subnets**, pre-filled from the host's own interfaces (ticked as
+    directly attached; Docker bridges, loopback, link-local and VPN
+    overlays left out; a VLAN read from names like `eth0.30`), rows for
+    routed VLANs, and addresses never to scan. Subnets already listed --
+    the example `spark.yaml`'s 192.168.1.0/24, say -- can be removed there.
+  - **SNMP**: a v2c community or a v3 user, as one profile.
+  - **Integrations**: tick TrueNAS, Proxmox or UniFi, give an address and
+    key (or not yet), Connect, compare the fingerprint and Trust, on the
+    page. No device exists yet, so each is saved by address and the first
+    sweep that finds exactly one device there gives it that device. Only
+    credentials the wizard made are linked this way.
+  - **Alerts**: the Discord webhook (moved here from the account form) and
+    a test.
+  - **Finish** starts the first scan and, if ticked (off by default: a v2c
+    community goes out in clear text), Find SNMP once it has run.
+  Only the setup form starts it, so an upgrade never sees it; it stays at
+  `/welcome` afterwards.
+- **Banners for open items** at the top of every page: setup not finished,
+  an integration chosen in the wizard with no key yet, and an integration
+  that is not connected. **Dismiss** hides one until it changes -- a
+  credential that recovers and then fails again is shown again. Dismissals
+  are kept on the server, so they hold in every browser.
+- `docs/getting-started.md`, the first run step by step, following the
+  wizard; linked from the README and the guide.
+
+### Changed
+
+- `/setup` redirects to `/welcome` instead of the dashboard, and no longer
+  shows a Discord field (it still accepts one, for scripts).
+- Settings → Credentials' certificate block is now a macro
+  (`_cert_trust.html`) shared with the wizard.
+
+### Known, unfixed
+
+- Proxy sign-in mode has no setup form, so the wizard does not start by
+  itself there; open `/welcome` by hand.
+- Interface detection reads one IPv4 address per interface (the primary,
+  through the standard library's ioctl); a secondary address or an
+  IPv6-only segment is not offered and has to be typed.
+- A credential waiting for its certificate to be trusted has no banner
+  (not chosen as one); its card says *waiting for you*.
+
 ## Unreleased — Security review (2026-11-05)
 
 ### Fixed

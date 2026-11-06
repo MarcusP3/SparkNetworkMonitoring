@@ -72,6 +72,7 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
     """Sweep every configured subnet and record what answered."""
     new_names: list[str] = []
     report: SweepReport | None = None
+    find_snmp = False
 
     try:
         async with session_scope() as session:
@@ -105,6 +106,15 @@ async def run_sweep(config) -> None:  # type: ignore[no-untyped-def]
             summary = report.as_dict()
             summary["new"] = len(new_names)
             await save_setting(session, STATE_KEY, summary)
+            # Credentials the setup wizard saved by address get their device
+            # now, and Find SNMP runs if the wizard asked for it after this.
+            from .. import onboarding, snmp_discover
+            find_snmp = (await onboarding.after_sweep(session)
+                         and await snmp_discover.mark_started(session))
+
+        if find_snmp:
+            from ..scheduler import trigger_snmp_discovery
+            trigger_snmp_discovery(config)
 
         log.info(
             "Discovery: probed %d, %d answered, %d new",

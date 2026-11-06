@@ -37,6 +37,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Network map and Services — declared tree, services list, alerts follow it | ✅ working (topology from SNMP not yet) |
 | Device APIs — TrueNAS (drives, alerts), Proxmox (guests, storage, SMART) and UniFi (devices, clients) | ✅ working |
 | Integrations — a sidebar menu with a line per kind set up, and a page per kind listing every one | ✅ working |
+| First-run wizard (`/welcome`) — subnets from the host's interfaces, SNMP, integrations with certificate trust, alerts, first scan; open-item banners | built and tested (suite and smoke test) — not yet exercised on a real install |
 | Backup and restore — nightly, encrypted download, `spark-restore` | ✅ working |
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 | Availability report — per target and the internet, unreachable and planned apart, CSV | ✅ working |
@@ -111,6 +112,7 @@ README.md         what SPARK is; deploy, upgrade, back up, restore
 DESIGN.md         the design document
 CLAUDE.md         working agreements for this repo
 docs/
+  getting-started.md  first run: the setup wizard step by step, and what to do after it
   guide.md          using SPARK, page by page
   configuration.md  spark.yaml, TLS, Docker settings, cost, sign-in, upgrading
   development.md    this file: status, tests, CI, layout, conventions, roadmap, design decisions
@@ -162,6 +164,7 @@ spark/
     proxmox.py          the Proxmox API client: an API token over pinned HTTPS, GET only
     proxmox_health.py   Proxmox guests, storage and drives: the alerts, the Proxmox card
     unifi.py            the UniFi Network Integration API: an API key over pinned HTTPS, GET only; the UniFi card
+    onboarding.py       the first-run wizard's state, the host's own subnets, linking its credentials after the sweep, the banners
     integrations.py     the kinds under Integrations (TrueNAS, Proxmox, UniFi, Hermes), how many of each, the sidebar's menu
     servicemap.py       the network map: the tree, each device's status, the services list
     diagram.py          the map's Diagram view: where each box goes, top-down; lines coloured by trouble below
@@ -197,9 +200,10 @@ spark/
       routes_heartbeat.py  /hb/<token>: the pings, with no session, rate-limited
       routes_device_events.py  /device-events: traps and syslog, the listeners' state, the rules
       routes_credentials.py  Settings → Credentials
+      routes_welcome.py   /welcome, the first-run wizard a page per step; /banners/dismiss
       routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
-    templates/          Jinja templates; `_integrations.html` holds the API, Storage, Proxmox, UniFi and Hermes cards
+    templates/          Jinja templates; `_integrations.html` holds the API, Storage, Proxmox, UniFi and Hermes cards; `_banners.html` the open items on every page; `_cert_trust.html` the fingerprint and Trust button Settings and the wizard share
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)
@@ -207,6 +211,7 @@ spark/
                         and sidebar art (WebP)
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
+    test_welcome.py     the first-run wizard step by step, the host's subnets, linking after the sweep, banners and dismissing them
     test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
     test_hermes.py      Hermes Agent: the verdict on its status, a real local server, the alert, the card, found by the scan, migrations 29-30
     test_receiver.py    traps and syslog: parsing, real UDP on loopback, strangers and rate limits, rules to alerts, the page; the image's capabilities agree with compose
@@ -283,6 +288,13 @@ Things that will bite you if you don't know them:
 - **Enums** use `enum_column()` and are `enum.StrEnum`, so values store
   lowercase, read back as members, and format as `down` rather than
   `HealthStatus.DOWN` in an alert message.
+- **The setup wizard is a front door, not a copy.** Each `/welcome` step saves
+  through the same service functions Settings uses (`subnets.create`,
+  `snmp_config.save_profile`, `credentials.add`, `alerts.set_webhook`), so
+  what it makes is a Settings row like any other. A new question for first
+  run goes through its module the same way. A new kind of open item is an
+  entry in `onboarding.open_items` with a `sig` that changes when the item
+  is news again — that is what brings a dismissed banner back.
 - **Checks never raise.** They return a `CheckOutcome` with a reason. The state
   machine decides what a sequence of outcomes means; the check does not.
 - **Migrations are a numbered list in `db.py`**, not Alembic. Append; never edit

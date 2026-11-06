@@ -53,7 +53,7 @@ in the `spark/` folder; every command below runs from there.
 git clone https://github.com/MarcusP3/SparkNetworkMonitoring.git
 cd SparkNetworkMonitoring/spark
 cp config/spark.example.yaml config/spark.yaml   # yours; git ignores it
-$EDITOR config/spark.yaml                        # set your first subnet
+$EDITOR config/spark.yaml                        # optional: the setup wizard asks for subnets
 mkdir -p data && sudo chown 9700:9700 data       # the container runs as uid 9700, not root
 docker compose up -d --build
 ```
@@ -66,8 +66,11 @@ Then:
    `docker compose logs spark | grep -A8 fingerprint`
 2. Create the admin account. The form asks for a **setup code** from the log:
    `docker compose logs spark | grep -A3 "setup code"`
-3. Add a subnet or two under Settings, press **Scan now** on Devices, and
-   **Watch** what you care about.
+3. The **setup wizard** follows: your subnets (pre-filled from the host's
+   interfaces), an SNMP community or v3 user, TrueNAS/Proxmox/UniFi keys, and
+   where alerts go. Skip anything; banners at the top of the page keep track
+   of what is left. Finish starts the first scan.
+   [Getting started](docs/getting-started.md) has the detail.
 
 Check it is healthy:
 
@@ -130,6 +133,8 @@ the network: being at the machine is the credential.
 
 ## Documentation
 
+- [Getting started](docs/getting-started.md) — the first run: the setup
+  wizard step by step, and what to do after it.
 - [Using SPARK](docs/guide.md) — monitoring, the map, alerts, SNMP,
   TrueNAS/Proxmox/UniFi credentials, backups, page by page.
 - [Configuration and security](docs/configuration.md) — `spark.yaml`, TLS,

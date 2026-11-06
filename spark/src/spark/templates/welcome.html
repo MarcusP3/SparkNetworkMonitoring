@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% from "_cert_trust.html" import cert_trust %}
+{# The first-run wizard (routes_welcome.py, onboarding.py). One template,
+   a section per step; each step's form has Skip, and what it saves is what
+   Settings would have saved. #}
+{% block content %}
+<div class="page page-welcome">
+  <div class="page-head">
+    <div class="page-title">
+      <div>
+        <p class="page-tag">First run</p>
+        <h1>Set up SPARK</h1>
+        <p class="page-sub">A few questions about your network. Skip anything you are not ready for: it is all under
+          <a href="/settings">Settings</a> later, and this page stays at <a href="/welcome">/welcome</a>.</p>
+      </div>
+    </div>
+  </div>
+
+  <ol class="wizard-steps" aria-label="Setup steps">
+    {% for slug, label, how in steps %}
+    <li class="{% if slug == step %}is-current{% elif how == 'done' %}is-done{% elif how == 'skipped' %}is-skipped{% endif %}">
+      <a href="/welcome/{{ slug }}" {% if slug == step %}aria-current="step"{% endif %}>
+        <span class="wizard-num">{{ loop.index }}</span> {{ label }}
+        {% if how == 'skipped' and slug != step %}<span class="muted small">skipped</span>{% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="alert ok">{{ notice }}</div>{% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% if step == 'subnets' %}
+  <section class="card wizard-card">
+    <div class="card-head"><div>
+      <h2>What networks should SPARK watch?</h2>
+      <p class="card-sub">One row per subnet or VLAN. The networks this machine already has an address on are filled in;
+        add the ones it reaches only through a router below them.</p>
+    </div></div>
+
+    {% if existing %}
+    <h3 class="sub-title">Already listed</h3>
+    <div class="table-scroll">
+    <table class="table compact">
+      <thead><tr><th>Network</th><th>Name</th><th>VLAN</th><th>Attached</th><th></th></tr></thead>
+      <tbody>
+      {% for s in existing %}
+      <tr>
+        <td class="mono">{{ s.cidr }}</td><td>{{ s.name or '' }}</td><td>{{ s.vlan if s.vlan is not none else '—' }}</td>
+        <td>{{ 'yes' if s.attached else 'no' }}</td>
+        <td><form method="post" action="/welcome/subnets/{{ s.id }}/delete">
+          <button type="submit" class="btn-quiet">Remove</button></form></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted small">From <code>spark.yaml</code> or an earlier visit. Remove any that are not yours — the example file lists 192.168.1.0/24.</p>
+    {% endif %}
+
+    <form method="post" action="/welcome/subnets" class="wizard-form">
+      <div class="table-scroll">
+      <table class="table compact wizard-subnets">
+        <thead><tr>
+          <th title="Add this one">Add</th><th>Network (CIDR)</th><th>Name</th><th>VLAN</th>
+          <th title="This machine has an address on the segment">Directly attached</th>
+        </tr></thead>
+        <tbody>
+        {% if typed %}
+          {% for row in typed %}
+          <tr>
+            <td><input type="checkbox" name="include" value="{{ loop.index0 }}" {% if row.include %}checked{% endif %} aria-label="Add this network"></td>
+            <td><input type="text" name="cidr" maxlength="64" value="{{ row.cidr }}" placeholder="192.168.30.0/24" aria-label="Network"></td>
+            <td><input type="text" name="name" maxlength="64" value="{{ row.name }}" placeholder="Servers" aria-label="Name"></td>
+            <td><input type="number" name="vlan" class="narrow" min="0" max="4094" value="{{ row.vlan }}" placeholder="—" aria-label="VLAN tag"></td>
+            <td><input type="checkbox" name="attached" value="{{ loop.index0 }}" {% if row.attached %}checked{% endif %} aria-label="Directly attached"></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          {% for s in detected %}
+          <tr>
+            <td><input type="checkbox" name="include" value="{{ loop.index0 }}" {% if not s.too_large %}checked{% endif %} aria-label="Add this network"></td>
+            <td><input type="text" name="cidr" maxlength="64" value="{{ s.cidr }}" aria-label="Network">
+              <div class="muted small">on {{ s.interface }} ({{ s.address }}){% if s.too_large %} · too large to sweep: over 1,024 hosts, narrow it{% endif %}</div></td>
+            <td><input type="text" name="name" maxlength="64" value="" placeholder="LAN" aria-label="Name"></td>
+            <td><input type="number" name="vlan" class="narrow" min="0" max="4094" value="{{ s.vlan if s.vlan is not none else '' }}" placeholder="—" aria-label="VLAN tag"></td>
+            <td><input type="checkbox" name="attached" value="{{ loop.index0 }}" checked aria-label="Directly attached"></td>
+          </tr>
+          {% endfor %}
+          {% set offset = detected | length %}
+          {% for i in range(blank_rows) %}
+          <tr>
+            <td><input type="checkbox" name="include" value="{{ offset + i }}" checked aria-label="Add this network"></td>
+            <td><input type="text" name="cidr" maxlength="64" value="" placeholder="192.168.20.0/24" aria-label="Network"></td>
+            <td><input type="text" name="name" maxlength="64" value="" placeholder="IoT" aria-label="Name"></td>
+            <td><input type="number" name="vlan" class="narrow" min="0" max="4094" value="" placeholder="—" aria-label="VLAN tag"></td>
+            <td><input type="checkbox" name="attached" value="{{ offset + i }}" aria-label="Directly attached"></td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+        </tbody>
+      </table>
+      </div>
+
+      <dl class="legend">
+        <dt>Directly attached</dt>
+        <dd>Ticked when this machine has an address on that network. SPARK then reads ARP there and knows each device by
+          its MAC address, so it keeps its identity when DHCP moves it. Across a router it can ping but not see MACs.
+          If you can, give the SPARK VM a network interface in each VLAN. When in doubt, leave it ticked.</dd>
+        <dt>VLAN</dt>
+        <dd>A label for the inventory. Nothing in SPARK reads it.</dd>
+      </dl>
+
+      <label class="stack-field">
+        <span class="muted small">Never scan these <em class="optional">optional, one per line</em></span>
+        <textarea name="exclude" rows="3" maxlength="2240" placeholder="192.168.1.25&#10;192.168.1.100-192.168.1.150">{{ exclude or '' }}</textarea>
+        <small class="hint">A fragile printer, a PLC, a range you may not scan. Never pinged, port-scanned or asked for SNMP by the automatic scans.</small>
+      </label>
+
+      <div class="wizard-actions">
+        <button type="submit" name="action" value="next" class="btn-primary">Save and continue</button>
+        <button type="submit" name="action" value="skip" class="btn-quiet" formnovalidate>Skip for now</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% if step == 'snmp' %}
+  <section class="card wizard-card">
+    <div class="card-head"><div>
+      <h2>Do your switches and servers speak SNMP?</h2>
+      <p class="card-sub">With it SPARK charts CPU, memory, temperature and traffic, and reads switch MAC tables for the map.
+        Turn SNMP on in each device first, read-only. Most networks need one set of credentials.</p>
+    </div></div>
+
+    {% if profiles %}
+    <h3 class="sub-title">Already saved</h3>
+    <ul class="plain-list">
+      {% for p, level in profiles %}<li><strong>{{ p.name }}</strong> <span class="muted small">{{ level }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    {% set t = typed or {} %}
+    <form method="post" action="/welcome/snmp" class="wizard-form wizard-snmp is-{{ t.version or 'v2c' }}">
+      <label class="stack-field">
+        <span class="muted small">Version</span>
+        <select name="version" class="wizard-snmp-version">
+          <option value="v2c" {% if (t.version or 'v2c') == 'v2c' %}selected{% endif %}>v2c — a community string</option>
+          <option value="v3" {% if t.version == 'v3' %}selected{% endif %}>v3 — a user, authenticated and encrypted</option>
+        </select>
+      </label>
+      <label class="stack-field for-v2c">
+        <span class="muted small">Community string</span>
+        <input type="password" name="community" maxlength="1024" autocomplete="new-password" placeholder="read-only community">
+        <small class="hint">Sent in clear text with every request: use a read-only one, never a real password,
+          and keep SNMP on a network you trust. SPARK never writes.</small>
+      </label>
+      <div class="snmp-grid for-v3">
+        <label class="inline-field"><span class="muted small">User</span>
+          <input type="text" name="username" maxlength="64" value="{{ t.username or '' }}" placeholder="spark" autocomplete="off"></label>
+        <label class="inline-field"><span class="muted small">Auth</span>
+          <select name="auth_protocol">{% for proto in auth_protocols %}<option value="{{ proto }}" {% if (t.auth_protocol or 'SHA') == proto %}selected{% endif %}>{{ proto }}</option>{% endfor %}</select></label>
+        <label class="inline-field"><span class="muted small">Auth password</span>
+          <input type="password" name="auth_key" maxlength="1024" autocomplete="new-password" placeholder="at least 8 characters"></label>
+        <label class="inline-field"><span class="muted small">Privacy</span>
+          <select name="priv_protocol">{% for proto in priv_protocols %}<option value="{{ proto }}" {% if (t.priv_protocol or 'AES') == proto %}selected{% endif %}>{{ proto }}</option>{% endfor %}
+            <option value="none" {% if t.priv_protocol == 'none' %}selected{% endif %}>None — authNoPriv</option></select></label>
+        <label class="inline-field"><span class="muted small">Privacy password</span>
+          <input type="password" name="priv_key" maxlength="1024" autocomplete="new-password" placeholder="at least 8 characters"></label>
+      </div>
+      <p class="muted small">Saved encrypted and never shown again. SPARK does not try it on anything yet: at the end you
+        can choose to look for devices that answer it once the first scan has run.</p>
+      <div class="wizard-actions">
+        <button type="submit" name="action" value="next" class="btn-primary">Save and continue</button>
+        {% if profiles %}<button type="submit" name="action" value="continue" class="btn-quiet" formnovalidate>Continue with what is saved</button>
+        {% else %}<button type="submit" name="action" value="skip" class="btn-quiet" formnovalidate>Skip for now</button>{% endif %}
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% if step == 'integrations' %}
+  {% set t = typed or {} %}
+  <section class="card wizard-card">
+    <div class="card-head"><div>
+      <h2>Which of these do you run?</h2>
+      <p class="card-sub">SPARK reads them through their own APIs, read-only — more than SNMP can tell it. Tick the ones you have.
+        Give a key now, or tick it and add the key later: a banner will remind you.</p>
+    </div></div>
+
+    {% for kind, label, rows in kinds %}
+    {% for c in rows %}{% set r = c.row %}
+    <div class="cred wizard-cred" id="cred-{{ r.id }}">
+      <p><strong>{{ r.name }}</strong> <span class="muted">{{ r.host }}</span> <span class="pill {{ c.pill }}">{{ c.words }}</span></p>
+      {% if c.state == 'bad' and r.last_error %}<p class="muted small">{{ r.last_error }}</p>{% endif %}
+      {{ cert_trust(r, "/welcome/integrations/" ~ r.id ~ "/trust") }}
+      <div class="wizard-actions">
+        <form method="post" action="/welcome/integrations/{{ r.id }}/test"><button type="submit" class="btn-quiet">Test again</button></form>
+        <form method="post" action="/welcome/integrations/{{ r.id }}/delete"><button type="submit" class="btn-quiet">Remove</button></form>
+      </div>
+    </div>
+    {% endfor %}
+    {% endfor %}
+
+    <form method="post" action="/welcome/integrations" class="wizard-form">
+      {% set chosen = t.use if t.use is defined else (state.chosen or []) %}
+      {% for kind, label, rows in kinds %}
+      <fieldset class="wizard-kind">
+        <legend><label><input type="checkbox" name="use" value="{{ kind }}" {% if kind in chosen or rows %}checked{% endif %}>
+          {{ label }}{% if rows %} <span class="muted small">— another one</span>{% endif %}</label></legend>
+        {% if kind == 'truenas' %}
+        <label class="stack-field"><span class="muted small">Address</span>
+          <input type="text" name="truenas_host" maxlength="255" value="{{ t.truenas_host or '' }}" placeholder="192.168.1.20 or truenas.lan" autocomplete="off"></label>
+        <label class="stack-field"><span class="muted small">API key</span>
+          <input type="password" name="truenas_key" maxlength="1024" autocomplete="new-password"></label>
+        <p class="muted small">A key for a user with the <strong>Read-only Administrator</strong> role: user menu (top right) → My API Keys.
+          HTTPS only — TrueNAS revokes a key that is ever sent over plain HTTP.</p>
+        {% elif kind == 'proxmox' %}
+        <label class="stack-field"><span class="muted small">Address</span>
+          <input type="text" name="proxmox_host" maxlength="255" value="{{ t.proxmox_host or '' }}" placeholder="192.168.1.10 (port 8006 assumed)" autocomplete="off"></label>
+        <label class="stack-field"><span class="muted small">Token ID</span>
+          <input type="text" name="proxmox_token_id" maxlength="128" value="{{ t.proxmox_token_id or '' }}" placeholder="spark@pve!monitor" autocomplete="off" spellcheck="false"></label>
+        <label class="stack-field"><span class="muted small">Secret</span>
+          <input type="password" name="proxmox_secret" maxlength="1024" autocomplete="new-password"></label>
+        <details class="muted small"><summary>Make a read-only token on the Proxmox host</summary>
+<pre><code>pveum user add spark@pve --comment "SPARK monitoring"
+pveum acl modify / --users spark@pve --roles PVEAuditor
+pveum user token add spark@pve monitor --privsep 1
+pveum acl modify / --tokens 'spark@pve!monitor' --roles PVEAuditor</code></pre>
+          The third command shows the secret once.</details>
+        {% else %}
+        <label class="stack-field"><span class="muted small">Console address</span>
+          <input type="text" name="unifi_host" maxlength="255" value="{{ t.unifi_host or '' }}" placeholder="192.168.1.1" autocomplete="off"></label>
+        <label class="stack-field"><span class="muted small">API key</span>
+          <input type="password" name="unifi_key" maxlength="1024" autocomplete="new-password"></label>
+        <p class="muted small">UniFi Network → <strong>Integrations</strong> → create an API key (shown once). It also covers
+          what SNMP cannot: the console, Flex and Ultra switches, and access points.</p>
+        {% endif %}
+      </fieldset>
+      {% endfor %}
+      <p class="muted small">Connecting fetches each certificate first and sends nothing until you have compared its
+        fingerprint and trusted it. Each is tied to its device once the first scan finds it at that address.</p>
+      <div class="wizard-actions">
+        <button type="submit" name="action" value="connect" class="btn-primary">Connect</button>
+        <button type="submit" name="action" value="next" class="btn-quiet" formnovalidate>Continue</button>
+        <button type="submit" name="action" value="skip" class="btn-quiet" formnovalidate>Skip for now</button>
+      </div>
+    </form>
+    <p class="muted small">Hermes Agent needs nothing here: the port scan finds its dashboard by itself.</p>
+  </section>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% if step == 'alerts' %}
+  <section class="card wizard-card">
+    <div class="card-head"><div>
+      <h2>Where should alerts go?</h2>
+      <p class="card-sub">Until something is set up here, SPARK records problems but tells no one.</p>
+    </div></div>
+    <form method="post" action="/welcome/alerts" class="wizard-form">
+      <label class="stack-field">
+        <span class="muted small">Discord webhook URL {% if has_webhook %}<span class="pill ok">saved</span>{% endif %}</span>
+        <input type="url" name="webhook" maxlength="512" placeholder="{{ 'Saved — leave empty to keep it' if has_webhook else 'https://discord.com/api/webhooks/…' }}" autocomplete="off">
+        <small class="hint">In Discord: Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL. Stored encrypted.</small>
+      </label>
+      <div class="wizard-actions">
+        <button type="submit" name="action" value="next" class="btn-primary">Save and continue</button>
+        <button type="submit" name="action" value="test" class="btn-quiet">Save and send a test</button>
+        <button type="submit" name="action" value="skip" class="btn-quiet" formnovalidate>Skip for now</button>
+      </div>
+    </form>
+    <p class="muted small">ntfy, email and webhooks (Home Assistant, n8n, Node-RED) are under
+      <a href="/alerts/channels">Alerts → Channels</a>; quiet hours under <a href="/alerts/rules">Alerts → Rules</a>.</p>
+  </section>
+  {% endif %}
+
+  {# ------------------------------------------------------------------ #}
+  {% if step == 'finish' %}
+  <section class="card wizard-card">
+    <div class="card-head"><div>
+      <h2>Ready</h2>
+      <p class="card-sub">What SPARK has, and what happens next.</p>
+    </div></div>
+    <ul class="wizard-summary">
+      <li><strong>Subnets:</strong>
+        {% if existing %}{% for s in existing %}{{ s.label }}{{ ', ' if not loop.last }}{% endfor %}{% else %}none — nothing to scan yet{% endif %}
+        {% if excluded %} · {{ excluded | length }} excluded{% endif %}</li>
+      <li><strong>SNMP:</strong>
+        {% if profiles %}{% for p, level in profiles %}{{ p.name }}{{ ', ' if not loop.last }}{% endfor %}{% else %}not set up{% endif %}</li>
+      <li><strong>Integrations:</strong>
+        {% set any = namespace(n=0) %}
+        {% for kind, label, rows in kinds %}{% for c in rows %}{% set any.n = any.n + 1 %}{{ c.row.name }} <span class="pill {{ c.pill }}">{{ c.words }}</span> {% endfor %}{% endfor %}
+        {% if not any.n %}none{% endif %}</li>
+      <li><strong>Alerts:</strong> {{ 'Discord' if has_webhook else 'nowhere yet' }}</li>
+    </ul>
+    <form method="post" action="/welcome/finish" class="wizard-form">
+      {% if profiles and existing %}
+      <label class="check-field">
+        <input type="checkbox" name="find_snmp" value="1">
+        <span>Once the first scan has run, look for devices that answer SNMP
+          <small class="hint">It asks every device found for its name, with each saved profile. A v2c community goes to all of them in clear text — leave this off and press Find SNMP on Devices later if you would rather choose.</small></span>
+      </label>
+      {% endif %}
+      <div class="wizard-actions">
+        <button type="submit" class="btn-primary">{{ 'Start the first scan' if existing else 'Finish' }}</button>
+      </div>
+    </form>
+    <p class="muted small">Next: on <a href="/devices">Devices</a>, name what you care about and press <strong>Watch</strong> to be alerted on it.</p>
+  </section>
+  {% endif %}
+</div>
+<script nonce="{{ request.state.csp_nonce }}">
+  // SNMP: only the chosen version's fields. With JS off both show and the
+  // server ignores the ones that do not apply.
+  (function () {
+    var form = document.querySelector('.wizard-snmp');
+    if (!form) return;
+    document.documentElement.classList.add('js-wizard');
+    var select = form.querySelector('.wizard-snmp-version');
+    function sync() {
+      form.classList.toggle('is-v3', select.value === 'v3');
+      form.classList.toggle('is-v2c', select.value !== 'v3');
+    }
+    select.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+{% endblock %}

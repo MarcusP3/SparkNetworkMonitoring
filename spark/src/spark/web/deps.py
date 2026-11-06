@@ -166,8 +166,11 @@ async def require_user(
         # The sidebar's Integrations menu (base.html), three small counts.
         # Not for the live refresh: it swaps #live and keeps the sidebar.
         if not background(request):
-            from .. import integrations
+            from .. import integrations, onboarding
             request.state.integrations = await integrations.menu(session)
+            # Open items at the top of the page (base.html): setup not
+            # finished, an integration chosen and not added, or not connected.
+            request.state.banners = await onboarding.banners(session)
         return user
     if await setup_required(session):
         raise RedirectException("/setup")

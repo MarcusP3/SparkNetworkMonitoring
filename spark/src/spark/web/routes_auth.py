@@ -199,6 +199,10 @@ async def setup_submit(
     if tz:
         await prefs.set_timezone(session, tz)
     await topology.set_mode(session, map_mode)
+    # A fresh install: the wizard (/welcome) asks for subnets, SNMP,
+    # integrations and alerts next. Only here, so an upgrade never sees it.
+    from .. import onboarding
+    await onboarding.start(session)
     from ..alerts import on_security_event
 
     await on_security_event(
@@ -222,7 +226,7 @@ async def setup_submit(
     # Spent. A second claimant with the same code now meets "already exists".
     request.app.state.setup_code = None
     log.info("First-run setup completed from %s", ip)
-    response = redirect("/")
+    response = redirect("/welcome")
     _set_session_cookie(request, response, token, config)
     return response
 

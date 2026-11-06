@@ -37,6 +37,7 @@ from .web.routes_preferences import router as preferences_router
 from .web.routes_events import router as events_router
 from .web.routes_settings import router as settings_router
 from .web.routes_targets import router as targets_router
+from .web.routes_welcome import router as welcome_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -318,6 +319,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.include_router(auth_router)
+    app.include_router(welcome_router)
     app.include_router(dashboard_router)
     app.include_router(alerts_router)
     app.include_router(targets_router)
