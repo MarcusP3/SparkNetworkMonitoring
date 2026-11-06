@@ -30,6 +30,14 @@ SHORT = 32         # numbers, times, versions, protocol names, checkboxes
 NOTE = 280         # an acknowledgement's note: a line, not a write-up
 EMAILS = 1024      # up to five addresses to send alerts to
 HOOK_URL = 2048    # an ntfy topic's or a webhook's address, which may carry its secret
+TOKEN = 128        # an agent token is 49 characters (agents.py); a pasted one with a stray space fits
+
+# What an agent gets back (agents.py, the API and the bridge). Bounded so that
+# one device cannot fill a model's context with a single syslog line, and a
+# list never grows past what a model can act on.
+AGENT_ROWS = 200    # rows in any one list a tool returns
+AGENT_TEXT = 1024   # a device-written string: a syslog line is at most 1024 bytes in RFC 3164
+AGENT_CALLS_PER_MINUTE = 60  # tool calls per token; the pages must keep working while an agent loops
 
 # The largest request body accepted at all, checked before any route runs.
 # The biggest real form is a target with 4 KB of params; this is 16x that.

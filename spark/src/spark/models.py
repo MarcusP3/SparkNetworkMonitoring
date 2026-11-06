@@ -899,6 +899,13 @@ class UserSession(Base):
     user_agent: Mapped[str | None] = mapped_column(String(255))
     ip: Mapped[str | None] = mapped_column(String(45))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set when an agent signed in with its token rather than a person with the
+    # password (agents.py). Such a session carries the token's scope and ends
+    # when the token is revoked. Nullable and unindexed: a person's session
+    # has none, and there are never more than a handful of rows.
+    agent_token_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_token.id", ondelete="CASCADE")
+    )
 
 
 class LoginAttempt(Base):
@@ -909,6 +916,54 @@ class LoginAttempt(Base):
     ip: Mapped[str] = mapped_column(String(45))
     ts: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AgentScope(enum.StrEnum):
+    """What a token lets an agent do. `operate` includes `read`."""
+
+    READ = "read"
+    OPERATE = "operate"
+
+
+class AgentToken(Base):
+    """A credential an AI agent presents instead of the password (agents.py).
+
+    Named, scoped, expiring and revocable, where the password is none of
+    those. Only the SHA-256 of the token is kept, as for sessions: a copy of
+    the database cannot be used to call the API or to sign an agent in.
+    Revoking sets the flag and deletes the token's sessions; rows are never
+    deleted, so the audit trail keeps its names.
+    """
+
+    __tablename__ = "agent_token"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    scope: Mapped[AgentScope] = enum_column(AgentScope, default=AgentScope.READ)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    created_ip: Mapped[str | None] = mapped_column(String(45))
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_used_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_used_ip: Mapped[str | None] = mapped_column(String(45))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AgentAction(Base):
+    """What an agent did, or tried to: one row per `operate` call and per
+    refused call, never per read. The Agents page lists them; nothing is
+    sent for them (twenty acknowledgements are not twenty messages)."""
+
+    __tablename__ = "agent_action"
+    __table_args__ = (Index("ix_agent_action_token_at", "token_id", "at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_id: Mapped[int] = mapped_column(ForeignKey("agent_token.id", ondelete="CASCADE"))
+    at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    ip: Mapped[str | None] = mapped_column(String(45))
+    route: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(String(512))
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class SnmpProfile(Base, TimestampMixin):

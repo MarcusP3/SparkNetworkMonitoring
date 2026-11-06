@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import (
 from .config import Config
 from .models import (
     DEFAULT_SETTINGS,
+    AgentAction,
+    AgentToken,
     AlertMute,
     ApiCredential,
     AlertIncident,
@@ -489,7 +491,27 @@ async def _add_custom_metrics(session: AsyncSession) -> None:
         await connection.run_sync(model.__table__.create, checkfirst=True)
 
 
-CURRENT_VERSION = 31
+@migration(32, "Agent tokens, what agents did, and which sessions are an agent's")
+async def _add_agents(session: AsyncSession) -> None:
+    """Two tables from model metadata (the token first, for the action's
+    foreign key), then a column on user_session -- tolerant of it already
+    being there (see migration 4). The column carries its REFERENCES clause,
+    which SQLite allows on ADD COLUMN when the default is NULL, so a migrated
+    database matches a fresh one. Unindexed on purpose: a person's session has
+    no token, and the table never holds more than a handful of rows."""
+    connection = await session.connection()
+    for model in (AgentToken, AgentAction):
+        await connection.run_sync(model.__table__.create, checkfirst=True)
+    existing = await connection.run_sync(
+        lambda sync: {c["name"] for c in inspect(sync).get_columns("user_session")}
+    )
+    if "agent_token_id" not in existing:
+        await session.execute(text(
+            "ALTER TABLE user_session ADD COLUMN agent_token_id INTEGER "
+            "REFERENCES agent_token (id) ON DELETE CASCADE"))
+
+
+CURRENT_VERSION = 32
 
 
 async def _ensure_version_table(session: AsyncSession) -> None:

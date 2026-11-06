@@ -15,8 +15,6 @@ gets 30 pings a minute and 10 wrong tokens in ten minutes, then 429.
 from __future__ import annotations
 
 import re
-import time
-from collections import deque
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
@@ -28,51 +26,12 @@ from ..checks import heartbeat
 from ..engine.state import apply_outcome
 from ..models import CheckType, Target, utcnow
 from .deps import get_session
+from ..ratelimit import Limiter
 
 router = APIRouter()
 
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
 FAILED_DETAIL = 200
-
-
-class Limiter:
-    """Per address, in memory: pings a minute, and wrong tokens in ten.
-
-    In memory is enough for one process. It forgets on restart, which costs
-    a guesser nothing they could use: 10 tries in 10 minutes against 2^192.
-    """
-
-    PINGS_PER_MINUTE = 30
-    MISSES_PER_WINDOW = 10
-    MISS_WINDOW = 600.0
-    MAX_ADDRESSES = 10_000
-
-    def __init__(self) -> None:
-        self._pings: dict[str, deque[float]] = {}
-        self._misses: dict[str, deque[float]] = {}
-
-    def _within(self, book: dict[str, deque[float]], who: str, window: float,
-                now: float) -> deque[float]:
-        if len(book) > self.MAX_ADDRESSES:
-            book.clear()          # a flood of addresses: start over, not grow
-        times = book.setdefault(who, deque())
-        while times and now - times[0] > window:
-            times.popleft()
-        return times
-
-    def allow(self, who: str, now: float | None = None) -> bool:
-        now = time.monotonic() if now is None else now
-        if len(self._within(self._misses, who, self.MISS_WINDOW, now)) >= self.MISSES_PER_WINDOW:
-            return False
-        pings = self._within(self._pings, who, 60.0, now)
-        if len(pings) >= self.PINGS_PER_MINUTE:
-            return False
-        pings.append(now)
-        return True
-
-    def miss(self, who: str, now: float | None = None) -> None:
-        now = time.monotonic() if now is None else now
-        self._within(self._misses, who, self.MISS_WINDOW, now).append(now)
 
 
 limiter = Limiter()

@@ -42,6 +42,7 @@ one has actually delivered. Anything marked *not yet* does nothing at all today.
 | Internet health — reachability, quality, DNS, web, outages (no speed tests yet) | ✅ working |
 | Availability report — per target and the internet, unreachable and planned apart, CSV | ✅ working |
 | SNMP traps (v1, v2c) and syslog (UDP) — known devices only, rules that alert, the Events page | ✅ working (v3 traps, informs and syslog over TCP not yet) |
+| Agents — token-gated JSON API, `spark-monitor-mcp` bridge for local models, agent sign-in | ❌ not yet (tables, tokens and audit exist; nothing reachable) |
 
 SPARK tells you when something goes down, in Discord, ntfy, email or a webhook, and when it comes back —
 see [Alerts](guide.md#alerts).
@@ -132,6 +133,8 @@ spark/
     models.py           full Phase 1 schema, UTC datetime and enum column types
     db.py               engine, sessions, migration runner
     auth.py             Argon2 passwords (hashed off the event loop), sessions, setup code, proxy mode, sign-in events
+    agents.py           agent tokens: named, scoped, expiring, revocable, stored hashed; the audit row; `clean` for device-written text
+    ratelimit.py        per-address and per-token limits in memory, shared by /hb and the agents' API
     proxies.py          which peers are trusted proxies and what their X-Forwarded-* headers say
     tls.py              the self-signed certificate: made once, fingerprint in the log
     cli.py              spark-probe, spark-reset-password, spark-restore
@@ -265,6 +268,7 @@ spark/
     test_live_server.py  under a real uvicorn: loopback cannot pick its address, same-host proxies work, one admin however many race
     test_setup_code.py  the setup code: logged not shown, required, rate-limited, spent; one administrator enforced by the database
     test_account.py     change password, sessions listed, sign out everywhere else, spark-reset-password
+    test_agents.py      agent tokens: hashed, scoped, expiring, revoked with their sessions; events; `clean`; the limiter; migration 32
     test_backup.py      backup while running, encryption edges and tampering, restore end to end, refusals, the page
     test_http_check.py  the HTTP check against a local server: 1 MB body cap, endless bodies cut
     test_data_privacy.py  data/ files are 0600, an older database is made private at start
@@ -307,6 +311,12 @@ Things that will bite you if you don't know them:
   at once stranded other devices' requests, and a poll job that never
   returns is never run again. Each poll's network half has a deadline
   (`snmp_poll.POLL_DEADLINE`) on top of the per-request timeouts.
+- **Device-written text reaches a model through `agents.clean`.** Names,
+  SNMP descriptions, syslog lines and everything else the network told SPARK
+  leave the agents' API as one bounded line with control and invisible
+  characters removed, and nothing else: the words are data, and marking them
+  as data is the bridge's job where they meet the model. A new API route that
+  returns something a device said passes it through `clean` first.
 - **A device's numbers are bounded before use.** Custom metric readings past
   `custom_metrics.VALUE_LIMIT` (raw or scaled) are errors, not values: a
   finite `1.7e308` from a device becomes infinity on a chart axis or times a
@@ -390,6 +400,7 @@ Things that will bite you if you don't know them:
 | 6b | Custom SNMP metrics — chosen OIDs, `extend` import, charts, alerts | ✅ done (gauges; counters later) |
 | 7 | UniFi Network API collector (console CPU/temp, uplink topology) | planned |
 | 8 | Alerting — Discord, dependency suppression, quiet hours | ✅ done (ahead of 4d, 5, 7) |
+| 9 | Agents — tokens, `/api/v1`, the `spark-monitor-mcp` bridge, agent sign-in | in progress (tokens and audit done) |
 
 Reordered twice. After increment 2 the check engine moved ahead of SNMP
 storage, because a monitor that cannot tell you anything is down is not yet a

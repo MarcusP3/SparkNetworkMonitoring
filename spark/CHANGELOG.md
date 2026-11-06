@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Agents, part 1: tokens and audit (2026-11-06)
+
+Groundwork for agents (a local model behind Hermes Agent, LM Studio, Claude
+Code or Claude Desktop) talking to SPARK: the plan is a token-gated JSON API
+under `/api/v1/`, a `spark-monitor-mcp` stdio bridge that runs on the agent's
+machine, and a sign-in that gives an agent a session of its own. **Nothing in
+this part is reachable yet**: no route reads a token, no page mints one, and
+the bridge does not exist. Migration 32 runs at start; nothing to do by hand.
+
+### Added
+
+- `agent_token` and `agent_action` tables and `user_session.agent_token_id`
+  (migration 32). A token is named, scoped (`read` or `operate`), expiring
+  and revocable, and stored only as its SHA-256, like a session.
+- `agents.py`: mint, verify, revoke, list; the audit row an `operate` call
+  will write; `clean`, the one door device-written text (names, SNMP
+  descriptions, syslog lines) leaves through on its way to a model -- one
+  bounded line, control and invisible characters removed, words untouched.
+  Token lifecycle and a token used from a new address are security events,
+  under the existing sign-in toggle.
+- `ratelimit.py`: the heartbeat's per-address limiter, lifted out of its
+  route unchanged so the agents' API can count wrong tokens the same way and
+  tool calls per token with its own numbers (`limits.AGENT_CALLS_PER_MINUTE`).
+
+### Known, unfixed
+
+- The API, the Agents page, the agent sign-in and the bridge are the next
+  parts; until then a token can only be made from a Python shell, and does
+  nothing.
+
 ## Unreleased — First-run wizard and open-item banners (2026-11-05)
 
 Rebuild required (`docker compose up -d --build`): new templates and CSS.
