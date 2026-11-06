@@ -23,8 +23,10 @@ Three things live here rather than in the routes:
   its owner left it.
 * **Banners** (`banners`): the open items shown under each page's heading --
   setup not finished, an integration chosen but never given a key, and an
-  integration that is not connected. Dismissing one hides it until it
-  changes: a credential that recovers and then fails again is news again.
+  integration that has never connected (a certificate still to check, or a
+  wrong key or address). One that worked and then stopped is an incident,
+  for the alert rules, not a banner. Dismissing one hides it until it
+  changes state.
 """
 
 from __future__ import annotations
@@ -307,17 +309,27 @@ async def open_items(session: AsyncSession) -> list[dict]:
                       "link": f"/settings/credentials?add={kind}#credentials",
                       "link_text": f"Add {label}"})
     for row in rows:
-        if not row.enabled or credentials.state(row) != "bad":
+        # Only one that has never worked: setting it up is unfinished. One
+        # that worked and then stopped is an incident -- the API alert rule,
+        # Firing now, Acknowledge -- not a to-do, and is not repeated here.
+        if not row.enabled or row.last_ok_at is not None:
+            continue
+        state = credentials.state(row)
+        if state not in ("bad", "waiting"):
             continue
         label = credentials.KINDS.get(row.kind, row.kind)
-        # Changes when it next works: a failure after a recovery is new.
-        sig = row.last_ok_at.isoformat() if row.last_ok_at else "never"
-        reason = _reason(row.last_error)
-        items.append({"key": f"cred:{row.id}", "sig": sig, "tone": "warn",
-                      "title": f"{label} “{row.name}” is not connected",
-                      "detail": " · ".join(part for part in (reason, row.host) if part),
-                      "link": f"/settings/credentials#cred-{row.id}",
-                      "link_text": "Open"})
+        if state == "waiting":
+            title = f"{label} “{row.name}” needs its certificate checked"
+            detail = f"Compare the fingerprint and trust it; nothing is sent until then · {row.host}"
+            link_text = "Check it"
+        else:
+            title = f"{label} “{row.name}” has never connected"
+            detail = " · ".join(part for part in (_reason(row.last_error), row.host) if part)
+            link_text = "Open"
+        items.append({"key": f"cred:{row.id}", "sig": state,
+                      "tone": "warn" if state == "bad" else "info",
+                      "title": title, "detail": detail,
+                      "link": f"/settings/credentials#cred-{row.id}", "link_text": link_text})
     return items
 
 

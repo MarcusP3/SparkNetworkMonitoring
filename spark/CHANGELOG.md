@@ -32,9 +32,12 @@ banners are two rows in the settings table.
   between the greeting and the tiles), on a solid panel with an icon, a
   headline, the short reason and buttons: setup not finished,
   an integration chosen in the wizard with no key yet, and an integration
-  that is not connected. **Dismiss** hides one until it changes -- a
-  credential that recovers and then fails again is shown again. Dismissals
-  are kept on the server, so they hold in every browser.
+  that has **never** connected (a certificate still to check, or a wrong
+  key or address). One that worked and then stopped is an incident --
+  the API alert, Firing now, Acknowledge -- and gets no banner: a banner
+  is unfinished setup, not an outage. **Dismiss** hides one until its
+  state changes. Dismissals are kept on the server, so they hold in every
+  browser.
 - `docs/getting-started.md`, the first run step by step, following the
   wizard; linked from the README and the guide.
 
@@ -52,8 +55,6 @@ banners are two rows in the settings table.
 - Interface detection reads one IPv4 address per interface (the primary,
   through the standard library's ioctl); a secondary address or an
   IPv6-only segment is not offered and has to be typed.
-- A credential waiting for its certificate to be trusted has no banner
-  (not chosen as one); its card says *waiting for you*.
 
 ## Unreleased — Security review (2026-11-05)
 

@@ -262,9 +262,10 @@ class TestIntegrations:
         page = site.get("/welcome/integrations").text
         assert 'action="/welcome/integrations/%d/trust"' % row.id in page
         assert "AA:BB" in page
-        # Chosen and added: no "chosen" banner, and waiting is not "not connected".
+        # Chosen and added: no "chosen" banner; the certificate still to check is.
         home = site.get("/").text
-        assert "You chose TrueNAS" not in home and "is not connected" not in home
+        assert "You chose TrueNAS" not in home
+        assert "TrueNAS “TrueNAS” needs its certificate checked" in home
 
     def test_a_proxmox_token(self, site):
         site.post("/welcome/integrations", data={
@@ -473,20 +474,54 @@ class TestBanners:
         run(_fail(ident))
         assert run(_shown()) == [f"cred:{ident}"]
 
-    def test_dismissed_until_it_recovers_and_fails_again(self, db):
+    def test_one_that_worked_and_stopped_is_an_incident_not_a_banner(self, db):
+        """The API alert rule and Firing now have it; a banner would say it twice."""
+        ident = run(_cred(db, "172.16.10.17", flagged=False))
+        run(_fail(ident, ok_before=utcnow()))
+        assert run(_shown()) == []
+
+    def test_gone_once_it_connects_and_not_back_when_it_fails_later(self, db):
+        ident = run(_cred(db, "172.16.10.17", flagged=False))
+        run(_fail(ident))
+        assert run(_shown()) == [f"cred:{ident}"]
+        run(_recover(ident))
+        assert run(_shown()) == []
+
+        async def fail_again():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                (await s.get(ApiCredential, ident)).last_error = "Connection refused"
+        run(fail_again())
+        assert run(_shown()) == []
+
+    def test_a_certificate_still_to_check(self, db):
+        ident = run(_cred(db, "172.16.10.17", flagged=False))
+
+        async def waiting():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                row = await s.get(ApiCredential, ident)
+                row.pending_sha256 = "AA:BB"
+                row.last_checked_at, row.last_error = utcnow(), "Certificate not trusted yet."
+
+        async def items():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return await onboarding.open_items(s)
+        run(waiting())
+        (item,) = run(items())
+        assert item["tone"] == "info" and "needs its certificate checked" in item["title"]
+
+    def test_dismissed_until_its_state_changes(self, db):
         ident = run(_cred(db, "172.16.10.17", flagged=False))
         run(_fail(ident))
         assert run(_dismiss(f"cred:{ident}")) is True
         assert run(_shown()) == []
-        run(_fail(ident, ok_before=None))              # still failing: still hidden
+        run(_fail(ident))                              # still failing: still hidden
         assert run(_shown()) == []
-        run(_recover(ident))
-        assert run(_shown()) == []
-        async def fail_again():  # type: ignore[no-untyped-def]
+
+        async def new_certificate():  # type: ignore[no-untyped-def]
             async with D.session_scope() as s:
                 row = await s.get(ApiCredential, ident)
-                row.last_error = "Connection refused"
-        run(fail_again())
+                row.cert_sha256, row.pending_sha256 = None, "CC:DD"
+        run(new_certificate())                         # now waiting: a different to-do
         assert run(_shown()) == [f"cred:{ident}"]
 
     def test_a_disabled_credential_is_not_news(self, db):
@@ -557,7 +592,7 @@ class TestBannerLayout:
                 return await onboarding.open_items(s)
         run(fail())
         (item,) = run(items())
-        assert item["title"] == "TrueNAS “nas” is not connected"
+        assert item["title"] == "TrueNAS “nas” has never connected"
         assert item["detail"] == "No route to host · 172.16.10.18"
 
     def test_on_the_dashboard_between_the_greeting_and_the_tiles(self, site):

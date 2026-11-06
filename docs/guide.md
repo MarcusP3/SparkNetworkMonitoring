@@ -61,11 +61,17 @@ and the tiles) list what is still open, each with a link to fix it:
 |---|---|
 | SPARK is not fully set up yet | Finish is pressed |
 | You chose *X* during setup but it has no API key yet | A credential of that kind is added |
-| *X* “*name*” is not connected, with the reason and address (the full error is on its card) | It connects again |
+| *X* “*name*” needs its certificate checked | It is trusted |
+| *X* “*name*” has never connected, with the reason and address (the full error is on its card) | It connects once |
 
-**Dismiss** hides a banner while it stays as it is. It comes back when it
-is news again: a credential that recovers and later fails again is shown
-again. Dismissals are kept by SPARK, not the browser.
+Banners are for setup that is unfinished, not for outages. An integration
+that has worked and then stops is an incident: it alerts through your
+channels and shows in Firing now, where it is acknowledged like any other,
+and it never gets a banner.
+
+**Dismiss** hides a banner while it stays as it is; one that changes (a
+wrong key fixed, then its certificate to check) is shown again. Dismissals
+are kept by SPARK, not the browser.
 
 ## Monitoring
 
