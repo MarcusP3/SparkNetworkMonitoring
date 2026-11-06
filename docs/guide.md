@@ -900,8 +900,9 @@ same retention, and can alert. Up to 20 per device.
 - **Gauges only.** A value is used as read. A counter (a value that only goes
   up) would chart as a climbing line; rates from counters are not done yet.
 - **Numbers or text.** Text is read up to its first number, so `"28416"` is
-  28416 and `"31 C"` is 31. Text with no number (`"n/a"`) shows as an error on
-  that metric and leaves a gap; the rest of the poll is unaffected.
+  28416 and `"31 C"` is 31. Text with no number (`"n/a"`), or a number past
+  10^18 before or after scaling, shows as an error on that metric and leaves
+  a gap; the rest of the poll is unaffected.
 - **Alert** above or below a value (in scaled units) held for a number of
   minutes, through the same channels, mutes, maintenance windows and quiet
   hours as every other rule. It fires once, and clears when the value is back

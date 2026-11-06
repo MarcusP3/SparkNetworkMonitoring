@@ -38,6 +38,7 @@ from pysnmp.hlapi.v3arch.asyncio import (
 )
 
 from pysnmp.proto import errind
+from pysnmp.proto.error import StatusInformation
 
 from . import oids as O
 from .base import (
@@ -391,6 +392,18 @@ _EngineKey = tuple[str, str, str, str, str, str, str]
 _engines: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[_EngineKey, SnmpEngine]]
 _engines = weakref.WeakKeyDictionary()
 
+# Engines taken out of the cache but not yet closed. Other devices' requests
+# may still be in flight on a replaced engine -- it is shared by everything
+# on the profile -- and closing its dispatcher under them leaves them waiting
+# forever: their timeouts are the dispatcher's to fire. A poll job that never
+# returns is never scheduled again (max_instances=1), so that device went
+# silent, with no SNMP-down alert, until SPARK restarted. So a replaced
+# engine is closed only once the longest request anything here makes (the
+# storage read: 30 s, no retry) has had time to finish.
+ENGINE_DRAIN_SECONDS = 120.0
+_draining: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, set[SnmpEngine]]
+_draining = weakref.WeakKeyDictionary()
+
 
 def _engine_key(credential: SnmpCredential) -> _EngineKey:
     """Everything the engine's own configuration depends on. Not the host,
@@ -418,6 +431,10 @@ def _prune_dead_loops() -> None:
         if loop.is_closed():
             for engine in _engines.pop(loop, {}).values():
                 _close_quietly(engine)
+    for loop in list(_draining):
+        if loop.is_closed():
+            for engine in _draining.pop(loop, set()):
+                _close_quietly(engine)
 
 
 def engine_for(credential: SnmpCredential) -> SnmpEngine:
@@ -435,16 +452,28 @@ def engine_for(credential: SnmpCredential) -> SnmpEngine:
 
 
 def _evict(engine: SnmpEngine) -> None:
-    """Drop an engine whose dispatcher failed; the next poll builds a new one."""
+    """Drop an engine whose dispatcher failed; the next request builds a new
+    one. Closed after ENGINE_DRAIN_SECONDS, not now: see `_draining`."""
     try:
-        engines = _engines.get(asyncio.get_running_loop())
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        engines = None
+        _close_quietly(engine)
+        return
+    engines = _engines.get(loop)
     if engines:
         for key, candidate in list(engines.items()):
             if candidate is engine:
                 del engines[key]
-    _close_quietly(engine)
+    pending = _draining.setdefault(loop, set())
+    if engine in pending:
+        return
+
+    def close() -> None:
+        pending.discard(engine)
+        _close_quietly(engine)
+
+    pending.add(engine)
+    loop.call_later(ENGINE_DRAIN_SECONDS, close)
 
 
 def engine_count() -> int:
@@ -458,10 +487,12 @@ def engine_count() -> int:
 def close_engines() -> None:
     """Close every engine on the running loop. Called at app shutdown."""
     try:
-        engines = _engines.pop(asyncio.get_running_loop(), None)
+        loop = asyncio.get_running_loop()
     except RuntimeError:
-        engines = None
-    for engine in (engines or {}).values():
+        engines, draining = None, None
+    else:
+        engines, draining = _engines.pop(loop, None), _draining.pop(loop, None)
+    for engine in [*(engines or {}).values(), *(draining or ())]:
         _close_quietly(engine)
     _prune_dead_loops()
 
@@ -506,7 +537,12 @@ class SnmpCollector:
         dispatcher exception -- may mean the shared engine is wedged, and the
         price of being wrong is one rebuild, so it is evicted.
         """
-        if isinstance(exc, (CollectorError, RuntimeError, errind.ErrorIndication)):
+        # StatusInformation is pysnmp refusing this one request -- an OID it
+        # cannot encode, say -- with the engine untouched. Treating it as a
+        # broken engine rebuilt the engine on every poll of a device with one
+        # bad custom OID, and took every other device on the profile with it.
+        if isinstance(exc, (CollectorError, RuntimeError, errind.ErrorIndication,
+                            StatusInformation)):
             return
         engine = self._engine
         self._engine = None

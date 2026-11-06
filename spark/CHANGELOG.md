@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased — Security review (2026-11-05)
+
+### Fixed
+
+- **Dependencies with published advisories**, upgraded in the lock alone
+  (rebuild required: `docker compose up -d --build`):
+  - `pyasn1` 0.6.4 → 0.6.5 — four CPU-exhaustion bugs in BER decoding
+    (CVE-2026-119194/5/6/7). pysnmp decodes every SNMP answer and trap with
+    it, so a hostile device could stall SPARK's event loop.
+  - `dnspython` 2.8.0 → 2.9.2 — CPU exhaustion on crafted name compression
+    (CVE-2026-114605), reached by the DNS checks and the Internet card.
+  - `certifi` 2026.7.22 → 2026.10.23 — drops the emSign roots whose
+    intermediates' keys were compromised (GHSA-6q48-6c7w-9gw2), for the
+    Discord, ntfy, webhook and email connections.
+- **A custom metric could break its device's page and poll.** A device may
+  answer with `1.7e308`, a finite number that is infinity on the chart's
+  axis (a 500 on the device page) or once scaled (an error inside the
+  poll's transaction, which rolled back the whole poll: no health, no
+  interfaces, no alerts, for as long as it kept answering that). Readings
+  past 10^18, raw or scaled, are now an error on that metric only; alert
+  lines past it are refused; formatting and charts no longer raise on
+  anything.
+- **A custom OID that cannot be encoded** (`1.40.1`, a typo of `1.4.0.1`)
+  was accepted, failed every poll, and made the collector rebuild the
+  profile's shared SNMP engine each time. OIDs are now ASCII digits, the
+  second arc 0–39 under 0 and 1, each arc at most 2^32 − 1. Digits from
+  other scripts (`1.٣.6.1`) were accepted and never matched an answer.
+- **A replaced SNMP engine stranded other devices' polls.** The engine is
+  shared by everything on a profile; closing it when one request failed
+  left requests in flight on it waiting forever, and a poll job that never
+  returns is never scheduled again, so another device went silent with no
+  SNMP-down alert until SPARK restarted (pre-existing; the bad OID above
+  made it happen every poll). A per-request refusal no longer evicts the
+  engine, a replaced engine is closed only after 120 s, and each poll's
+  network half has a 300 s deadline, after which it is recorded as
+  unanswered.
+
 ## Unreleased — Custom SNMP metrics (2026-11-05)
 
 ### Added

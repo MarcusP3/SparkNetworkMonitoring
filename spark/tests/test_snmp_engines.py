@@ -126,7 +126,7 @@ class TestEviction:
             before = (await collector._ensure())[0]
             with pytest.raises(OSError):
                 await collector.get(O.SYS_DESCR)
-            assert S.engine_count() == 0           # evicted and closed
+            assert S.engine_count() == 0           # evicted; closed once drained
             after = (await SnmpCollector("192.0.2.1", V2)._ensure())[0]
             assert after is not before             # the next poll builds anew
             S.close_engines()
@@ -150,6 +150,76 @@ class TestEviction:
                 assert (await SnmpCollector("192.0.2.1", V2)._ensure())[0] is before
                 S.close_engines()
             run(go())
+
+
+    def test_an_oid_pysnmp_cannot_encode_keeps_the_engine(self, monkeypatch):
+        """Security review 2026-11-05: a custom OID like 1.40.1 cannot be BER
+        encoded, and pysnmp says so with StatusInformation. That is one bad
+        request, not a broken engine -- evicting on it rebuilt the profile's
+        shared engine on every poll and stranded other devices' requests."""
+        from pysnmp.proto import errind
+        from pysnmp.proto.error import StatusInformation
+
+        self._patched(monkeypatch, StatusInformation(errorIndication=errind.SerializationError()))
+
+        async def go():
+            collector = SnmpCollector("192.0.2.1", V2)
+            before = (await collector._ensure())[0]
+            with pytest.raises(StatusInformation):
+                await collector.get("1.40.1")
+            assert S.engine_count() == 1
+            assert (await SnmpCollector("192.0.2.1", V2)._ensure())[0] is before
+            S.close_engines()
+        run(go())
+
+
+class TestReplacedEngines:
+    """An engine is shared by every device on its profile. Closing a replaced
+    one at once left the others' requests in flight waiting forever (their
+    timeouts are the dispatcher's to fire), and a poll job that never returns
+    is never run again. So it is closed only after a drain period."""
+
+    def test_a_request_in_flight_on_a_replaced_engine_still_times_out(self):
+        import socket
+        import time
+
+        quiet = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        quiet.bind(("127.0.0.1", 0))          # takes datagrams, never answers
+        port = quiet.getsockname()[1]
+
+        async def go():
+            collector = SnmpCollector("127.0.0.1", SnmpCredential(
+                community="drain", port=port, timeout=1.0, retries=0))
+            engine = (await collector._ensure())[0]
+            started = time.monotonic()
+            asking = asyncio.create_task(collector.get(O.SYS_DESCR))
+            await asyncio.sleep(0.2)
+            S._evict(engine)                 # what another device's failure does
+            assert S.engine_count() == 0 and engine in S._draining[asyncio.get_running_loop()]
+            with pytest.raises(Unreachable):
+                await asyncio.wait_for(asking, 10)
+            assert time.monotonic() - started < 5, "its own timeout, not a hang"
+            S.close_engines()
+            assert not S._draining.get(asyncio.get_running_loop())
+        try:
+            run(go())
+        finally:
+            quiet.close()
+
+    def test_a_replaced_engine_is_closed_after_the_drain(self, monkeypatch):
+        monkeypatch.setattr(S, "ENGINE_DRAIN_SECONDS", 0.05)
+
+        async def go():
+            engine = (await SnmpCollector("192.0.2.1", V2)._ensure())[0]
+            closed = []
+            monkeypatch.setattr(S, "_close_quietly", lambda e: closed.append(e))
+            S._evict(engine)
+            S._evict(engine)                 # twice is still one close
+            assert closed == []
+            await asyncio.sleep(0.2)
+            assert closed == [engine]
+            assert not S._draining[asyncio.get_running_loop()]
+        run(go())
 
 
 class TestAppShutdown:

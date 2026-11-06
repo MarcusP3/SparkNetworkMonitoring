@@ -9,6 +9,7 @@ where to change that.
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -109,6 +110,11 @@ def _health_charts(health: history.HealthHistory, zone: dict) -> list[dict]:
     return out
 
 
+# The largest value a custom metric's chart draws: the reading limit times the
+# largest scale, so nothing a validated metric records is ever left out.
+CHART_LIMIT = custom_metrics.VALUE_LIMIT * custom_metrics.SCALE_LIMIT
+
+
 def _custom_entries(metrics, histories: dict, window: history.Window,  # type: ignore[no-untyped-def]
                     zone: dict) -> list[dict]:
     """Each custom metric with its chart, scaled for display. A metric with
@@ -120,7 +126,11 @@ def _custom_entries(metrics, histories: dict, window: history.Window,  # type: i
         scale = metric.scale or 1.0
 
         def scaled(values):  # type: ignore[no-untyped-def]
-            return [None if v is None else v * scale for v in values]
+            # Past the reading limit is a value from before it was enforced,
+            # or from a scale changed since: a gap, not an infinite axis.
+            out = [None if v is None else v * scale for v in values]
+            return [v if v is not None and math.isfinite(v) and abs(v) <= CHART_LIMIT else None
+                    for v in out]
 
         def fmt(value, unit=metric.unit):  # type: ignore[no-untyped-def]
             return custom_metrics.fmt_value(value, unit)
@@ -132,12 +142,13 @@ def _custom_entries(metrics, histories: dict, window: history.Window,  # type: i
                     f"for {metric.alert_minutes} minute{'s' if metric.alert_minutes != 1 else ''}")
         entry = {"metric": metric, "rule": rule, "now": fmt(metric.current),
                  "svg": None, "peak": None, "low": None}
-        if hist is not None and hist.has_data:
-            series = history.Series(avg=scaled(hist.series.avg), peak=scaled(hist.series.peak))
+        series = (history.Series(avg=scaled(hist.series.avg), peak=scaled(hist.series.peak))
+                  if hist is not None else None)
+        if series is not None and series.has_data:
             low = scaled(hist.low)
             second = low if below else series.peak
-            top = max(v for v in series.avg + series.peak if v is not None)
-            if metric.alert_value is not None:
+            top = max((v for v in series.avg + series.peak if v is not None), default=0.0)
+            if metric.alert_value is not None and abs(metric.alert_value) <= CHART_LIMIT:
                 top = max(top, metric.alert_value)
             y_max = (100.0 if metric.unit == "%" and top <= 100
                      else charts.nice_max(top * 1.1, floor=1e-6) if top > 0 else 1.0)

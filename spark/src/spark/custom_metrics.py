@@ -54,13 +54,23 @@ CLEAR_MARGIN = 0.05
 MINUTES_RANGE = (1, 1440)
 SCALE_LIMIT = 1e12
 
+# The largest reading kept, raw or scaled, and the largest alert line. A
+# device's answer is its own to choose: "1e308" is a valid float, and times a
+# scale of 1024 it is infinity, which no format, chart or comparison
+# survives. 1e18 is an exabyte in bytes, which is room for any real gauge.
+VALUE_LIMIT = 1e18
+
+# OID arcs as net-snmp and every agent SPARK will meet take them.
+MAX_ARC = 2**32 - 1
+MAX_ARCS = 128
+
 # net-snmp's NET-SNMP-EXTEND-MIB::nsExtendOutLine, indexed by the extend's
 # name (as a length-prefixed string) and then the output line number.
 NS_EXTEND_OUT_LINE = "1.3.6.1.4.1.8072.1.3.2.4.1.2"
 
-_OID = re.compile(r"^\d+(\.\d+)+$")
+_OID = re.compile(r"^[0-9]+(\.[0-9]+)+$")     # ASCII digits: \d takes any script's
 _EXTEND_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-_NUMBER = re.compile(r"^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?")
+_NUMBER = re.compile(r"^[-+]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][-+]?[0-9]+)?")
 _UNIT = re.compile(r"^[^\x00-\x1f<>&\"']{0,16}$")
 
 
@@ -82,8 +92,17 @@ def normalize_oid(raw: str) -> str:
         raise MetricError("The OID must be numeric, like 1.3.6.1.4.1.2021.10.1.3.1. "
                           "SPARK does not load MIBs, so names like UCD-SNMP-MIB::laLoad.1 "
                           "need translating first (snmptranslate -On).")
-    if int(oid.split(".", 1)[0]) > 2:
+    arcs = [int(arc) for arc in oid.split(".")]
+    if arcs[0] > 2:
         raise MetricError("An OID starts with 0, 1 or 2.")
+    if arcs[0] < 2 and arcs[1] > 39:
+        # Not encodable: an OID that cannot be sent fails every poll of the
+        # device, and before the collector knew better it took the profile's
+        # shared engine down with it.
+        raise MetricError(f"After {arcs[0]}, the second number is 0 to 39 "
+                          f"(1.3.6.1… is the usual start).")
+    if len(arcs) > MAX_ARCS or any(arc > MAX_ARC for arc in arcs):
+        raise MetricError(f"An OID has at most {MAX_ARCS} numbers, each at most {MAX_ARC}.")
     return oid
 
 
@@ -101,8 +120,8 @@ def parse_number(value: Any) -> tuple[float | None, str | None]:
         number = float(match.group(0))
     else:
         return None, "Not a number."
-    if not math.isfinite(number):
-        return None, "Not a finite number."
+    if not math.isfinite(number) or abs(number) > VALUE_LIMIT:
+        return None, "Out of range."
     return number, None
 
 
@@ -116,9 +135,9 @@ def extend_base(name: str) -> str:
 
 def fmt_value(value: float | None, unit: str | None = None) -> str:
     """A reading for a person: whole numbers whole, small ones to three figures."""
-    if value is None:
+    if value is None or not math.isfinite(value):
         return "—"
-    if value == int(value) and abs(value) < 1e15:
+    if abs(value) < 1e15 and value == int(value):
         text = f"{int(value):,}"
     elif abs(value) >= 100:
         text = f"{value:,.0f}"
@@ -186,6 +205,8 @@ def validate(form: MetricInput) -> Clean:
         if not (form.alert_value or "").strip():
             raise MetricError("Enter the value to alert at, or choose no alert.")
         value = _float(form.alert_value, "The alert value")
+        if abs(value) > VALUE_LIMIT:
+            raise MetricError("The alert value is too large.")
     else:
         raise MetricError("Choose above, below or no alert.")
     try:
@@ -318,6 +339,9 @@ async def record(session: AsyncSession, *, row_id: int, device: Device | None,
     metrics = [m for m in await metrics_for(session, row_id) if m.id in readings]
     for metric in metrics:
         reading = readings[metric.id]
+        scaled = metric.scaled(reading.value)
+        if scaled is not None and (not math.isfinite(scaled) or abs(scaled) > VALUE_LIMIT):
+            reading = Reading(None, "Out of range once scaled.")
         metric.last_read_at = now
         metric.last_value = reading.value
         metric.last_error = None if reading.value is not None else (reading.error or "No value.")

@@ -289,6 +289,16 @@ Things that will bite you if you don't know them:
   or reorder an entry that has shipped.
 - **SNMP counters** use the `Counter64` column type. They run to 2^64 − 1 and a
   plain `Integer` raises `OverflowError` above 2^63 − 1.
+- **SNMP engines are shared and drained, polls are bounded.** One engine per
+  credential serves every device on that profile, so one replaced after a
+  dispatcher failure is closed only after `ENGINE_DRAIN_SECONDS`: closing it
+  at once stranded other devices' requests, and a poll job that never
+  returns is never run again. Each poll's network half has a deadline
+  (`snmp_poll.POLL_DEADLINE`) on top of the per-request timeouts.
+- **A device's numbers are bounded before use.** Custom metric readings past
+  `custom_metrics.VALUE_LIMIT` (raw or scaled) are errors, not values: a
+  finite `1.7e308` from a device becomes infinity on a chart axis or times a
+  scale, and nothing downstream survives that.
 - **A file capability is set in two places.** The Dockerfile's `setcap` (from a
   `SETCAP_*` build argument) and the compose file's `cap_add` go together: one
   without the other either gives uid 9700 nothing or makes `execve` fail, so the

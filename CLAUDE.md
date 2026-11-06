@@ -121,6 +121,12 @@ Two things that look like details and are not:
   poll was a third of each poll's CPU and the reason memory ratcheted up
   after every burst of overlapping polls. A new scheduled job that uses
   SNMP goes through `SnmpCollector`; the lifespan closes the engines.
+  An engine is shared by every device on its profile, so a replaced one
+  is never closed under them: `_evict` closes it after
+  `ENGINE_DRAIN_SECONDS`, which must stay longer than the longest request
+  anything makes (the storage read, 30 s). Only a broken dispatcher evicts;
+  an answer or a refusal of one request (`StatusInformation`) does not.
+  A poll's network half is bounded as a whole (`snmp_poll.POLL_DEADLINE`).
 - **Shutdown is bounded** (`main.GRACEFUL_SHUTDOWN_SECONDS`, 3 s): over
   HTTPS an idle browser connection would otherwise hold uvicorn for 30 s
   and Docker kills at 10 s. Anything that starts uvicorn -- `run`, the

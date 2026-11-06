@@ -35,6 +35,7 @@ and it deserves tests that can pin each one down:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -70,6 +71,15 @@ MAX_INTERVAL = 3600
 # Per request, and one retry: an unanswered poll costs about six seconds, well
 # inside the shortest interval.
 POLL_TIMEOUT = 3.0
+
+# The whole of a poll's network half, however many requests it makes. Each
+# request has its own timeout, but that timeout is the SNMP engine's to fire;
+# a request the engine has lost waits forever, and a poll job that never
+# returns is never run again (APScheduler's max_instances=1) -- the device
+# goes silent with no SNMP-down alert. Past this, the poll is recorded as
+# unanswered and the next one starts clean. Far beyond any real poll: a large
+# switch's interface walks take seconds.
+POLL_DEADLINE = 300.0
 
 WRAP_32 = 1 << 32
 
@@ -429,12 +439,22 @@ async def _poll(config, row_id: int) -> bool | None:  # type: ignore[no-untyped-
         health = DeviceHealth(error=unsealed_error or "This device has no address to ask.")
     else:
         collector = SnmpCollector(address, credential)  # type: ignore[arg-type]
+        deadline = asyncio.timeout(POLL_DEADLINE)
         try:
-            health = await collector.collect_health(inventory=False)
-            if health.reachable:
-                interfaces = await collector.collect_interfaces()
-                if wanted:
-                    custom = await custom_metrics.read(collector, wanted)
+            async with deadline:
+                health = await collector.collect_health(inventory=False)
+                if health.reachable:
+                    interfaces = await collector.collect_interfaces()
+                    if wanted:
+                        custom = await custom_metrics.read(collector, wanted)
+        except TimeoutError:
+            if not deadline.expired():
+                raise         # some other timeout: not this deadline's to explain
+            log.warning("SNMP poll of %s took over %.0f s and was abandoned", address,
+                        POLL_DEADLINE)
+            health = DeviceHealth(error=f"The poll took over {POLL_DEADLINE:.0f} seconds "
+                                        "and was abandoned.")
+            interfaces, custom = [], {}
         finally:
             await collector.close()
     now = utcnow()

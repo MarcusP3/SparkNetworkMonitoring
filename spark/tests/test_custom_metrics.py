@@ -27,6 +27,7 @@ from spark.config import Config
 from spark.main import create_app
 from spark.models import (
     FIVE_MINUTES,
+    SnmpHealthSample,
     ONE_HOUR,
     AlertIncident,
     AlertMute,
@@ -153,11 +154,40 @@ class TestParsing:
         assert C.parse_number(float("inf"))[0] is None
         assert C.parse_number("1e999")[0] is None
 
+    def test_a_reading_past_the_limit_is_out_of_range(self):
+        """Security review 2026-11-05: "1.7e308" is a finite float, and a
+        device may send it. Times 1.1 on a chart axis, or a scale of 1024, it
+        is infinity -- a 500 on the device page and a poll that rolled back."""
+        assert C.parse_number("1.7e308") == (None, "Out of range.")
+        assert C.parse_number(C.VALUE_LIMIT)[0] == C.VALUE_LIMIT
+        assert C.parse_number("-1e19")[0] is None
+
+    def test_formatting_never_raises(self):
+        assert C.fmt_value(float("inf")) == C.fmt_value(float("nan")) == "—"
+        assert C.fmt_value(1e17) == "100,000,000,000,000,000"
+
     def test_oids_are_numeric_with_no_leading_dot(self):
         assert C.normalize_oid(" .1.3.6.1.2.1.1.3.0 ") == "1.3.6.1.2.1.1.3.0"
         for bad in ("", "UCD-SNMP-MIB::laLoad.1", "1", "1.3..6", "1.3.6.", "3.6.1", "1.3.a"):
             with pytest.raises(C.MetricError):
                 C.normalize_oid(bad)
+
+    def test_only_oids_that_can_be_sent_are_accepted(self):
+        """Security review 2026-11-05: 1.40.1 (a typo of 1.4.0.1, or 1.43…)
+        passed and could not be encoded on every poll."""
+        for bad in ("1.40.1", "0.40", "1.43.6.1", "1.\u0663.6.1", f"1.3.{2**32}",
+                    ".".join(["1"] * 129)):
+            with pytest.raises(C.MetricError):
+                C.normalize_oid(bad)
+        assert C.normalize_oid("2.999.1") == "2.999.1", "under 2 the second arc is open"
+        assert C.normalize_oid(f"1.3.{2**32 - 1}") == f"1.3.{2**32 - 1}"
+
+    def test_every_accepted_oid_encodes(self):
+        from pyasn1.codec.ber import encoder
+        from pyasn1.type import univ
+        for oid in ("1.3.6.1.4.1.8072.1.3.2.4.1.2.3.103.112.117.1", "0.39", "2.999.1",
+                    f"1.3.{2**32 - 1}"):
+            assert encoder.encode(univ.ObjectIdentifier(C.normalize_oid(oid)))
 
     def test_an_extend_name_becomes_its_length_prefixed_index(self):
         assert C.extend_base("gpu") == "1.3.6.1.4.1.8072.1.3.2.4.1.2.3.103.112.117"
@@ -191,6 +221,7 @@ class TestValidation:
         ({"alert_op": "sideways"}, "above, below"),
         ({"alert_op": "below", "alert_value": "1", "alert_minutes": "0"}, "Minutes"),
         ({"unit": "<b>"}, "unit"),
+        ({"alert_op": "above", "alert_value": "1e308"}, "too large"),
     ])
     def test_what_cannot_be_saved_says_so(self, fields, message):
         base = {"name": "x", "oid": "1.3.6.1.4.1.1.1", **fields}
@@ -310,6 +341,22 @@ class TestRecording:
         row = metric(mid)
         assert row.last_value == 5.0 and row.last_read_at == T0
         assert count(SnmpCustomSample) == 1
+
+    def test_a_value_that_overflows_once_scaled_is_an_error_not_a_lost_poll(self, db):
+        """Security review 2026-11-05: 1e306 times 1024 is infinity, and the
+        rule's message raised inside record_poll -- no health sample, no
+        interfaces, no alerts, for as long as the device kept sending it."""
+        mid = add(scale="1024", alert_op="above", alert_value="1", alert_minutes="1")
+        poll(0, {mid: C.Reading(1e306)})
+        row = metric(mid)
+        assert row.last_value is None and row.last_error == "Out of range once scaled."
+
+        async def health():
+            async with D.session_scope() as s:
+                return await s.scalar(select(func.count()).select_from(
+                    SnmpHealthSample))
+        assert run(health()) == 1, "the rest of the poll was kept"
+        assert count(SnmpCustomSample) == 0
 
     def test_a_metric_removed_mid_poll_is_skipped(self, db):
         poll(0, {12345: C.Reading(5.0)})
@@ -614,6 +661,18 @@ class TestDevicePage:
         section = page[page.index('id="custom-metrics"'):page.index('id="interfaces"')]
         assert section.count("<figure") == 1, "the metric with history, not the one without"
 
+    def test_history_from_before_the_limit_does_not_break_the_page(self, site):
+        """A sample a device sent before readings were bounded, or one a later
+        scale pushes past the chart's limit, is a gap -- not a 500."""
+        async def seed():
+            async with D.session_scope() as s:
+                m = await s.scalar(select(SnmpCustomMetric).where(SnmpCustomMetric.name == "VRAM used"))
+                m.scale, m.last_value = 1024.0, 1.7e308
+                s.add(SnmpCustomSample(metric_id=m.id, ts=utcnow(), value=1.7e308))
+        run(seed())
+        r = site.get("/devices/1")
+        assert r.status_code == 200 and "<h2>Custom metrics</h2>" in r.text
+
     def test_a_device_not_polled_has_no_custom_metrics_card(self, site):
         page = site.get("/devices/2").text
         assert "Custom metrics" not in page
@@ -782,3 +841,47 @@ def test_an_extend_that_does_not_exist_says_so():
         finally:
             await D.close_engine()
     run(go())
+
+
+def test_a_poll_that_never_returns_is_abandoned_at_its_deadline(db, monkeypatch):
+    """Security review 2026-11-05: a request the SNMP engine has lost waits
+    forever, and a poll job that never returns is never run again. The poll
+    is bounded as a whole, and recorded as unanswered when it runs out."""
+    from spark import snmp_poll
+
+    class Stuck:
+        def __init__(self, *_a, **_k):  # type: ignore[no-untyped-def]
+            pass
+
+        async def collect_health(self, **_k):  # type: ignore[no-untyped-def]
+            await asyncio.sleep(60)
+
+        async def close(self):  # type: ignore[no-untyped-def]
+            pass
+
+    monkeypatch.setattr(snmp_poll, "SnmpCollector", Stuck)
+    monkeypatch.setattr(snmp_poll, "POLL_DEADLINE", 0.2)
+    assert run(snmp_poll.poll_device(db, 1)) is False
+
+    async def latest():
+        async with D.session_scope() as s:
+            from spark.models import SnmpPoll
+            return (await s.get(SnmpPoll, 1)).last_error
+    assert "abandoned" in run(latest())
+
+
+def test_another_timeout_inside_a_poll_is_not_called_the_deadline(db, monkeypatch):
+    from spark import snmp_poll
+
+    class Raises:
+        def __init__(self, *_a, **_k):  # type: ignore[no-untyped-def]
+            pass
+
+        async def collect_health(self, **_k):  # type: ignore[no-untyped-def]
+            raise TimeoutError("something else")
+
+        async def close(self):  # type: ignore[no-untyped-def]
+            pass
+
+    monkeypatch.setattr(snmp_poll, "SnmpCollector", Raises)
+    assert run(snmp_poll.poll_device(db, 1)) is None, "logged by poll_device, as before"
