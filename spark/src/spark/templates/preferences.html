@@ -11,6 +11,7 @@
       </div>
     </div>
   </div>
+  {% include "_banners.html" %}
 
   {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
   {% if saved == 'timezone' %}<div class="alert ok">Saved. Every time in SPARK is now shown in {{ timezone }}.</div>{% endif %}

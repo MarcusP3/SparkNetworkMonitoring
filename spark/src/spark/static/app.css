@@ -2828,24 +2828,31 @@ input:not([type=checkbox]):not([type=radio]), select, textarea { background: #06
 .extend-import input[type="text"] { width: 100%; min-width: 5rem; }
 .extend-import .btn-primary { margin: .75rem .75rem 0 0; }
 
-/* ---- Open items: banners on every page (onboarding.banners) ---------- */
-.banner-stack {
-  display: flex; flex-direction: column; gap: .4rem;
-  max-width: 1320px; margin: 1rem auto 0; padding: 0 1.5rem;   /* lined up with .page */
-}
-.banner-stack + .page { padding-top: 1.25rem; }
-.banner-stack:empty { display: none; }
+/* ---- Open items: banners on every page (onboarding.banners) ----------
+   Under each page's heading, never on the artwork. A solid panel under
+   the tint, so the text never sits on a bright sky. */
+.banner-stack { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1.25rem; }
 .banner {
-  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
-  padding: .55rem .8rem; border: 1px solid var(--border); border-left-width: 3px;
-  border-radius: var(--radius-sm); background: var(--surface-2); font-size: .875rem;
+  display: flex; align-items: center; gap: .85rem; flex-wrap: wrap;
+  padding: .7rem .9rem; border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm); background: var(--panel); backdrop-filter: blur(10px);
 }
-.banner.is-info { border-left-color: var(--accent); }
-.banner.is-warn { border-left-color: var(--warn); background: var(--warn-bg); }
-.banner-text { flex: 1 1 20rem; }
-.banner-link { color: var(--accent); font-weight: 600; white-space: nowrap; }
-.banner-dismiss { margin: 0; }
-.banner-dismiss .btn-quiet { padding: .2rem .55rem; font-size: .8125rem; }
+.banner.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent); border-left-color: var(--warn);
+  background: linear-gradient(var(--warn-bg), var(--warn-bg)), var(--panel);
+}
+.banner-icon { display: inline-grid; place-items: center; flex: none; color: var(--accent); }
+.banner.is-warn .banner-icon { color: var(--warn); }
+.banner-icon .icon { width: 22px; height: 22px; }
+.banner-text { flex: 1 1 12rem; display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.banner-title { color: var(--text); font-size: .9375rem; font-weight: 650; }
+.banner-detail { color: var(--text-muted); font-size: .8125rem; overflow-wrap: anywhere; }
+.banner-actions { display: flex; gap: .5rem; align-items: center; flex: none; }
+.banner-actions form { margin: 0; }
+.banner-actions .btn-quiet { padding: .3rem .75rem; font-size: .8125rem; text-decoration: none; }
+@media (max-width: 640px) {
+  .banner-actions { flex-basis: 100%; padding-left: calc(22px + .85rem); }   /* under the text, not the icon */
+}
 
 /* ---- First-run wizard (/welcome) -------------------------------------- */
 .wizard-steps {

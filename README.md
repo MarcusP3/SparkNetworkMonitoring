@@ -68,7 +68,7 @@ Then:
    `docker compose logs spark | grep -A3 "setup code"`
 3. The **setup wizard** follows: your subnets (pre-filled from the host's
    interfaces), an SNMP community or v3 user, TrueNAS/Proxmox/UniFi keys, and
-   where alerts go. Skip anything; banners at the top of the page keep track
+   where alerts go. Skip anything; banners under the page heading keep track
    of what is left. Finish starts the first scan.
    [Getting started](docs/getting-started.md) has the detail.
 

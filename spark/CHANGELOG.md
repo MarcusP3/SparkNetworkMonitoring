@@ -28,7 +28,9 @@ banners are two rows in the settings table.
     community goes out in clear text), Find SNMP once it has run.
   Only the setup form starts it, so an upgrade never sees it; it stays at
   `/welcome` afterwards.
-- **Banners for open items** at the top of every page: setup not finished,
+- **Banners for open items** under each page's heading (on the dashboard,
+  between the greeting and the tiles), on a solid panel with an icon, a
+  headline, the short reason and buttons: setup not finished,
   an integration chosen in the wizard with no key yet, and an integration
   that is not connected. **Dismiss** hides one until it changes -- a
   credential that recovers and then fails again is shown again. Dismissals

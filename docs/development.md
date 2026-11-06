@@ -203,7 +203,7 @@ spark/
       routes_welcome.py   /welcome, the first-run wizard a page per step; /banners/dismiss
       routes_backup.py    Settings → Backup: the encrypted download
       hardening.py      security headers, CSP nonces, same-origin check on writes, proxy headers from trusted proxies only, Host allowlist, HSTS
-    templates/          Jinja templates; `_integrations.html` holds the API, Storage, Proxmox, UniFi and Hermes cards; `_banners.html` the open items on every page; `_cert_trust.html` the fingerprint and Trust button Settings and the wizard share
+    templates/          Jinja templates; `_integrations.html` holds the API, Storage, Proxmox, UniFi and Hermes cards; `_banners.html` the open items, included under every page's heading (a test fails if a page leaves it out); `_cert_trust.html` the fingerprint and Trust button Settings and the wizard share
     static/             hand-written CSS, no build step
       charts.js         local times and hover readouts on charts
       fonts/            Inter + JetBrains Mono, self-hosted (OFL-1.1)

@@ -14,7 +14,7 @@ what to do once it is done. The detail behind each step is in the
 6. [The wizard: alerts and finish](#6-the-wizard-alerts-and-finish)
 7. [After the wizard](#7-after-the-wizard)
 
-Skip anything you are not ready for. Banners at the top of every page keep
+Skip anything you are not ready for. Banners under each page's heading keep
 track of what is left, and the wizard stays at `/welcome`.
 
 ---

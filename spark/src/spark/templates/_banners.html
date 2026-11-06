@@ -1,18 +1,31 @@
 {# Open items (onboarding.banners): setup not finished, an integration
-   chosen and not added, an integration not connected. Dismiss hides one
-   until it changes. Not on the wizard's own pages for the setup item. #}
+   chosen and not added, an integration not connected. Each page includes
+   this under its heading, so a banner sits on the dark part of the page,
+   never on the artwork. Dismiss hides one until it changes. The setup item
+   is left off the wizard's own pages. #}
+{% if user and request.state.banners is defined and request.state.banners %}
 {% set on_welcome = request.url.path.startswith('/welcome') %}
 <div class="banner-stack" role="region" aria-label="Open items">
   {% for b in request.state.banners if not (on_welcome and b.key == 'setup') %}
   <div class="banner is-{{ b.tone }}">
-    <span class="banner-text">{{ b.text }}</span>
-    <a class="banner-link" href="{{ b.link }}">{{ b.link_text }}</a>
-    <form method="post" action="/banners/dismiss" class="banner-dismiss">
-      <input type="hidden" name="key" value="{{ b.key }}">
-      <input type="hidden" name="sig" value="{{ b.sig }}">
-      <input type="hidden" name="next" value="{{ request.url.path }}">
-      <button type="submit" class="btn-quiet" aria-label="Dismiss" title="Hide until it changes">Dismiss</button>
-    </form>
+    <span class="banner-icon" aria-hidden="true">
+      {% if b.tone == 'warn' %}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      {% else %}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>{% endif %}
+    </span>
+    <span class="banner-text">
+      <strong class="banner-title">{{ b.title }}</strong>
+      {% if b.detail %}<span class="banner-detail">{{ b.detail }}</span>{% endif %}
+    </span>
+    <span class="banner-actions">
+      <a class="btn-quiet banner-link" href="{{ b.link }}">{{ b.link_text }}</a>
+      <form method="post" action="/banners/dismiss">
+        <input type="hidden" name="key" value="{{ b.key }}">
+        <input type="hidden" name="sig" value="{{ b.sig }}">
+        <input type="hidden" name="next" value="{{ request.url.path }}">
+        <button type="submit" class="btn-quiet" title="Hide until it changes">Dismiss</button>
+      </form>
+    </span>
   </div>
   {% endfor %}
 </div>
+{% endif %}

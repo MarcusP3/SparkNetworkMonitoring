@@ -54,13 +54,14 @@ them, and `/welcome` stays reachable after setup. An upgrade never sees it.
    that scan has finished. It is off unless ticked: with a v2c profile it
    sends the community, in clear text, to every device found.
 
-**Banners** at the top of every page list what is still open:
+**Banners** under each page's heading (on the dashboard, between the greeting
+and the tiles) list what is still open, each with a link to fix it:
 
 | Banner | Until |
 |---|---|
 | SPARK is not fully set up yet | Finish is pressed |
 | You chose *X* during setup but it has no API key yet | A credential of that kind is added |
-| *X* *name* is not connected, with the reason | It connects again |
+| *X* “*name*” is not connected, with the reason and address (the full error is on its card) | It connects again |
 
 **Dismiss** hides a banner while it stays as it is. It comes back when it
 is news again: a credential that recovers and later fails again is shown

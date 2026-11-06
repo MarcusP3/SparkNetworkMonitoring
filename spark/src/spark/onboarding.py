@@ -21,7 +21,7 @@ Three things live here rather than in the routes:
   exactly one device there gives it that device. Only credentials the
   wizard made are linked: one left without a device in Settings stays as
   its owner left it.
-* **Banners** (`banners`): the open items shown at the top of every page --
+* **Banners** (`banners`): the open items shown under each page's heading --
   setup not finished, an integration chosen but never given a key, and an
   integration that is not connected. Dismissing one hides it until it
   changes: a credential that recovers and then fails again is news again.
@@ -273,13 +273,27 @@ def _short(text: str | None, limit: int = 140) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+_ERRNO = re.compile(r"^\[Errno -?\d+\]\s*")
+
+
+def _reason(error: str | None) -> str:
+    """The part of an error a person reads: "Could not open the TrueNAS API
+    at wss://...: [Errno 113] No route to host" is "No route to host". The
+    whole error stays on the credential's card."""
+    text = " ".join((error or "").split())
+    if ": " in text:
+        text = text.rsplit(": ", 1)[1]
+    return _short(_ERRNO.sub("", text), 100)
+
+
 async def open_items(session: AsyncSession) -> list[dict]:
-    """Every open item, dismissed or not: key, sig, tone, text, link."""
+    """Every open item, dismissed or not: key, sig, tone, title, detail, link."""
     state = await load(session)
     items: list[dict] = []
     if state.get("active") and not state.get("done"):
         items.append({"key": "setup", "sig": "1", "tone": "info",
-                      "text": "SPARK is not fully set up yet: subnets, SNMP, integrations and alerts.",
+                      "title": "SPARK is not fully set up yet",
+                      "detail": "Subnets, SNMP, integrations and alerts. Skip anything you are not ready for.",
                       "link": "/welcome", "link_text": "Continue setup"})
     rows = (await session.execute(select(ApiCredential).order_by(ApiCredential.name))).scalars().all()
     have = {row.kind for row in rows}
@@ -288,7 +302,8 @@ async def open_items(session: AsyncSession) -> list[dict]:
             continue
         label = credentials.KINDS[kind]
         items.append({"key": f"chosen:{kind}", "sig": "1", "tone": "info",
-                      "text": f"You chose {label} during setup but it has no API key yet.",
+                      "title": f"{label} has no API key yet",
+                      "detail": f"You chose {label} during setup. Add its key to start reading it.",
                       "link": f"/settings/credentials?add={kind}#credentials",
                       "link_text": f"Add {label}"})
     for row in rows:
@@ -297,9 +312,10 @@ async def open_items(session: AsyncSession) -> list[dict]:
         label = credentials.KINDS.get(row.kind, row.kind)
         # Changes when it next works: a failure after a recovery is new.
         sig = row.last_ok_at.isoformat() if row.last_ok_at else "never"
-        reason = _short(row.last_error)
+        reason = _reason(row.last_error)
         items.append({"key": f"cred:{row.id}", "sig": sig, "tone": "warn",
-                      "text": f"{label} {row.name!r} is not connected" + (f": {reason}" if reason else "."),
+                      "title": f"{label} “{row.name}” is not connected",
+                      "detail": " · ".join(part for part in (reason, row.host) if part),
                       "link": f"/settings/credentials#cred-{row.id}",
                       "link_text": "Open"})
     return items

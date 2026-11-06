@@ -532,3 +532,49 @@ class TestBanners:
                                         "password": PASSWORD, "password_confirm": PASSWORD})
             page = client.get("/").text
         assert "<b>nas</b>" not in page and "&lt;b&gt;nas&lt;/b&gt;" in page
+
+
+class TestBannerLayout:
+    def test_the_reason_is_the_readable_part(self):
+        error = ("Could not open the TrueNAS API at wss://172.16.10.18/api/current: "
+                 "[Errno 113] No route to host")
+        assert onboarding._reason(error) == "No route to host"
+        assert onboarding._reason("Certificate changed") == "Certificate changed"
+        assert onboarding._reason(None) == ""
+
+    def test_a_failing_credential_reads_as_title_and_detail(self, db):
+        ident = run(_cred(db, "172.16.10.18", flagged=False, name="nas"))
+
+        async def fail():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                row = await s.get(ApiCredential, ident)
+                row.last_checked_at = utcnow()
+                row.last_error = ("Could not open the TrueNAS API at wss://172.16.10.18/api/current: "
+                                  "[Errno 113] No route to host")
+
+        async def items():  # type: ignore[no-untyped-def]
+            async with D.session_scope() as s:
+                return await onboarding.open_items(s)
+        run(fail())
+        (item,) = run(items())
+        assert item["title"] == "TrueNAS “nas” is not connected"
+        assert item["detail"] == "No route to host · 172.16.10.18"
+
+    def test_on_the_dashboard_between_the_greeting_and_the_tiles(self, site):
+        page = site.get("/").text
+        greeting, banners, tiles = (page.index('class="greeting"'), page.index('class="banner-stack"'),
+                                    page.index('class="stat-row"'))
+        assert greeting < banners < tiles
+
+    def test_under_the_heading_on_other_pages(self, site):
+        for path in ("/devices", "/targets", "/settings", "/alerts"):
+            page = site.get(path).text
+            assert page.index('class="page-head') < page.index('class="banner-stack"'), path
+
+    def test_every_page_with_a_heading_shows_them(self):
+        """So a page added later cannot quietly leave them out."""
+        templates = Path(__file__).resolve().parents[1] / "src" / "spark" / "templates"
+        missing = [f.name for f in templates.glob("*.html")
+                   if ('class="page-head' in f.read_text() or 'class="greeting"' in f.read_text())
+                   and '{% include "_banners.html" %}' not in f.read_text()]
+        assert missing == []
