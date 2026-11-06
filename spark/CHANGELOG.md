@@ -1,5 +1,16 @@
 # Changelog
 
+New entries go at the top as `## Unreleased — <what> (<date>)`. A version
+heading marks a release: every entry below it, down to the next version
+heading, shipped in that version (see *Versioning* in CLAUDE.md).
+
+## 0.9.0 — 2026-11-06
+
+The first numbered version since 0.1.0, which the footer showed through all
+of the work below. Increments 1–6b and 8 are done; Docker inventory (4d) and
+the UniFi collector (7) are what is left before 1.0.0. Rebuild to show it:
+`docker compose up -d --build`.
+
 ## Unreleased — Agents, part 1: tokens and audit (2026-11-06)
 
 Groundwork for agents (a local model behind Hermes Agent, LM Studio, Claude

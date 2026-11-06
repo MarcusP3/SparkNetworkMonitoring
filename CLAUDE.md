@@ -36,6 +36,7 @@ On every change, check each of these and update the ones the change touched:
 | New module or directory | `docs/development.md` **Project layout** |
 | A convention future code must follow | `docs/development.md` **Conventions** |
 | Anything at all | `CHANGELOG.md` under the current increment |
+| A feature finished, or a batch of fixes shipped | The version — see **Versioning** below |
 
 The **Status** table (`docs/development.md`) is the honest account of what works. Never mark
 something ✅ that has not been exercised end to end. "Not yet" is a perfectly
@@ -44,6 +45,36 @@ good entry and has been for most of this project's life.
 If a change deliberately leaves something broken, unfinished, or decided
 against, say so in the CHANGELOG's *Known, unfixed* section rather than letting
 it be rediscovered later.
+
+---
+
+## Versioning
+
+The version is shown in the sidebar and footer of every page, so people go
+by it. **Current: 0.9.0** (2026-11-06). Keep this line up to date.
+
+It lives in three places, which must agree (`tests/test_version.py` fails
+if they do not):
+
+- `spark/pyproject.toml` — `version`; the footer reads it from the installed
+  package, so it changes on screen only after `docker compose up -d --build`
+- `spark/src/spark/__init__.py` — `__version__`; recorded in every backup
+- `README.md` — the **Version** line
+
+When to bump, in the same commit as the work:
+
+- **Minor** (0.9.0 → 0.10.0) when a feature or roadmap increment is finished
+  and usable — something you would put in the README's *What it does* or the
+  Status table.
+- **Patch** (0.9.0 → 0.9.1) for a batch of fixes, a security update or a
+  dependency refresh with no new feature.
+- **1.0.0** when Docker inventory (4d) and the UniFi collector (7) are done.
+- Never for docs-only or test-only changes.
+
+A bump adds a `## <version> — <date>` heading at the top of `CHANGELOG.md`,
+above the `Unreleased` entries it covers, with a line or two on what it
+brings, and updates **Current** above. Part of a feature that is not usable
+yet (a "part 1") stays `Unreleased` until the part that finishes it.
 
 ---
 

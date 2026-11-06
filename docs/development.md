@@ -214,6 +214,7 @@ spark/
                         and sidebar art (WebP)
   tests/
     test_engine.py      hysteresis, incidents, dependency suppression, the checks
+    test_version.py     the version agrees in pyproject.toml, __init__.py, the README, CLAUDE.md and the CHANGELOG
     test_welcome.py     the first-run wizard step by step, the host's subnets, linking after the sweep, banners and dismissing them
     test_heartbeat.py   heartbeats: waiting, late, /fail, a ping back up; the URL shown once; /hb limits
     test_hermes.py      Hermes Agent: the verdict on its status, a real local server, the alert, the card, found by the scan, migrations 29-30

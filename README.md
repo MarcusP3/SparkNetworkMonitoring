@@ -9,7 +9,7 @@ your network and enterprise NMS platforms built for a NOC with a full-time
 operator. SPARK aims at the middle: it discovers the network itself and shows
 you what is actually running, rather than making you type it all in.
 
-**Version** 0.1.0 · **Python** 3.12+ · **Runtime** one Docker container on a
+**Version** 0.9.0 · **Python** 3.12+ · **Runtime** one Docker container on a
 Linux VM · **Storage** one SQLite file
 
 ## What it does
